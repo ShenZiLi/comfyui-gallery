@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>图库 · 画镜 ArtMirror</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="mock-data.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<div id="topnav"></div>
+
+<div class="page" x-data="Gallery" x-init="init()">
+  <!-- 工具栏 -->
+  <div class="toolbar">
+    <div class="searchbox">
+      <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
+             @keyup.debounce.300ms="loadImages()" />
+    </div>
+    <div class="seg">
+      <button :class="{active:view==='tree'}" @click="view='tree';loadImages()">多级目录</button>
+      <button :class="{active:view==='flat'}" @click="view='flat';loadImages()">平铺</button>
+    </div>
+    <select x-model="sort" @change="loadImages()" style="width:auto">
+      <option value="ai">按 AI 评分</option>
+      <option value="manual">按人工评分</option>
+      <option value="time">按时间</option>
+    </select>
+    <button class="btn primary" @click="scan()">扫描</button>
+    <button class="btn" @click="$refs.fileInput.click()">导入图片</button>
+    <button class="btn" :class="{active: grouped}" style="border-color:var(--brand);color:var(--brand)"
+            @click="toggleGroup()" x-text="grouped ? '取消聚合' : '按提示词聚合'"></button>
+    <input type="file" accept="image/*" multiple style="display:none" x-ref="fileInput" @change="imported($event)" />
+    <span class="muted" x-text="summary"></span>
+  </div>
+
+  <div class="gallery-layout" x-show="!grouped" x-cloak>
+    <!-- 目录树 -->
+    <aside class="card pad" x-show="view==='tree'">
+      <div class="tree" style="font-weight:600;color:var(--text-2);padding-bottom:4px">目录</div>
+      <template x-for="f in folders" :key="f.id">
+        <div class="tree-item" :class="{active: currentFolder===f.id}"
+             @click="currentFolder=f.id;loadImages()">
+          <span class="icon">📁</span><span x-text="f.name"></span>
+          <span class="count" x-text="f.count"></span>
+        </div>
+      </template>
+      <div class="tree-item" :class="{active: currentFolder===null}" @click="currentFolder=null;loadImages()">
+        <span class="icon">🗂</span><span>全部</span><span class="count" x-text="folders.length && folders[0].count"></span>
+      </div>
+    </aside>
+
+    <!-- 标签筛选 -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="chips" x-show="allTags.length">
+        <span style="color:var(--text-3);font-size:12px">筛选：</span>
+        <template x-for="t in allTags" :key="t.category+':'+t.name">
+          <span class="chip" :class="[t.category, {active: selectedTag===t.name}]"
+                @click="selectedTag = selectedTag===t.name ? null : t.name; loadImages()"
+                x-text="t.name"></span>
+        </template>
+        <span class="chip" :class="{active: selectedTag===null}" @click="selectedTag=null;loadImages()">全部</span>
+      </div>
+
+      <!-- 图片网格 -->
+      <div x-show="!loading && !images.length" class="empty">
+        暂无图片 —— 前往「设置」配置图片目录并扫描。
+      </div>
+      <div class="grid" :class="{flat:view==='flat'}" x-show="images.length">
+        <template x-for="im in images" :key="im.id">
+          <div class="card img-card">
+            <div class="thumb-wrap" @click="open(im.id)">
+              <img :src="im.thumb" :alt="im.name" loading="lazy" />
+            </div>
+            <div class="info">
+              <div class="meta-row">
+                <span class="chip reverse" style="border:none;background:#f3e8ff;color:#833ab4;padding:1px 8px" x-show="im.reversePrompt">反推</span>
+                <span class="muted" style="font-size:12px;color:var(--text-3)" x-show="im.prompt&&!im.reversePrompt">原生</span>
+                <span style="font-size:12px;color:var(--text-2);font-weight:600" x-show="im.aiRating!=null">AI <span x-text="im.aiRating"></span></span>
+                <span class="nav-spacer"></span>
+                <button class="btn sm" @click.stop="download(im)">下载</button>
+              </div>
+              <div class="chips" x-show="im.tags.length" style="margin-top:8px">
+                <template x-for="t in im.tags" :key="t.category+t.name">
+                  <span class="chip" :class="t.category" x-text="t.name"></span>
+                </template>
+              </div>
+              <div style="margin-top:8px">
+                <div class="prompt-header">
+                  <span style="font-size:12px;color:var(--text-3)">工作流提示词</span>
+                  <button class="toggle-prompt" @click.stop="im._exp=!im._exp" x-text="im._exp?'收起':'展开'"></button>
+                </div>
+                <div class="prompt-box" :class="{expanded:im._exp}">
+                  <span x-html="mark(im.prompt || '（无原生提示词）')"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 按提示词聚合（同提示词分组，直接在本页切换展示） -->
+  <div x-show="grouped" x-cloak>
+    <div class="muted mb" style="display:flex;align-items:center;gap:8px">
+      已按相同提示词聚合：<b x-text="groupCount"></b> 组
+      <span class="chip" style="border-color:var(--brand);color:var(--brand)" @click="toggleGroup()">取消聚合 ×</span>
+    </div>
+    <div class="group-grid" x-show="visibleGroups().length">
+      <template x-for="g in visibleGroups()" :key="g.id">
+        <div class="card group-card">
+          <div class="cover-row">
+            <template x-for="m in g.members.slice(0,6)" :key="m.id">
+              <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
+            </template>
+          </div>
+          <div class="g-title">
+            <h4><span x-html="mark(g.title)"></span></h4>
+          </div>
+          <div class="g-body">
+            <div class="muted" style="display:flex;justify-content:space-between;font-size:12px">
+              <span x-text="g.count+' 张图片'"></span>
+              <span x-text="'最高 AI '+g.maxScore"></span>
+            </div>
+            <button class="btn sm mt" @click="g._open=!g._open" x-text="g._open?'收起':'展开成员'"></button>
+            <div class="member-grid" x-show="g._open">
+              <template x-for="m in g.members" :key="m.id">
+                <div>
+                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
+                  <div style="text-align:center;font-size:11px;color:var(--text-3)" x-text="m.aiRating!=null?'AI '+m.aiRating:'未评分'"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div class="empty" x-show="!visibleGroups().length">没有符合条件的提示词组。</div>
+  </div>
+</div>
+
+<script>
+  window.Gallery = {
+    folders: [], images: [], groups: [], tags: [], q: "", view: "tree", grouped: false,
+    selectedTag: null, sort: "ai", loading: true, summary: "",
+    init() {
+      App.initNav("gallery");
+      Api.listFolders().then(f => { this.folders = f; });
+      Api.listTags().then(t => { this.tags = t; });
+      this.loadImages();
+    },
+    allTags() { return this.tags; },
+    loadImages() {
+      this.loading = true;
+      var self = this;
+      Api.listImages({ folderId: this.currentFolder, tag: this.selectedTag, q: this.q })
+        .then(function (list) {
+          if (self.sort === "manual") list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+          else if (self.sort === "time") list.sort((a, b) => (b.id || 0) - (a.id || 0));
+          self.images = list;
+          self.summary = "共 " + list.length + " 张";
+          self.loading = false;
+        });
+      // 搜索词变化时同步影响聚合组（模糊过滤）
+      if (this.grouped) this.reloadGroups();
+    },
+    toggleGroup() {
+      this.grouped = !this.grouped;
+      if (this.grouped) this.reloadGroups();
+    },
+    reloadGroups() {
+      var self = this;
+      Api.aggregateByPrompt({ kind: "exact" }).then(function (g) {
+        g.forEach(x => x._open = false);
+        self.groups = g;
+        self.groupCount = g.length;
+        self.summary = "共 " + g.length + " 组提示词";
+      });
+    },
+    visibleGroups() {
+      if (!this.q) return this.groups;
+      var q = this.q.toLowerCase();
+      return this.groups.filter(g => g.title.toLowerCase().indexOf(q) >= 0);
+    },
+    mark(text) { return App.highlight(text, this.q ? [this.q] : []); },
+    scan() { alert("原型提示：将在后端 M1 接入后执行扫描。"); },
+    download(im) {
+      fetch(im.thumb).then(r => r.blob()).then(function (b) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(b); a.download = im.name || "image.png"; a.click();
+      }).catch(function () {
+        var a = document.createElement("a"); a.href = im.thumb; a.download = im.name || "image.png"; a.click();
+      });
+    },
+    imported(ev) {
+      var files = ev.target.files; if (!files || !files.length) return;
+      var ids = window.Mock.getImages().map(i => i.id);
+      var next = ids.length ? Math.max.apply(null, ids) + 1 : 1;
+      var self = this;
+      Array.prototype.forEach.call(files, function (f) {
+        window.Mock.getImages().push({
+          id: next++, folderId: self.currentFolder, name: f.name, width: 0, height: 0,
+          rating: null, aiRating: null, prompt: "", negative: "", tags: [], params: {},
+          reversePrompt: "", thumb: URL.createObjectURL(f),
+        });
+      });
+      ev.target.value = ""; // 允许重复选择同一文件
+      this.loadImages();
+    },
+    open(id) { location.href = "image.html?id=" + id; },
+  };
+</script>
+</body>
+</html>

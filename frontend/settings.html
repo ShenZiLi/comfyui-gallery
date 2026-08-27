@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>设置 · 画镜 ArtMirror</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="mock-data.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<div id="topnav"></div>
+
+<div class="page" x-data="Settings" x-init="init()">
+  <h2 style="margin-top:0">设置</h2>
+  <div class="setup-grid">
+    <!-- 本地图片目录 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">图片目录</h3>
+      <label class="field">
+        <span>扫描根目录（ComfyUI output 等）</span>
+        <input type="text" x-model="cfg.scanRoot" placeholder="/path/to/comfyui/outputs" />
+      </label>
+      <div class="btn-row">
+        <button class="btn primary" @click="save()">保存</button>
+        <button class="btn" @click="scan()" :disabled="scanning">扫描</button>
+      </div>
+      <div class="progress" x-show="scanning">
+        <i :style="'width:'+progress+'%'"></i>
+      </div>
+      <div class="muted mt" x-text="'进度：' + progress + '%'" x-show="scanning"></div>
+      <div class="muted mt" x-show="doneMsg" style="color:var(--special)" x-text="doneMsg"></div>
+    </div>
+
+    <!-- 大模型配置 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">大模型（OpenAI 兼容）</h3>
+      <label class="field">
+        <span>Base URL</span>
+        <input type="text" x-model="cfg.llm.baseUrl" placeholder="https://api.example.com/v1" />
+      </label>
+      <label class="field">
+        <span>API Key</span>
+        <input type="password" x-model="cfg.llm.apiKey" placeholder="sk-..." />
+      </label>
+      <label class="field">
+        <span>视觉模型（反推 / 评分看图）</span>
+        <input type="text" x-model="cfg.llm.visionModel" placeholder="qwen-vl-max / gpt-4o" />
+      </label>
+      <label class="field">
+        <span>文本模型（翻译 / 文本评分）</span>
+        <input type="text" x-model="cfg.llm.textModel" placeholder="qwen-plus / gpt-4o-mini" />
+      </label>
+      <label class="field">
+        <span>Embedding 模型（相似聚类，可选）</span>
+        <input type="text" x-model="cfg.llm.embedModel" placeholder="text-embedding-v3" />
+      </label>
+      <div class="btn-row">
+        <button class="btn primary" @click="save()">保存</button>
+        <button class="btn" @click="testLLM()" :disabled="testing" x-text="testing?'测试中…':'测试连接'"></button>
+      </div>
+      <div class="muted mt" x-show="llmMsg" style="color:var(--special)" x-text="llmMsg"></div>
+    </div>
+
+    <!-- 批量 AI 操作 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">批量 AI 操作</h3>
+      <p class="muted">对「全部图片」或「当前筛选结果」执行批量增强。</p>
+      <div class="chips" style="margin-top:6px">
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="all" />全部</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="filter" />当前筛选</label>
+      </div>
+      <div class="btn-row mt">
+        <button class="btn" @click="batch('reverse')">反推提示词</button>
+        <button class="btn" @click="batch('translate')">中英翻译</button>
+        <button class="btn" @click="batch('score')">AI 评分</button>
+      </div>
+      <div class="card mt" style="background:var(--bg);padding:8px 10px">
+        <div class="muted" style="font-size:12px">
+          · 反推结果会单独标注为「<span style="color:#833ab4">反推提示词</span>」，不覆盖原生 workflow 提示词。<br/>
+          · 未配置模型时，AI 功能将置灰并给出提示。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 数据目录 -->
+  <div class="card pad mt">
+    <h3 style="margin-top:0">数据目录</h3>
+    <p class="muted">图片数据库与缩略图存储于此，随应用自动创建。</p>
+    <code x-text="dataHint" style="background:var(--bg);padding:4px 8px;border-radius:6px"></code>
+  </div>
+</div>
+
+<script>
+  window.Settings = {
+    cfg: { scanRoot: "", llm: { baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" } },
+    scanning: false, testing: false, progress: 0, doneMsg: "", llmMsg: "",
+    scope: ["all"], dataHint: "…/data（库 + thumbs 缩略图）",
+    init() {
+      App.initNav("settings");
+      var self = this;
+      Api.getSettings().then(function (s) { self.cfg = s; self.dataHint = "…/" + (s.scanRoot ? "data" : "data") + "（SQLite + 缩略图）"; });
+    },
+    save() {
+      var body = { scanRoot: this.cfg.scanRoot, save: true,
+                   llm_base_url: this.cfg.llm.baseUrl, llm_api_key: this.cfg.llm.apiKey,
+                   llm_vision_model: this.cfg.llm.visionModel, llm_text_model: this.cfg.llm.textModel,
+                   llm_embed_model: this.cfg.llm.embedModel };
+      Api.updateSettings(body).then(function (r) { self.doneMsg = "已保存"; self.llmMsg = ""; });
+    },
+    scan() {
+      this.scanning = true; this.progress = 0; this.doneMsg = "";
+      var body = { scanRoot: this.cfg.scanRoot, save: true, scan: true };
+      var self = this;
+      Api.updateSettings(body).then(function (r) {
+        self.scanning = false; self.progress = 100;
+        var s = r.scan || {};
+        self.doneMsg = "扫描完成：新增 " + s.new + "，更新 " + s.updated + "，跳过 " + s.skipped +
+          "，移除 " + s.removed + "（解析 " + s.parsed + "）。" + (s.errors && s.errors.length ? " 错误:" + s.errors.join(";") : "");
+      }).catch(function (e) {
+        self.scanning = false;
+        self.doneMsg = "扫描失败：" + (e && e.message ? e.message : e) + "。请先配置有效的图片目录。";
+      });
+    },
+    testLLM() {
+      this.testing = true; this.llmMsg = "";
+      var self = this;
+      setTimeout(function () { self.testing = false; self.llmMsg = "连接成功（原型 mock）。"; }, 900);
+    },
+    batch(kind) { alert("原型提示：批量「" + kind + "」将在后端 M3 AI 能力接入后执行。"); },
+  };
+</script>
+</body>
+</html>

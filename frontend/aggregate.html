@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>提示词聚合 · 画镜 ArtMirror</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="mock-data.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<div id="topnav"></div>
+
+<div class="page" x-data="Agg" x-init="init()">
+  <!-- 模式切换 -->
+  <div class="toolbar">
+    <div class="searchbox">
+      <input type="text" placeholder="搜索提示词 / 模型 / 标签（模糊）…" x-model="q" />
+    </div>
+    <div class="seg">
+      <button :class="{active:mode==='prompt'}" @click="mode='prompt';load()">提示词分组</button>
+      <button :class="{active:mode==='dim'}" @click="mode='dim';load()">维度分组</button>
+    </div>
+    <div class="seg" x-show="mode==='prompt'">
+      <button :class="{active:aggKind==='exact'}" @click="aggKind='exact';load()">相同提示词</button>
+      <button :class="{active:aggKind==='similar'}" @click="aggKind='similar';load()">相似提示词</button>
+    </div>
+    <select x-model="sort" @change="sortGroups()" style="width:auto">
+      <option value="ai">按最高 AI 评分排序</option>
+      <option value="count">按数量排序</option>
+    </select>
+  </div>
+
+  <!-- 提示词分组 -->
+  <div x-show="mode==='prompt'" x-cloak>
+    <div class="group-grid" x-show="visibleGroups().length">
+      <template x-for="g in visibleGroups()" :key="g.id">
+        <div class="card group-card">
+          <div class="cover-row" @click="openCover(g)">
+            <template x-for="m in g.members.slice(0,5)" :key="m.id">
+              <img :src="m.thumb" @click.stop="open(m.id)" :title="'AI '+ (m.aiRating||'-')" />
+            </template>
+          </div>
+          <div class="g-title">
+            <h4 x-text="g.title"></h4>
+            <span class="similar-tag" x-show="g.kind==='similar'">相似</span>
+          </div>
+          <div class="g-body">
+            <div class="muted" style="display:flex;justify-content:space-between;font-size:12px">
+              <span x-text="g.count+' 张图片'"></span>
+              <span x-text="'最高 AI '+g.maxScore"></span>
+            </div>
+            <div class="sample-prompts" x-show="g.samples && g.samples.length">
+              <div x-for="s in g.samples" :key="s" style="margin-top:4px">· <span x-text="s"></span></div>
+            </div>
+            <button class="btn sm mt" @click="g._open=!g._open" x-text="g._open?'收起':'展开成员'"></button>
+            <div class="member-grid" x-show="g._open">
+              <template x-for="m in g.members" :key="m.id">
+                <div>
+                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
+                  <div style="text-align:center;font-size:11px;color:var(--text-3)" x-text="m.aiRating!=null ? 'AI '+m.aiRating : '未评分'"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- 维度分组 -->
+  <div x-show="mode==='dim'" x-cloak>
+    <template x-for="grp in visibleDim()" :key="grp.category">
+      <div class="acc" :class="{open: grp._open}">
+        <div class="acc-head" @click="grp._open=!grp._open">
+          <span class="chev">▸</span>
+          <b x-text="catLabel(grp.category)"></b>
+          <span class="muted" x-text="grp.items.length+' 类'"></span>
+        </div>
+        <div class="acc-body">
+          <template x-for="item in grp.items" :key="item.name">
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--border)">
+              <span class="chip" :class="grp.category" x-text="item.name"></span>
+              <span class="muted" x-text="item.count+' 张'"></span>
+              <div style="display:flex;gap:4px;margin-left:auto">
+                <template x-for="m in item.members.slice(0,4)" :key="m.id">
+                  <img :src="m.thumb" @click="open(m.id)" style="width:36px;height:36px;object-fit:cover;border-radius:6px;cursor:pointer" />
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+  window.Agg = {
+    mode: "prompt", aggKind: "exact", sort: "ai", q: "", groups: [], dimGroups: [],
+    init() {
+      App.initNav("aggregate");
+      this.load();
+    },
+    load() {
+      var self = this;
+      if (this.mode === "prompt") {
+        Api.aggregateByPrompt({ kind: this.aggKind })
+          .then(function (g) { g.forEach(function (x) { x._open = false; }); self.groups = g; self.sortGroups(); });
+      } else {
+        Api.dimensionGroups().then(function (g) {
+          g.forEach(function (x) { x._open = true; });
+          self.dimGroups = g;
+        });
+      }
+    },
+    visibleGroups() {
+      if (!this.q) return this.groups;
+      var q = this.q.toLowerCase();
+      return this.groups.filter(function (g) {
+        if (g.title && g.title.toLowerCase().indexOf(q) >= 0) return true;
+        if (g.samples && g.samples.some(function (s) { return s.toLowerCase().indexOf(q) >= 0; })) return true;
+        return g.members.some(function (m) { return (m.tags || []).some(function (t) { return t.name.toLowerCase().indexOf(q) >= 0; }); });
+      });
+    },
+    visibleDim() {
+      if (!this.q) return this.dimGroups;
+      var q = this.q.toLowerCase();
+      return this.dimGroups.map(function (grp) {
+        return { _open: grp._open, category: grp.category,
+                 items: grp.items.filter(function (it) { return it.name.toLowerCase().indexOf(q) >= 0; }) };
+      }).filter(function (grp) { return grp.items.length; });
+    },
+    sortGroups() {
+      var f = this.sort === "count" ? (a, b) => b.count - a.count : (a, b) => b.maxScore - a.maxScore;
+      this.groups.sort(f);
+    },
+    catLabel(c) {
+      return { model: "模型", lora: "LoRA", vae: "VAE", style: "风格" }[c] || c;
+    },
+    open(id) { location.href = "image.html?id=" + id; },
+    openCover(g) { /* 平台示意：点击封面区可先展开 */ },
+  };
+</script>
+</body>
+</html>

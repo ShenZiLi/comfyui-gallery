@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>图片详情 · 画镜 ArtMirror</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="mock-data.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<div id="topnav"></div>
+
+<div class="page" x-data="Detail" x-init="init()" x-show="im">
+  <div class="detail-layout">
+    <!-- 大图 -->
+    <div class="detail-image card">
+      <div style="position:relative">
+        <img :src="im.thumb" :alt="im.name" />
+        <span class="badge reverse" x-show="im.reversePrompt">反推提示词</span>
+      </div>
+      <div class="pad">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span x-text="im.name" style="font-weight:600"></span>
+          <span class="muted" x-text="fmt(im)"></span>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <a class="btn" :href="'gallery.html'">← 返回图库</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 信息栏 -->
+    <div>
+      <!-- 原生提示词 -->
+      <div class="card section pad">
+        <h3>工作流提示词 <span class="sub-badge origin">原生</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn sm" @click="copy(im.prompt)">复制</button>
+          </span>
+        </h3>
+        <div style="color:var(--text-2)"><span x-text="im.prompt || '（无原生提示词）'"></span></div>
+        <div class="muted mt" x-show="im.negative" style="font-size:12px">
+          <b>负向：</b><span x-text="im.negative"></span>
+        </div>
+      </div>
+
+      <!-- 反推提示词 -->
+      <div class="card section pad" x-show="im.reversePrompt">
+        <h3>AI 反推提示词 <span class="sub-badge reverse">反推</span>
+          <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn sm" @click="translate()" x-text="tState==='ing'?'翻译中…':'中译'"></button>
+            <button class="btn sm" @click="copy(im.reversePrompt)">复制</button>
+          </span>
+        </h3>
+        <div style="color:var(--text-2)"><span x-text="im.reversePrompt"></span></div>
+        <div class="card mt" style="background:var(--bg);padding:8px 10px" x-show="im.translationZH">
+          <div class="muted" style="font-size:12px"><b>中文释义：</b><span x-text="im.translationZH"></span></div>
+        </div>
+      </div>
+
+      <!-- 工作流 -->
+      <div class="card section pad">
+        <h3>工作流</h3>
+        <div class="btn-row">
+          <button class="btn" @click="preview()">预览工作流</button>
+          <button class="btn" @click="exportWorkflow()">导出 .json</button>
+          <button class="btn" @click="copy(workflowJSON())">复制 JSON</button>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:8px">提示：可将导出的 JSON 拖回 ComfyUI 画布复现。</div>
+      </div>
+
+      <!-- 模型 / 参数 -->
+      <div class="card section pad">
+        <h3>模型与参数</h3>
+        <div class="chips" style="margin-top:0">
+          <template x-for="t in im.tags || []" :key="t.category+t.name">
+            <span class="chip" :class="t.category" x-text="(t.category+': ')+t.name"></span>
+          </template>
+        </div>
+        <div class="muted mt" style="font-size:12px" x-show="im.params">
+          steps <b x-text="im.params.steps"></b> · cfg <b x-text="im.params.cfg"></b> ·
+          <b x-text="im.params.sampler"></b> · seed <b x-text="im.params.seed"></b> ·
+          <b x-text="im.params.scheduler"></b>
+        </div>
+      </div>
+
+      <!-- 评分 -->
+      <div class="card section pad">
+        <h3>评分</h3>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div>
+            <div class="muted" style="font-size:12px">人工评分</div>
+            <div>
+              <template x-for="n in 5" :key="n">
+                <span class="star" :class="{off:n>Math.round(im.rating||0)}" style="font-size:20px;cursor:pointer;color:var(--f6b130n, #f6b130)" @click="setRating(n)">★</span>
+              </template>
+              <span class="star-tip" x-text="im.rating ? im.rating+' 分' : '未评分'"></span>
+            </div>
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px">AI 评分</div>
+            <div style="font-size:20px;font-weight:700;color:var(--brand)" x-text="im.aiRating"></div>
+          </div>
+        </div>
+        <div class="card mt" style="background:var(--bg);padding:8px 10px" x-show="im.aiReason">
+          <div class="muted" style="font-size:12px"><b>AI 依据：</b><span x-text="im.aiReason"></span></div>
+        </div>
+        <button class="btn sm mt" @click="aiScore()" x-text="aState==='ing'?'评分中…':'重新 AI 评分'"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 工作流预览 Modal -->
+  <div class="modal-mask" x-show="showModal" @keydown.escape.window="showModal=false">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>工作流预览</h3>
+        <button class="modal-x" @click="showModal=false">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="btn-row mb">
+          <button class="btn sm" @click="copy(workflowJSON())">复制 JSON</button>
+          <button class="btn sm" @click="exportWorkflow()">导出 .json</button>
+        </div>
+        <pre class="code" x-text="workflowJSON()"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.Detail = {
+    im: null, showModal: false, tState: "", aState: "",
+    init() {
+      App.initNav("");
+      var id = new URLSearchParams(location.search).get("id");
+      var self = this;
+      Api.getImage(id).then(function (image) { self.im = image; });
+    },
+    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3) + " · " + (im.params && im.params.seed || ""); },
+    copy(text, label) { navigator.clipboard && navigator.clipboard.writeText(text); },
+    setRating(n) { this.im.rating = n; },
+    preview() { this.showModal = true; },
+    exportWorkflow() {
+      var blob = new Blob([this.workflowJSON()], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = (this.im.name || "workflow").replace(/\.png$/i, "") + "_workflow.json";
+      a.click();
+    },
+    workflowJSON() {
+      var im = this.im; if (!im) return "{}";
+      if (im.workflow) { try { return JSON.stringify(JSON.parse(im.workflow), null, 2); } catch (e) { return im.workflow; } }
+      return JSON.stringify({
+        nodes: [{ id: 4, type: "CheckpointLoaderSimple", widgets_values: [im.params, im.tags] }],
+        _meta: { title: im.name },
+        prompt: im.prompt, negative: im.negative,
+        model: im.tags && im.tags[0].name, sample: true,
+      }, null, 2);
+    },
+    translate() {
+      this.tState = "ing";
+      var self = this;
+      setTimeout(function () { self.im.translationZH = "（原型）处理器渲染中译：赛博朋克 / 宇航员光影。"; self.tState = ""; }, 900);
+    },
+    aiScore() {
+      this.aState = "ing";
+      var self = this;
+      setTimeout(function () { self.im.aiRating = Math.round(60 + Math.random() * 38); self.aState = ""; }, 900);
+    },
+  };
+</script>
+</body>
+</html>
