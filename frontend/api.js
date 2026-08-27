@@ -75,10 +75,7 @@
     getSettings: function () {
       return req("api/settings").catch(function () {
         Api._fallback = true;
-        return ok({
-          scanRoot: "",
-          llm: { baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" },
-        });
+        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" } });
       });
     },
 

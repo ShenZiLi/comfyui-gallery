@@ -11,7 +11,9 @@ from ..services import scanner
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-LLM_KEYS = ["llm_base_url", "llm_api_key", "llm_vision_model", "llm_text_model", "llm_embed_model"]
+# 三个模型角色及其扩展字段（支持不同厂商混搭）
+ROLES = ["text", "vision", "embed"]
+ROLE_FIELDS = ["vendor", "base_url", "api_key", "model"]
 
 
 def _get(session: Session, key: str) -> str:
@@ -27,68 +29,54 @@ def _set(session: Session, key: str, value: str) -> None:
         row.value = value
 
 
+def _role_config(session: Session, role: str) -> dict:
+    """读取某个模型角色的配置。"""
+    cfg = {}
+    for f in ROLE_FIELDS:
+        cfg[f] = _get(session, f"llm_{role}_{f}")
+    return cfg
+
+
+def _set_role_config(session: Session, role: str, cfg: dict) -> None:
+    for f in ROLE_FIELDS:
+        v = cfg.get(f)
+        if v is not None:
+            _set(session, f"llm_{role}_{f}", str(v).strip())
+
+
 @router.get("")
 def get_settings(session: Session = Depends(get_session)):
-    """读取设置（扫描路径 + LLM 配置）。"""
-    scan_root = _get(session, "scan_root") or env_settings.scan_root or ""
-    llm = {
-        "baseUrl": _get(session, "llm_base_url") or env_settings.llm_base_url,
-        "apiKey": _get(session, "llm_api_key") or env_settings.llm_api_key,
-        "visionModel": _get(session, "llm_vision_model") or env_settings.llm_vision_model,
-        "textModel": _get(session, "llm_text_model") or env_settings.llm_text_model,
-        "embedModel": _get(session, "llm_embed_model") or env_settings.llm_embed_model,
-    }
-    return {"scanRoot": scan_root, "llm": llm}
-
-
-class SettingsBody:
-    """接收设置更新。"""
-
-    def __init__(
-        self,
-        scanRoot: str | None = None,
-        llm_base_url: str | None = None,
-        llm_api_key: str | None = None,
-        llm_vision_model: str | None = None,
-        llm_text_model: str | None = None,
-        llm_embed_model: str | None = None,
-        save: bool = False,
-        scan: bool = False,
-        test: bool = False,
-    ) -> None:
-        self.scanRoot = scanRoot
-        self.llm_base_url = llm_base_url
-        self.llm_api_key = llm_api_key
-        self.llm_vision_model = llm_vision_model
-        self.llm_text_model = llm_text_model
-        self.llm_embed_model = llm_embed_model
-        self.save = save
-        self.scan = scan
-        self.test = test
+    """读取设置（多个扫描路径 + 各模型角色配置）。"""
+    roots = [str(r) for r in scanner.get_scan_roots(session)]
+    llm = {role: _role_config(session, role) for role in ROLES}
+    return {"scanRoots": roots, "llm": llm}
 
 
 @router.post("")
 def update_settings(body: dict, session: Session = Depends(get_session)):
-    """保存设置并可触发扫描。"""
-    for key in LLM_KEYS:
-        if body.get(key) is not None:
-            _set(session, key, str(body[key]).strip())
-    if body.get("scanRoot") is not None:
-        _set(session, "scan_root", str(body["scanRoot"]).strip())
+    """保存设置（含各角色模型厂商、扫描多个根），可触发扫描。"""
+    llm = body.get("llm")
+    if isinstance(llm, dict):
+        for role in ROLES:
+            _set_role_config(session, role, llm.get(role) or {})
+    if body.get("scanRoots") is not None:
+        scanner.save_scan_roots(session, [str(r) for r in body["scanRoots"]])
     session.commit()
 
     result = {"saved": True}
     if body.get("scan"):
-        root = _get(session, "scan_root") or env_settings.scan_root
-        if not root or not Path(root).is_dir():
-            raise HTTPException(400, "请先配置有效的扫描目录")
-        stats = scanner.scan(session, Path(root))
+        roots = scanner.get_scan_roots(session)
+        invalid = [str(r) for r in roots if not Path(r).is_dir()]
+        if not roots:
+            raise HTTPException(400, "请先配置有效的图片目录")
+        stats = scanner.scan_all(session, roots)
         result["scan"] = {
             "new": stats.new,
             "updated": stats.updated,
             "skipped": stats.skipped,
             "removed": stats.removed,
             "parsed": stats.parsed,
+            "invalid": invalid,
             "errors": stats.errors,
         }
     if body.get("test"):

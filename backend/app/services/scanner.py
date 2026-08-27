@@ -1,12 +1,13 @@
 """图片扫描与入库服务。
 
-递归扫描配置根目录，sha256 去重、mtime+size 增量更新、生成缩略图，
+递归扫描多个配置根目录，sha256 去重、mtime+size 增量更新、生成缩略图，
 并把 ComfyUI meta 解析后落库；对已消失文件做软删除。
 """
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,24 +35,51 @@ class ScanStats:
     parsed: int = 0
     errors: list[str] = field(default_factory=list)
 
+    def merge(self, other: "ScanStats") -> "ScanStats":
+        self.new += other.new
+        self.updated += other.updated
+        self.skipped += other.skipped
+        self.removed += other.removed
+        self.parsed += other.parsed
+        self.errors.extend(other.errors)
+        return self
 
-def get_scan_root(session: Session) -> Path | None:
-    """读取扫描根目录（优先 setting 表，其次环境配置）。"""
-    row = session.exec(select(Setting).where(Setting.key == "scan_root")).first()
+
+def get_scan_roots(session: Session) -> list[Path]:
+    """读取多个扫描根目录（优先 setting 表，其次环境配置）。"""
+    row = session.exec(select(Setting).where(Setting.key == "scan_roots")).first()
     if row and row.value:
-        return Path(row.value)
-    return Path(settings.scan_root) if settings.scan_root else None
+        try:
+            roots = json.loads(row.value)
+            return [Path(r) for r in roots if r]
+        except (json.JSONDecodeError, TypeError):
+            pass
+    # 兼容旧的单目录字段
+    old = session.exec(select(Setting).where(Setting.key == "scan_root")).first()
+    if old and old.value:
+        return [Path(old.value)]
+    if settings.scan_root:
+        return [Path(settings.scan_root)]
+    return []
 
 
-def save_scan_root(session: Session, root: str) -> None:
-    """持久化扫描根目录。"""
-    row = session.exec(select(Setting).where(Setting.key == "scan_root")).first()
+def save_scan_roots(session: Session, roots: list[str]) -> None:
+    """持久化多个扫描根目录。"""
+    cleaned = [r.strip() for r in roots if r and r.strip()]
+    row = session.exec(select(Setting).where(Setting.key == "scan_roots")).first()
     if row is None:
-        row = Setting(key="scan_root", value=root)
+        row = Setting(key="scan_roots", value="")
         session.add(row)
-    else:
-        row.value = root
+    row.value = json.dumps(cleaned, ensure_ascii=False)
     session.commit()
+
+
+def scan_all(session: Session, roots: list[Path]) -> ScanStats:
+    """依次扫描多个根目录，汇总统计。"""
+    total = ScanStats()
+    for root in roots:
+        total.merge(scan(session, root))
+    return total
 
 
 def _hash_bytes(data: bytes) -> str:

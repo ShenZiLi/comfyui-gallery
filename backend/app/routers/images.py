@@ -60,6 +60,7 @@ def to_card(session: Session, im: ImageAsset) -> dict:
         "name": im.file_name,
         "width": im.width,
         "height": im.height,
+        "fileSize": im.file_size,
         "rating": im.rating,
         "aiRating": im.ai_rating,
         "prompt": meta.prompt if meta else "",
