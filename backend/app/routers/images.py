@@ -260,12 +260,13 @@ def _filter_images(session: Session, folder_id, tag, q):
     return stmt
 
 
-def _order_for(sort: str):
+def _order_for(sort: str) -> list:
+    """排序键列表：主键 + id 兜底，保证并列值下 offset 分页确定性。"""
     if sort == "manual":
-        return ImageAsset.rating.desc().nullslast()
+        return [ImageAsset.rating.desc().nullslast(), ImageAsset.id.desc()]
     if sort == "time":
-        return ImageAsset.id.desc()
-    return ImageAsset.ai_rating.desc().nullslast()
+        return [ImageAsset.id.desc()]
+    return [ImageAsset.ai_rating.desc().nullslast(), ImageAsset.id.desc()]
 
 
 @router.get("")
@@ -284,7 +285,7 @@ def list_images(
     base = _filter_images(session, folderId, tag, q)
     total = session.exec(select(func.count()).select_from(base.subquery())).one()
     imgs = session.exec(
-        base.order_by(_order_for(sort)).offset(offset).limit(limit)
+        base.order_by(*_order_for(sort)).offset(offset).limit(limit)
     ).all()
     return {
         "items": to_cards(session, imgs),

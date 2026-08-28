@@ -138,3 +138,42 @@ def test_to_cards_no_meta_defaults():
             c = to_cards(s, [im])[0]
             assert c["prompt"] == "" and c["reversePrompt"] is None and c["originPrompts"] == []
             assert c["tags"] == [] and c["aiPrompt"] == ""
+
+
+def test_pagination_tiebreaker_stable():
+    """并列排序键（全 NULL ai_rating）下翻页不重叠不遗漏。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 6)  # 全部 ai_rating=NULL
+        p1 = client.get("/api/images?sort=ai&limit=3").json()
+        p2 = client.get("/api/images?sort=ai&limit=3&offset=3").json()
+        ids1 = {c["id"] for c in p1["items"]}
+        ids2 = {c["id"] for c in p2["items"]}
+        assert not (ids1 & ids2)
+        assert len(ids1 | ids2) == 6
+        assert ids1 | ids2 == {c["id"] for c in p1["items"] + p2["items"]}
+
+
+def test_pagination_clamps_and_overflow():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 2)
+        assert client.get("/api/images?limit=0").json()["limit"] == 1      # 下界
+        assert client.get("/api/images?offset=-5").json()["offset"] == 0  # 负 offset
+        over = client.get("/api/images?limit=10&offset=99").json()        # 超总量
+        assert over["items"] == [] and over["hasMore"] is False
+
+
+def test_pagination_with_tag_and_folder_filters():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 4)
+        # tag 过滤 × 分页（_seed 中每图都挂 model-x 标签）
+        b = client.get("/api/images?tag=model-x&limit=2").json()
+        assert b["total"] == 4 and len(b["items"]) == 2 and b["hasMore"] is True
+        # 无 folder 记录时 folderId=999 过滤为空
+        b2 = client.get("/api/images?folderId=999").json()
+        assert b2["total"] == 0 and b2["items"] == []
