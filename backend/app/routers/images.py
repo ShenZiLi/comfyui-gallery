@@ -41,15 +41,6 @@ def _load_str_list(text: str) -> list[str]:
     return []
 
 
-def _tags_of(session: Session, image_id: int) -> list[dict]:
-    rows = session.exec(
-        select(Tag).join(ImageTag, ImageTag.tag_id == Tag.id).where(
-            ImageTag.image_id == image_id, ImageTag.is_deleted == 0
-        )
-    ).all()
-    return [{"name": _basename(t.name), "category": t.category} for t in rows]
-
-
 def _latest(session: Session, model, image_id: int) -> dict | None:
     row = session.exec(
         select(model).where(model.image_id == image_id).order_by(model.id.desc())
@@ -79,12 +70,69 @@ def _hidden_folders(session: Session) -> set[int]:
         return set()
 
 
+def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
+    """批量组装图库卡片（列表页瘦身版：整页固定 3 次查询，消除逐图 N+1）。"""
+    if not images:
+        return []
+    ids = [im.id for im in images]
+
+    meta_by = {
+        m.image_id: m
+        for m in session.exec(
+            select(WorkflowMeta).where(WorkflowMeta.image_id.in_(ids))
+        ).all()
+    }
+
+    # 同图多条时取最新：按 id 升序遍历，后写覆盖
+    reverse_by: dict[int, ReversePrompt] = {}
+    for r in session.exec(
+        select(ReversePrompt)
+        .where(ReversePrompt.image_id.in_(ids))
+        .order_by(ReversePrompt.id)
+    ).all():
+        reverse_by[r.image_id] = r
+
+    tags_by: dict[int, list[dict]] = {i: [] for i in ids}
+    for link, tag in session.exec(
+        select(ImageTag, Tag)
+        .join(Tag, Tag.id == ImageTag.tag_id)
+        .where(ImageTag.image_id.in_(ids), ImageTag.is_deleted == 0)
+    ).all():
+        if link.image_id in tags_by:
+            tags_by[link.image_id].append(
+                {"name": _basename(tag.name), "category": tag.category}
+            )
+
+    cards = []
+    for im in images:
+        meta = meta_by.get(im.id)
+        reverse = reverse_by.get(im.id)
+        cards.append({
+            "id": im.id,
+            "folderId": im.folder_id,
+            "name": im.file_name,
+            "width": im.width,
+            "height": im.height,
+            "fileSize": im.file_size,
+            "rating": im.rating,
+            "aiRating": im.ai_rating,
+            "prompt": meta.prompt if meta else "",
+            "originPrompts": _load_str_list(meta.origin_prompts_json if meta else "") or ([meta.prompt] if meta and meta.prompt else []),
+            "aiPrompts": _load_str_list(meta.ai_prompts_json if meta else "") or ([meta.ai_prompt] if meta and meta.ai_prompt else []),
+            "aiPrompt": meta.ai_prompt if meta else "",
+            "reversePrompt": reverse.text if reverse else None,
+            "tags": tags_by.get(im.id, []),
+            "thumb": f"/api/images/{im.id}/thumb",
+        })
+    return cards
+
+
 def to_card(session: Session, im: ImageAsset) -> dict:
-    """组装图库卡片数据。"""
+    """单图完整卡片（详情页 / 单图接口用）：批量瘦身版 + 详情补充字段。"""
+    card = to_cards(session, [im])[0]
     meta = session.exec(
         select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
     ).first()
-    reverse = _latest(session, ReversePrompt, im.id)
     trans = session.exec(
         select(PromptTranslation).where(
             PromptTranslation.image_id == im.id,
@@ -92,7 +140,12 @@ def to_card(session: Session, im: ImageAsset) -> dict:
             PromptTranslation.lang == "zh",
         )
     ).first()
-    params = {
+    card["negative"] = meta.negative_prompt if meta else ""
+    card["negativePrompts"] = _load_str_list(meta.negative_prompts_json if meta else "")
+    card["aiNegative"] = meta.ai_negative_prompt if meta else ""
+    card["aiReason"] = _latest_ai_reason(session, im.id)
+    card["translationZH"] = trans.text if trans else None
+    card["params"] = {
         "steps": meta.steps if meta else None,
         "cfg": meta.cfg if meta else None,
         "sampler": meta.sampler if meta else None,
@@ -100,30 +153,7 @@ def to_card(session: Session, im: ImageAsset) -> dict:
         "seed": meta.seed if meta else None,
         "denoise": meta.denoise if meta else None,
     }
-    ai_record = _latest_ai_reason(session, im.id)
-    return {
-        "id": im.id,
-        "folderId": im.folder_id,
-        "name": im.file_name,
-        "width": im.width,
-        "height": im.height,
-        "fileSize": im.file_size,
-        "rating": im.rating,
-        "aiRating": im.ai_rating,
-        "aiReason": ai_record,
-        "prompt": meta.prompt if meta else "",
-        "negative": meta.negative_prompt if meta else "",
-        "originPrompts": _load_str_list(meta.origin_prompts_json if meta else "") or ([meta.prompt] if meta and meta.prompt else []),
-        "negativePrompts": _load_str_list(meta.negative_prompts_json if meta else ""),
-        "aiPrompts": _load_str_list(meta.ai_prompts_json if meta else "") or ([meta.ai_prompt] if meta and meta.ai_prompt else []),
-        "aiPrompt": meta.ai_prompt if meta else "",
-        "aiNegative": meta.ai_negative_prompt if meta else "",
-        "reversePrompt": reverse.text if reverse else None,
-        "translationZH": trans.text if trans else None,
-        "tags": _tags_of(session, im.id),
-        "params": params,
-        "thumb": f"/api/images/{im.id}/thumb",
-    }
+    return card
 
 
 def to_detail(session: Session, im: ImageAsset) -> dict:
