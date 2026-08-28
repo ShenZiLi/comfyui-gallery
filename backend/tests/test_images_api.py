@@ -15,6 +15,7 @@ from app.models import (
     ImageAsset, ImageTag, PromptTranslation, RatingRecord, ReversePrompt, Tag, WorkflowMeta,
 )
 from app.routers import images
+from app.routers.images import to_card, to_cards
 
 
 def _setup(tmp: Path):
@@ -68,7 +69,6 @@ def test_to_cards_batch_and_full_card():
         _, engine = _setup(Path(td))
         with Session(engine) as s:
             ims = _seed(s, 2)
-            from app.routers.images import to_card, to_cards
             cards = to_cards(s, ims)
             assert [c["id"] for c in cards] == [im.id for im in ims]
             c = cards[0]
@@ -84,3 +84,57 @@ def test_to_cards_batch_and_full_card():
             assert full["translationZH"] == "译文"
             assert full["aiReason"] == "好看"
             assert full["params"]["steps"] == 20
+            # 批量组装边界：空列表与无 meta 图片
+            assert to_cards(s, []) == []
+
+
+def test_list_pagination_defaults_and_caps():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 5)
+        body = client.get("/api/images").json()
+        assert body["total"] == 5 and len(body["items"]) == 5 and body["hasMore"] is False
+        assert body["limit"] == 60 and body["offset"] == 0
+        body = client.get("/api/images?limit=2").json()
+        assert len(body["items"]) == 2 and body["hasMore"] is True
+        body = client.get("/api/images?limit=2&offset=4").json()
+        assert len(body["items"]) == 1 and body["hasMore"] is False
+        assert client.get("/api/images?limit=9999").json()["limit"] == 200  # 上限截断
+
+
+def test_list_filter_sort_and_slim():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 3)
+        body = client.get("/api/images?q=p1").json()  # 命中 1 张
+        assert body["total"] == 1 and body["items"][0]["prompt"] == "p1 masterpiece"
+        ids = [c["id"] for c in client.get("/api/images?sort=time").json()["items"]]
+        assert ids == sorted(ids, reverse=True)
+        c = client.get("/api/images").json()["items"][0]
+        for absent in ("negative", "negativePrompts", "aiNegative", "aiReason", "translationZH", "params"):
+            assert absent not in c
+
+
+def test_detail_keeps_full_fields():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            image_id = ims[0].id  # session 关闭后过期属性不可访问，块内先取出
+        d = client.get(f"/api/images/{image_id}").json()
+        for present in ("negative", "params", "aiReason", "translationZH", "workflow", "translations"):
+            assert present in d
+
+
+def test_to_cards_no_meta_defaults():
+    with tempfile.TemporaryDirectory() as td:
+        _, engine = _setup(Path(td))
+        with Session(engine) as s:
+            im = ImageAsset(file_name="bare.png", file_path="/x/bare.png", abs_path="/x/bare.png",
+                            sha256="e" * 64, width=8, height=8, file_size=1)
+            s.add(im); s.commit()
+            c = to_cards(s, [im])[0]
+            assert c["prompt"] == "" and c["reversePrompt"] is None and c["originPrompts"] == []
+            assert c["tags"] == [] and c["aiPrompt"] == ""

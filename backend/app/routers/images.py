@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from ..config import settings
@@ -98,10 +99,9 @@ def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
         .join(Tag, Tag.id == ImageTag.tag_id)
         .where(ImageTag.image_id.in_(ids), ImageTag.is_deleted == 0)
     ).all():
-        if link.image_id in tags_by:
-            tags_by[link.image_id].append(
-                {"name": _basename(tag.name), "category": tag.category}
-            )
+        tags_by[link.image_id].append(
+            {"name": _basename(tag.name), "category": tag.category}
+        )
 
     cards = []
     for im in images:
@@ -121,7 +121,7 @@ def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
             "aiPrompts": _load_str_list(meta.ai_prompts_json if meta else "") or ([meta.ai_prompt] if meta and meta.ai_prompt else []),
             "aiPrompt": meta.ai_prompt if meta else "",
             "reversePrompt": reverse.text if reverse else None,
-            "tags": tags_by.get(im.id, []),
+            "tags": tags_by[im.id],
             "thumb": f"/api/images/{im.id}/thumb",
         })
     return cards
@@ -233,7 +233,8 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
     return {"text": translated, "lang": target, "cached": False}
 
 
-def _query_images(session: Session, folder_id, tag, q, sort):
+def _filter_images(session: Session, folder_id, tag, q):
+    """构建过滤后的基础查询（不含排序/分页）。"""
     stmt = select(ImageAsset).where(ImageAsset.is_deleted == 0)
     hidden = _hidden_folders(session)
     if hidden:
@@ -256,12 +257,15 @@ def _query_images(session: Session, folder_id, tag, q, sort):
             | (WorkflowMeta.negative_prompt.like(like))
             | (ImageAsset.file_name.like(like))
         ).distinct()
-    order = ImageAsset.ai_rating.desc().nullslast()
+    return stmt
+
+
+def _order_for(sort: str):
     if sort == "manual":
-        order = ImageAsset.rating.desc().nullslast()
+        return ImageAsset.rating.desc().nullslast()
     if sort == "time":
-        order = ImageAsset.id.desc()
-    return session.exec(stmt.order_by(order)).all()
+        return ImageAsset.id.desc()
+    return ImageAsset.ai_rating.desc().nullslast()
 
 
 @router.get("")
@@ -270,11 +274,25 @@ def list_images(
     tag: str | None = None,
     q: str | None = None,
     sort: str = "ai",
+    limit: int = 60,
+    offset: int = 0,
     session: Session = Depends(get_session),
 ):
-    """列出图片卡片（过滤器 + 排序）。"""
-    imgs = _query_images(session, folderId, tag, q, sort)
-    return [to_card(session, im) for im in imgs]
+    """列出图片卡片（分页：过滤 + 排序由后端唯一负责）。"""
+    limit = max(1, min(200, limit))
+    offset = max(0, offset)
+    base = _filter_images(session, folderId, tag, q)
+    total = session.exec(select(func.count()).select_from(base.subquery())).one()
+    imgs = session.exec(
+        base.order_by(_order_for(sort)).offset(offset).limit(limit)
+    ).all()
+    return {
+        "items": to_cards(session, imgs),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "hasMore": offset + len(imgs) < total,
+    }
 
 
 @router.get("/{image_id}")
