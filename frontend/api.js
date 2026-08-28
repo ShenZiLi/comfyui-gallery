@@ -116,9 +116,43 @@
 
     aggregateByPrompt: function (opts) {
       opts = opts || {};
-      return req("api/aggregate/by-prompt?kind=" + (opts.kind || "exact")).catch(function () {
+      var qs = [
+        "kind=" + (opts.kind || "exact"),
+        "limit=" + (opts.limit || 20),
+        "offset=" + (opts.offset || 0)
+      ];
+      return req("api/aggregate/by-prompt?" + qs.join("&")).catch(function () {
         Api._fallback = true;
-        return ok(buildMockGroups(opts.kind === "similar"));
+        var g = buildMockGroups(opts.kind === "similar");
+        var off = opts.offset || 0, lim = opts.limit || 20;
+        return ok({
+          items: g.slice(off, off + lim),
+          total: g.length,
+          limit: lim,
+          offset: off,
+          hasMore: off + lim < g.length
+        });
+      });
+    },
+
+    aggregateMembers: function (group, opts) {
+      opts = opts || {};
+      var qs = [
+        "group=" + encodeURIComponent(group),
+        "limit=" + (opts.limit || 24),
+        "offset=" + (opts.offset || 0)
+      ];
+      return req("api/aggregate/by-prompt/members?" + qs.join("&")).catch(function () {
+        Api._fallback = true;
+        var g = buildMockGroups(false).filter(function (x) { return x.id === group; })[0] || { members: [] };
+        var off = opts.offset || 0, lim = opts.limit || 24;
+        return ok({
+          items: g.members.slice(off, off + lim),
+          total: g.members.length,
+          limit: lim,
+          offset: off,
+          hasMore: off + lim < g.members.length
+        });
       });
     },
 
@@ -207,6 +241,7 @@
       return {
         id: key, title: members[0].prompt, kind: similar ? "similar" : "exact", count: members.length,
         maxScore: members[0].aiRating || 0, cover: members[0],
+        coverThumbs: members.slice(0, 6).map(function (m) { return { id: m.id, name: m.name, thumb: m.thumb }; }),
         samples: similar ? [members[0].prompt] : [], members: members,
       };
     });

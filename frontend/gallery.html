@@ -196,14 +196,15 @@
     <!-- 聚合 -->
     <div x-show="mode==='aggregate'" x-cloak>
       <div class="muted mb" style="display:flex;align-items:center;gap:8px">
-        按相同提示词聚合：<b x-text="groupCount"></b> 组
+        按相同提示词聚合：<b x-text="groupTotal"></b> 组
+        <span class="muted" x-show="groupLoading" style="font-size:12px">加载中…</span>
       </div>
       <div class="group-grid" x-show="visibleGroups().length">
         <template x-for="g in visibleGroups()" :key="g.id">
           <div class="card group-card">
             <div class="cover-row">
-              <template x-for="m in g.members.slice(0,6)" :key="m.id">
-                <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
+              <template x-for="m in g.coverThumbs" :key="m.id">
+                <img :src="m.thumb" @click="open(m.id)" :title="m.name" loading="lazy" />
               </template>
             </div>
             <div class="g-title">
@@ -214,26 +215,29 @@
                 <span x-text="g.count+' 张图片'"></span>
                 <span x-text="'最高 AI '+g.maxScore"></span>
               </div>
-              <button class="btn sm mt" @click="g._open=!g._open" x-text="g._open?'收起':'展开'"></button>
+              <button class="btn sm mt" @click="toggleGroup(g)" x-text="g._open?'收起':'展开'"></button>
               <div class="member-grid" x-show="g._open">
-                <template x-for="m in g.members" :key="m.id">
-                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
+                <template x-for="m in (g._members||[])" :key="m.id">
+                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" loading="lazy" />
                 </template>
+                <button x-show="g._mHasMore && !g._mLoading" class="btn sm"
+                        @click="loadGroupMembers(g)">加载更多成员</button>
+                <span class="muted" x-show="g._mLoading" style="font-size:12px;padding:8px">成员加载中…</span>
               </div>
             </div>
           </div>
         </template>
       </div>
-      <div class="empty" x-show="!visibleGroups().length">没有符合条件的提示词组。</div>
+      <div class="empty" x-show="!groupLoading && !visibleGroups().length">没有符合条件的提示词组。</div>
     </div>
 
     <!-- 无限滚动哨兵：平铺/沉浸 -->
     <div id="am-sentinel" class="loading-more" x-show="mode!=='aggregate' && hasMore" x-cloak>
       <span class="muted" x-show="loadingMore">加载中…</span>
     </div>
-    <!-- 无限滚动哨兵：聚合组列表（Task 6 启用） -->
-    <div id="am-group-sentinel" class="loading-more" x-show="mode==='aggregate' && false" x-cloak>
-      <span class="muted">加载中…</span>
+    <!-- 无限滚动哨兵：聚合组列表 -->
+    <div id="am-group-sentinel" class="loading-more" x-show="mode==='aggregate' && groupHasMore" x-cloak>
+      <span class="muted" x-show="groupLoading">加载中…</span>
     </div>
   </div>
 
@@ -310,6 +314,7 @@
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
+    groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -454,25 +459,56 @@
         .catch(function () { self.loadingMore = false; });
     },
     loadMoreGroups() {
-      if (this.mode !== "aggregate") return; // Task 6 实现具体逻辑
+      if (this.mode !== "aggregate") return;
+      if (this.groupLoading || !this.groupHasMore) return;
+      var self = this, seq = this._gSeq;
+      this.groupLoading = true;
+      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: this.groups.length }).then(function (page) {
+        self.groupLoading = false;
+        if (seq !== self._gSeq) return;
+        self._initGroups(page.items);
+        self.groups = self.groups.concat(page.items);
+        self.groupHasMore = page.hasMore;
+        self.groupCount = page.total;
+        self.summary = "已显示 " + self.groups.length + " / 共 " + page.total + " 组提示词";
+        self._afterRender(function () { self._rearm("groups"); });
+      }).catch(function () { self.groupLoading = false; });
     },
     reloadGroups() {
-      var self = this;
-      Api.aggregateByPrompt({ kind: "exact" }).then(function (g) {
-        g.forEach(function (x) {
-          x._open = false;
-          x.members.sort(function (a, b) {
-            return ((b.aiRating || 0) - (a.aiRating || 0)) || ((b.id || 0) - (a.id || 0));
-          });
-        });
-        g.sort(function (a, b) {
-          return ((b.maxScore || 0) - (a.maxScore || 0)) ||
-                 (((b.members[0] && b.members[0].id) || 0) - ((a.members[0] && a.members[0].id) || 0));
-        });
-        self.groups = g;
-        self.groupCount = g.length;
-        self.summary = "共 " + g.length + " 组提示词";
+      var self = this, seq = ++this._gSeq;
+      this.groupLoading = true;
+      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: 0 }).then(function (page) {
+        if (seq !== self._gSeq) return; // 过期响应丢弃
+        self._initGroups(page.items);
+        self.groups = page.items;
+        self.groupTotal = page.total;
+        self.groupHasMore = page.hasMore;
+        self.groupLoading = false;
+        self.groupCount = page.total;
+        self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 组提示词";
+        self._afterRender(function () { self._rearm("groups"); });
       });
+    },
+    _initGroups(list) {
+      list.forEach(function (g) {
+        g._open = false; g._members = null; g._mHasMore = false; g._mLoading = false;
+      });
+    },
+    toggleGroup(g) {
+      g._open = !g._open;
+      if (g._open && g._members === null) this.loadGroupMembers(g);
+    },
+    loadGroupMembers(g) {
+      if (g._mLoading) return;
+      var self = this;
+      g._mLoading = true;
+      var offset = g._members === null ? 0 : g._members.length;
+      Api.aggregateMembers(g.id, { limit: 24, offset: offset }).then(function (page) {
+        self._initCards(page.items);
+        g._members = (g._members || []).concat(page.items);
+        g._mHasMore = page.hasMore;
+        g._mLoading = false;
+      }).catch(function () { g._mLoading = false; });
     },
     visibleGroups() {
       if (!this.q) return this.groups;
