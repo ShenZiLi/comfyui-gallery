@@ -177,3 +177,18 @@ def test_pagination_with_tag_and_folder_filters():
         # 无 folder 记录时 folderId=999 过滤为空
         b2 = client.get("/api/images?folderId=999").json()
         assert b2["total"] == 0 and b2["items"] == []
+
+
+def test_thumb_cache_control():
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            image_id = ims[0].id
+            sha = ims[0].sha256
+        from PIL import Image
+        p = settings.thumbs_dir / f"{sha}.webp"
+        Image.new("RGB", (8, 8)).save(str(p), "WEBP")
+        r = client.get(f"/api/images/{image_id}/thumb")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "public, max-age=31536000, immutable"

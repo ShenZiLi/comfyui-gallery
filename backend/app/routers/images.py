@@ -311,7 +311,11 @@ def thumb(image_id: int, session: Session = Depends(get_session)):
         raise HTTPException(404)
     path = settings.thumbs_dir / f"{im.sha256}.webp"
     if path.exists():
-        return FileResponse(path)
+        # 缩略图按 sha256 内容寻址，天然不可变：允许浏览器长缓存
+        return FileResponse(
+            path,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
     raise HTTPException(404, "thumbnail not ready")
 
 
