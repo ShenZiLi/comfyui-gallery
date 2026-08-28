@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>图片详情 · 画镜 ArtMirror</title>
+  <!-- 提前设置主题，避免刷新时亮/暗色闪烁 -->
+  <script>
+    try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
@@ -103,7 +107,7 @@
         <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
         <div class="chips" style="margin-top:6px">
           <template x-for="t in im.tags || []" :key="t.category+t.name">
-            <span class="chip" :class="t.category" x-text="(t.category+': ')+t.name"></span>
+            <span class="chip" :class="t.category" x-text="t.name"></span>
           </template>
         </div>
         <div class="muted mt" style="font-size:12px" x-show="im.params">
@@ -189,7 +193,7 @@
       if (im._src === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
       else if (im._src === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
       else raw = (Array.isArray(im.originPrompts) && im.originPrompts.length) ? im.originPrompts.slice() : ((im.prompt || "") ? [im.prompt] : []);
-      if (raw.length > 1) raw = raw.filter(function (t) { return (t || "").length >= 10; });
+      raw = raw.filter(function (t) { return (t || "").length >= 10; });
       raw.sort(function (a, b) { return b.length - a.length; });
       return raw;
     },

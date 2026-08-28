@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>设置 · 画镜 ArtMirror</title>
+  <!-- 提前设置主题，避免刷新时亮/暗色闪烁 -->
+  <script>
+    try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
@@ -42,12 +46,13 @@
         </template>
       </div>
 
-      <!-- 已扫描的文件夹 -->
-      <div class="mt" x-show="scanned.length">
+      <!-- 已扫描的文件夹（隐藏 0 条图片项） -->
+      <div class="mt" x-show="scannedFilters().length">
         <div class="muted" style="font-size:12px;font-weight:600">已扫描的文件夹</div>
         <div class="chips">
-          <template x-for="f in scanned" :key="f.id">
-            <span class="chip" x-text="f.name + ' (' + f.count + ')'"></span>
+          <template x-for="f in scannedFilters()" :key="f.id">
+            <span class="chip folder-hide" :class="{'dim': f.hidden}" :title="f.hidden ? '已隐藏，点击恢复' : '点击隐藏该文件夹'"
+                  @click="toggleHide(f)"><span x-text="f.name + ' (' + f.count + ')'"></span></span>
           </template>
         </div>
       </div>
@@ -147,6 +152,18 @@
     scanning: false, testing: false, progress: 0, doneMsg: "", llmMsg: "",
     scope: ["all"],
     _lastVer: -1,
+    // 已扫描文件夹：过滤掉 0 条图片的项
+    scannedFilters() { return (this.scanned || []).filter(function (f) { return (f.count || 0) > 0; }); },
+    // 切换文件夹隐藏：置灰即图库不展示其图片
+    toggleHide(f) {
+      var self = this;
+      Api.toggleHiddenFolder(f.id).then(function (r) {
+        f.hidden = r.hidden;
+        Api.listFolders().then(function (list) { self.scanned = list; });
+      }).catch(function (e) {
+        self.doneMsg = "隐藏失败：" + ((e && e.message) || e);
+      });
+    },
 
     init() {
       App.initNav("settings");

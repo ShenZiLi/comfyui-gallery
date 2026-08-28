@@ -33,6 +33,12 @@
       });
     },
 
+    toggleHiddenFolder: function (id) {
+      return req("api/folders/" + id + "/toggle-hidden", { method: "POST" }).catch(function (e) {
+        throw (e && e.message) ? e : new Error("操作失败");
+      });
+    },
+
     listTags: function () {
       return req("api/tags").catch(function () {
         Api._fallback = true;
@@ -115,8 +121,8 @@
     },
 
     updateSettings: function (body) {
-      return req("api/settings", { method: "POST", body: body }).catch(function () {
-        throw new Error("后端未连接");
+      return req("api/settings", { method: "POST", body: body }).catch(function (e) {
+        throw (e && e.message) ? e : new Error("后端未连接");
       });
     },
 

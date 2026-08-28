@@ -14,6 +14,7 @@ from pathlib import Path
 
 from PIL import Image
 from sqlmodel import Session, select
+from sqlalchemy.exc import IntegrityError
 
 from ..config import settings
 from ..models import Folder, ImageAsset, Setting
@@ -203,42 +204,67 @@ def scan(session: Session, root: Path) -> ScanStats:
             except Exception:  # noqa: BLE001
                 thumb_ok = 0
 
-            if existing is None and dup is None:
-                image = ImageAsset(
-                    folder_id=folder_ids.get(str(Path(full).parent)),
-                    file_name=full.name,
-                    file_path=rel_norm,
-                    abs_path=str(full),
-                    sha256=sha,
-                    width=result.width,
-                    height=result.height,
-                    file_size=size,
-                    file_mtime=mtime,
-                    thumb_ok=thumb_ok,
-                )
-                session.add(image)
-                session.flush()
-                if result.prompt_graph or result.workflow:
-                    meta_service.ingest(session, image, result)
-                    stats.parsed += 1
-                stats.new += 1
-            else:
-                if existing is None:
-                    existing = dup
-                existing.file_name = full.name
-                existing.abs_path = str(full)
-                existing.width = result.width
-                existing.height = result.height
-                existing.file_size = size
-                existing.file_mtime = mtime
-                existing.thumb_ok = thumb_ok
-                existing.sha256 = sha
-                existing.is_deleted = 0
-                if result.prompt_graph or result.workflow:
-                    meta_service.ingest(session, existing, result)
-                    stats.parsed += 1
-                stats.updated += 1
-            session.commit()
+            try:
+                if existing is None and dup is None:
+                    image = ImageAsset(
+                        folder_id=folder_ids.get(str(Path(full).parent)),
+                        file_name=full.name,
+                        file_path=rel_norm,
+                        abs_path=str(full),
+                        sha256=sha,
+                        width=result.width,
+                        height=result.height,
+                        file_size=size,
+                        file_mtime=mtime,
+                        thumb_ok=thumb_ok,
+                    )
+                    session.add(image)
+                    session.flush()
+                    if result.prompt_graph or result.workflow:
+                        meta_service.ingest(session, image, result)
+                        stats.parsed += 1
+                    stats.new += 1
+                else:
+                    if existing is None:
+                        existing = dup
+                    existing.file_name = full.name
+                    existing.abs_path = str(full)
+                    existing.width = result.width
+                    existing.height = result.height
+                    existing.file_size = size
+                    existing.file_mtime = mtime
+                    existing.thumb_ok = thumb_ok
+                    existing.sha256 = sha
+                    existing.is_deleted = 0
+                    if result.prompt_graph or result.workflow:
+                        meta_service.ingest(session, existing, result)
+                        stats.parsed += 1
+                    stats.updated += 1
+                session.commit()
+            except IntegrityError:
+                # 并发扫描（watcher / 后台扫描同时进行）导致另一事务刚插入了同 file_path：
+                # 回滚本次写入，改按“更新”重查并更新该行，避免 UNIQUE 冲突中断整个扫描。
+                session.rollback()
+                row = session.exec(
+                    select(ImageAsset).where(ImageAsset.file_path == rel_norm)
+                ).first()
+                if row is not None:
+                    row.file_name = full.name
+                    row.abs_path = str(full)
+                    row.width = result.width
+                    row.height = result.height
+                    row.file_size = size
+                    row.file_mtime = mtime
+                    row.thumb_ok = thumb_ok
+                    row.sha256 = sha
+                    row.is_deleted = 0
+                    if result.prompt_graph or result.workflow:
+                        meta_service.ingest(session, row, result)
+                        stats.parsed += 1
+                    session.commit()
+                    stats.updated += 1
+                else:
+                    stats.errors.append(f"并发冲突: {rel_norm}")
 
     # 软删：库中在根内但本次未扫描到的
     root_prefix = str(root.resolve()).rstrip("/")

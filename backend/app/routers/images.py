@@ -63,6 +63,19 @@ def _latest_ai_reason(session: Session, image_id: int) -> str:
     return rec.reason if rec else ""
 
 
+def _hidden_folders(session: Session) -> set[int]:
+    from ..models import Setting
+
+    row = session.exec(select(Setting).where(Setting.key == "hidden_folders")).first()
+    try:
+        import json
+
+        data = json.loads(row.value) if row and row.value else []
+        return {int(x) for x in data}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def to_card(session: Session, im: ImageAsset) -> dict:
     """组装图库卡片数据。"""
     meta = session.exec(
@@ -124,6 +137,12 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
 
 def _query_images(session: Session, folder_id, tag, q, sort):
     stmt = select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    hidden = _hidden_folders(session)
+    if hidden:
+        stmt = stmt.where(
+            ImageAsset.folder_id.is_(None)
+            | (~ImageAsset.folder_id.in_(list(hidden)))
+        )
     if folder_id:
         stmt = stmt.where(ImageAsset.folder_id == folder_id)
     if tag:

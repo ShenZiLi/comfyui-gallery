@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>图库 · 画镜 ArtMirror</title>
+  <!-- 提前设置主题并（返回时）预隐藏内容，避免首绘闪烁 -->
+  <script>
+    try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
+    try { if (sessionStorage.getItem("am_gallery_state")) document.documentElement.classList.add("am-restore"); } catch (e) {}
+  </script>
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
@@ -72,7 +77,8 @@
       <template x-for="im in images" :key="im.id">
         <div class="card img-card">
           <div class="thumb-wrap" @click="open(im.id)">
-            <img :src="im.thumb" :alt="im.name" loading="lazy" />
+            <img :src="im.thumb" :alt="im.name" loading="lazy"
+                 :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" />
           </div>
           <div class="info">
             <!-- 1) 尺寸 / 大小 + 复制/下载/删除 一行 -->
@@ -137,7 +143,7 @@
                     <svg x-show="!im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5 5 5-5"/></svg>
                     <svg x-show="im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14l-5-5-5 5"/></svg>
                   </button>
-                  <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompt(im))">
+                  <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompts(im)[0] || '')">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                   </button>
                   <button class="icon-btn" title="预览工作流" @click.stop="previewWorkflow(im)">
@@ -258,12 +264,32 @@
       var saved = null;
       try { saved = JSON.parse(sessionStorage.getItem("am_gallery_state") || "null"); sessionStorage.removeItem("am_gallery_state"); } catch (e) {}
       if (saved) {
+        // 关闭浏览器原生返回时的自动滚动恢复，改由我们精确控制位置
+        if (history.scrollRestoration) history.scrollRestoration = "manual";
+        // 恢复期间隐藏内容（保留布局/滚动），定位后再一次性显示，避免顶部闪烁
+        document.documentElement.classList.add("am-restore");
         self.mode = saved.mode || "flat";
         self.currentFolder = saved.folder || "";
         self.sort = saved.sort || "time";
         self.q = saved.q || "";
         self.selectedTag = saved.tag || null;
-        self._restoreScroll = saved.scroll || 0;
+        var savedY = saved.scroll || 0;
+        self._restoreScroll = savedY;
+        // 兜底：若干秒后若仍未完成定位，确保内容可见并尽量回到目标位置
+        window.setTimeout(function () {
+          if (document.documentElement.classList.contains("am-restore")) {
+            window.scrollTo(0, savedY);
+            document.documentElement.classList.remove("am-restore");
+          }
+        }, 2000);
+        // 浏览器「后退」bfcache 返回时重新定位并显示
+        window.addEventListener("pageshow", function (ev) {
+          if (ev.persisted) {
+            if (history.scrollRestoration) history.scrollRestoration = "manual";
+            window.scrollTo(0, savedY);
+            document.documentElement.classList.remove("am-restore");
+          }
+        });
       }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
@@ -300,11 +326,19 @@
           self.images = list;
           self.summary = "共 " + list.length + " 张";
           self.loading = false;
-          // 从详情页返回后，等 DOM 渲染完成再恢复滚动位置
+          // 从详情页返回：先不可见，等 Alpine 渲染出完整布局（双 rAF）再定位并一次性显示
           if (self._restoreScroll) {
             var y = self._restoreScroll;
             self._restoreScroll = 0;
-            setTimeout(function () { window.scrollTo(0, y); }, 80);
+            (function pin() {
+              requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                  window.scrollTo(0, y);
+                  window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - window.innerHeight));
+                  document.documentElement.classList.remove("am-restore");
+                });
+              });
+            })();
           }
         });
     },
@@ -430,7 +464,8 @@
       return this.decoratePrompts(raw);
     },
     decoratePrompts(list) {
-      if (list.length > 1) list = list.filter(function (t) { return (t || "").length >= 10; });
+      // 隐藏字符数 < 10 的短提示词；按内容多者优先排序
+      list = list.filter(function (t) { return (t || "").length >= 10; });
       list.sort(function (a, b) { return b.length - a.length; });
       return list;
     },
