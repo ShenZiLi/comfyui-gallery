@@ -168,7 +168,7 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 
 /* 轻量 toast（复制反馈等） */
 .am-toast {
-  position: fixed; left: 50%; bottom: 40px; transform: translate(-50%, 12px);
+  position: fixed; left: 50%; top: 72px; transform: translate(-50%, -12px);
   background: rgba(0,0,0,.78); color: #fff; font-size: 13px; padding: 7px 16px;
   border-radius: 999px; opacity: 0; pointer-events: none; transition: .18s ease; z-index: 9999;
 }
@@ -211,6 +211,10 @@ html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #1
   padding: 2px 8px; border-radius: 999px; }
 .badge.reverse { background: #833ab4; }
 .badge.origin { background: rgba(15,23,42,.6); }
+.pill-ok { color: #1a7f37; border: 1px solid rgba(26,127,55,.4); background: rgba(26,127,55,.08); }
+.pill-bad { color: #c0392b; border: 1px solid rgba(192,57,43,.4); background: rgba(192,57,43,.08); }
+.pill-testing { color: #6b7280; border: 1px solid rgba(107,114,128,.35); background: rgba(107,114,128,.08); }
+.pill-ok, .pill-bad, .pill-testing { font-size: 11px; white-space: nowrap; padding: 2px 8px; border-radius: 999px; flex: none; }
 .ai-score { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
 .rating-row { position: absolute; bottom: 8px; left: 8px; }
 .img-card .info { padding: 10px 12px 12px; }
@@ -270,8 +274,8 @@ html[data-theme="dark"] .stars .off { color: #3a4251; }
 .group-card .g-body { padding: 6px 12px 12px; }
 .similar-tag { font-size: 11px; background: color-mix(in srgb,var(--style) 12%,#fff); color: var(--style); padding: 2px 7px; border-radius: 999px; }
 .sample-prompts { max-height: 84px; overflow: hidden; font-size: 12px; color: var(--text-3); }
-.member-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }
-.member-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; }
+.member-grid { columns: 4 140px; column-gap: 8px; margin-top: 10px; }
+.member-grid img { width: 100%; height: auto; display: block; object-fit: contain; margin-bottom: 8px; border-radius: 8px; cursor: pointer; }
 
 /* 维度分组折叠 */
 .acc { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }

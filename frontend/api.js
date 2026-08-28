@@ -152,6 +152,27 @@
     getSyncVersion: function () {
       return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
     },
+    uploadImages: function (files) {
+      // 逐文件表单上传所有图片到导入保存目录
+      var list = Array.prototype.slice.call(files || []);
+      var up = function (f) {
+        var fd = new FormData();
+        fd.append("file", f);
+        return fetch("api/settings/upload", { method: "POST", body: fd }).then(function (r) {
+          if (!r.ok) {
+            return r.json().catch(function () { return {}; }).then(function (body) {
+              throw new Error((body && body.detail) || ("HTTP " + r.status));
+            });
+          }
+          return r.json();
+        });
+      };
+      return Promise.all(list.map(up)).then(function (results) {
+        return { uploaded: results.length, paths: results.map(function (r) { return r.path; }) };
+      }).catch(function (e) {
+        throw (e && e.message) ? e : new Error("导入失败：后端未连接");
+      });
+    },
   };
 
   // ---- mock 分组回退 ----

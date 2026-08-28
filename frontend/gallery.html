@@ -12,8 +12,9 @@
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
+  <script src="dirstore.js"></script>
   <script src="app.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="vendor/alpine.min.js"></script>
 </head>
 <body>
 <div x-data="Gallery" x-init="init()">
@@ -23,7 +24,7 @@
     <div class="sticky-inner">
       <div class="toolbar">
       <button class="btn primary" @click="$refs.fileInput.click()">导入</button>
-      <input type="file" webkitdirectory multiple style="display:none" x-ref="fileInput" @change="imported($event)" />
+      <input type="file" multiple accept="image/*" style="display:none" x-ref="fileInput" @change="imported($event)" />
 
       <select x-model="currentFolder" @change="loadImages()" style="width:auto;max-width:220px">
         <option value="">全部目录</option>
@@ -199,13 +200,10 @@
                 <span x-text="g.count+' 张图片'"></span>
                 <span x-text="'最高 AI '+g.maxScore"></span>
               </div>
-              <button class="btn sm mt" @click="g._open=!g._open" x-text="g._open?'收起':'展开成员'"></button>
+              <button class="btn sm mt" @click="g._open=!g._open" x-text="g._open?'收起':'展开'"></button>
               <div class="member-grid" x-show="g._open">
                 <template x-for="m in g.members" :key="m.id">
-                  <div>
-                    <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
-                    <div style="text-align:center;font-size:11px;color:var(--text-3)" x-text="m.aiRating!=null?'AI '+m.aiRating:'未评分'"></div>
-                  </div>
+                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" />
                 </template>
               </div>
             </div>
@@ -241,7 +239,7 @@
         <button class="modal-x" @click="delTarget=null">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="margin:0 0 16px;color:var(--text-2)">确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？此操作会从图库中移除，不可恢复。</p>
+        <p style="margin:0 0 16px;color:var(--text-2)">确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？原文件将移入系统废纸篓，可从废纸篓中恢复。</p>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button class="btn sm" @click="delTarget=null">取消</button>
           <button class="btn sm danger" @click="confirmDelete()">删除</button>
@@ -256,7 +254,7 @@
   window.Gallery = {
     folders: [], images: [], groups: [], tags: [], q: "", mode: "flat", currentFolder: "",
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0,
+    delTarget: null, _ver: -1, _restoreScroll: 0, importDir: null,
     init() {
       App.initNav("gallery");
       var self = this;
@@ -293,6 +291,11 @@
       }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
+      // 读取设置页选择的导入保存目录句柄（供拖拽直写本地目录）
+      DirStore.getHandle().then(function (h) {
+        self.importDir = h || null;
+        if (h) App.toast("已选择导入目录：「" + h.name + "」，拖拽导入将保存到该文件夹");
+      }).catch(function () {});
       this.loadImages();
       setInterval(function () { self.pollSync(); }, 3000);
     },
@@ -481,17 +484,20 @@
     },
     _import(files) {
       files = files.filter(function (f) { return f && (!f.type || f.type.indexOf("image/") === 0); });
-      if (!files.length) return;
-      var ids = window.Mock.getImages().map(i => i.id);
-      var next = ids.length ? Math.max.apply(null, ids) + 1 : 1;
-      files.forEach(function (f) {
-        window.Mock.getImages().push({
-          id: next++, folderId: null, name: f.webkitRelativePath || f.name || "image.png",
-          width: 0, height: 0, fileSize: f.size || 0, rating: null, aiRating: null, prompt: "", negative: "",
-          tags: [], params: {}, reversePrompt: "", thumb: URL.createObjectURL(f),
-        });
+      if (!files.length) { App.toast("未检测到图片文件"); return; }
+      var self = this;
+      App.toast("正在导入 " + files.length + " 张图片…");
+      // 1) 若设置了导入保存目录，浏览器直写该本地目录（弹授权，绕开服务端写权限）
+      var writeLocal = this.importDir ? writeFilesToDir(this.importDir, files) : Promise.resolve(false);
+      // 2) 上传副本给后端，写入自管入库区，实时入库展示
+      var upload = Api.uploadImages(files).then(function (r) {
+        App.toast("已导入 " + r.uploaded + " 张图片，正在扫描入库…");
+      }).catch(function (e) {
+        App.toast("导入失败：" + ((e && e.message) || e));
       });
-      this.loadImages();
+      Promise.all([writeLocal, upload]).then(function (rs) {
+        if (self.importDir && rs[0] === true) App.toast("已保存到本地目录「" + self.importDir.name + "」，并同步入库。");
+      });
     },
     copy(text) { App.copyText(text); },
     previewWorkflow(im) {
@@ -523,6 +529,17 @@
       location.href = "image.html?id=" + id;
     },
   };
+
+  // 把图片文件写入指定目录句柄（File System Access API）；无需写权限时返回 false 表示跳过
+  function writeFilesToDir(dirHandle, files) {
+    return Promise.all(files.map(function (f) {
+      return dirHandle.getFileHandle(f.name, { create: true }).then(function (fh) {
+        return fh.createWritable().then(function (w) {
+          return w.write(f).then(function () { return w.close(); });
+        });
+      });
+    })).then(function () { return true; }, function () { return false; });
+  }
 </script>
 </body>
 </html>

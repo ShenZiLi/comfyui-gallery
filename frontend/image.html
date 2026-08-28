@@ -12,7 +12,7 @@
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="vendor/alpine.min.js"></script>
 </head>
 <body>
 <div id="topnav"></div>
@@ -120,7 +120,7 @@
       <!-- 评分 -->
       <div class="card section pad">
         <h3>评分</h3>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
           <div>
             <div class="muted" style="font-size:12px">人工评分</div>
             <div @mouseleave="hoverRating=0">
@@ -134,13 +134,17 @@
           </div>
           <div>
             <div class="muted" style="font-size:12px">AI 评分</div>
-            <div style="font-size:20px;font-weight:700;color:var(--brand)" x-text="im.aiRating"></div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:20px;font-weight:700;color:var(--brand)" x-text="im.aiRating!=null ? im.aiRating : '—'"></span>
+              <button class="icon-btn" title="用 AI 重新评分" :class="{spin:aState==='ing'}" @click="aiScore()">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+              </button>
+            </div>
           </div>
         </div>
         <div class="card mt" style="background:var(--bg);padding:8px 10px" x-show="im.aiReason">
           <div class="muted" style="font-size:12px"><b>AI 依据：</b><span x-text="im.aiReason"></span></div>
         </div>
-        <button class="btn sm mt" @click="aiScore()" x-text="aState==='ing'?'评分中…':'重新 AI 评分'"></button>
       </div>
     </div>
   </div>
@@ -197,7 +201,7 @@
       raw.sort(function (a, b) { return b.length - a.length; });
       return raw;
     },
-    activePrompt() { return this.activePrompts().join("\n"); },
+    activePrompt() { return (this.activePrompts()[0] || ""); },
     activeNegative() {
       if (!this.im) return "";
       if (this.im._src === "ai") return (this.im.aiNegative || "");

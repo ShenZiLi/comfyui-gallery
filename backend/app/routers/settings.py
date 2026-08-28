@@ -1,7 +1,7 @@
 """系统设置与扫描路由。"""
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from ..config import settings as env_settings
@@ -14,6 +14,12 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 # 三个模型角色及其扩展字段（支持不同厂商混搭）
 ROLES = ["text", "vision", "embed"]
 ROLE_FIELDS = ["vendor", "base_url", "api_key", "model"]
+# 已知厂商类型；每个角色可为每个厂商保留独立配置
+VENDORS = ["deepseek", "qwen", "glm", "openai", "custom"]
+
+
+def _vkey(role: str, vendor: str, field: str) -> str:
+    return f"llm_{role}_{vendor}_{field}"
 
 
 def _get(session: Session, key: str) -> str:
@@ -38,10 +44,20 @@ def _role_config(session: Session, role: str) -> dict:
 
 
 def _set_role_config(session: Session, role: str, cfg: dict) -> None:
+    # 保存当前生效配置，并额外落一份到所属厂商名下（供切换厂商时回读）
+    vendor = str(cfg.get("vendor") or "").strip()
     for f in ROLE_FIELDS:
         v = cfg.get(f)
         if v is not None:
-            _set(session, f"llm_{role}_{f}", str(v).strip())
+            val = str(v).strip()
+            _set(session, f"llm_{role}_{f}", val)
+            if vendor in VENDORS:
+                _set(session, _vkey(role, vendor, f), val)
+
+
+def _role_vendor_config(session: Session, role: str, vendor: str) -> dict:
+    """读取某个角色在某一厂商下已保存的配置。"""
+    return {f: _get(session, _vkey(role, vendor, f)) for f in ROLE_FIELDS}
 
 
 def _background_scan(root: str) -> None:
@@ -104,21 +120,43 @@ def remove_scan_root(body: dict, session: Session = Depends(get_session)):
 
 @router.get("")
 def get_settings(session: Session = Depends(get_session)):
-    """读取设置（多个扫描路径 + 各模型角色配置）。"""
+    """读取设置（多个扫描路径 + 各模型角色配置 + 导入保存目录）。"""
     roots = [str(r) for r in scanner.get_scan_roots(session)]
-    llm = {role: _role_config(session, role) for role in ROLES}
-    return {"scanRoots": roots, "llm": llm}
+    llm = {}
+    for role in ROLES:
+        cur = _role_config(session, role)
+        per_vendor = {}
+        for v in VENDORS:
+            vc = _role_vendor_config(session, role, v)
+            if any(vc.get(f) for f in ("base_url", "api_key", "model")):
+                per_vendor[v] = vc
+        llm[role] = {**cur, "vendors": per_vendor}
+    return {"scanRoots": roots, "llm": llm, "importDir": _get(session, "import_dir")}
 
 
 @router.post("")
 def update_settings(body: dict, session: Session = Depends(get_session)):
-    """保存设置（含各角色模型厂商、扫描多个根），可触发扫描。"""
+    """保存设置（含各角色模型厂商、扫描多个根、导入保存目录），可触发扫描。"""
     llm = body.get("llm")
     if isinstance(llm, dict):
         for role in ROLES:
             _set_role_config(session, role, llm.get(role) or {})
     if body.get("scanRoots") is not None:
         scanner.save_scan_roots(session, [str(r) for r in body["scanRoots"]])
+    if body.get("importDir") is not None:
+        path = (body.get("importDir") or "").strip()
+        if path:
+            d = Path(path).expanduser().resolve()
+            d.mkdir(parents=True, exist_ok=True)
+            _set(session, "import_dir", str(d))
+            # 让导入目录自动成为扫描根，浏览器导入的图片即可入库展示
+            roots = list(scanner.get_scan_roots(session))
+            key = str(d)
+            if key not in [str(r.resolve()) for r in roots]:
+                roots.append(d)
+                scanner.save_scan_roots(session, [str(r) for r in roots])
+        else:
+            _set(session, "import_dir", "")
     session.commit()
 
     result = {"saved": True}
@@ -138,6 +176,109 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
             "errors": stats.errors,
         }
     if body.get("test"):
-        # M3 才接真实 LLM，暂返回连通性占位
-        result["test"] = {"ok": False, "message": "LLM 测试将在 AI 能力接入后可用"}
+        # 分别测试三个角色的连通性，逐个调用简单请求返回结果
+        results = {}
+        for role in ROLES:
+            try:
+                from ..services import llm
+                cfg = body.get("llm", {}).get(role) or {}
+                # 先存配置到数据库，让 llm 服务读取到最新配置
+                _set_role_config(session, role, cfg)
+                session.commit()
+                # 简单探测调用
+                if role == "text":
+                    # 轻量探测连通与认证：GET /models，不发完整对话避免耗时/耗配额
+                    from ..services.llm import _role_config
+                    c = _role_config(session, "text")
+                    base = (c.get("base_url") or "").strip()
+                    key = (c.get("api_key") or "").strip()
+                    model = (c.get("model") or "").strip()
+                    if not (base and key and model):
+                        raise llm.LLMNotConfigured("base_url/api_key/model 未配置完整")
+                    import httpx
+                    url = base.rstrip("/") + "/models"
+                    headers = {"Authorization": f"Bearer {key}"}
+                    r = httpx.get(url, timeout=30)
+                    r.raise_for_status()
+                    results[role] = {"ok": True, "message": "连接成功"}
+                elif role == "vision":
+                    # 视觉只探测连接与认证，不生成实际图片内容（避免消耗配额）
+                    from ..services.llm import _role_config
+                    c = _role_config(session, "vision")
+                    base = (c.get("base_url") or "").strip()
+                    key = (c.get("api_key") or "").strip()
+                    model = (c.get("model") or "").strip()
+                    if not (base and key and model):
+                        raise llm.LLMNotConfigured("base_url/api_key/model 未配置完整")
+                    # 只做 GET / 模型列表探测确认连通与认证
+                    import httpx
+                    url = base.rstrip("/") + "/models"
+                    headers = {"Authorization": f"Bearer {key}"}
+                    r = httpx.get(url, timeout=30)
+                    r.raise_for_status()
+                    results[role] = {"ok": True, "message": "连接成功"}
+                elif role == "embed":
+                    # embedding 探测连通
+                    from ..services.llm import _role_config
+                    c = _role_config(session, "embed")
+                    base = (c.get("base_url") or "").strip()
+                    key = (c.get("api_key") or "").strip()
+                    model = (c.get("model") or "").strip()
+                    if not (base and key and model):
+                        raise llm.LLMNotConfigured("base_url/api_key/model 未配置完整")
+                    url = (
+                        base
+                        if base.rstrip("/").endswith("/embeddings")
+                        else base.rstrip("/") + "/embeddings"
+                    )
+                    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                    payload = {"model": model, "input": "你好"}
+                    r = httpx.post(url, headers=headers, json=payload, timeout=60)
+                    r.raise_for_status()
+                    data = r.json()
+                    if "data" not in data or not isinstance(data["data"], list) or not len(data["data"]):
+                        raise llm.LLMError("embedding 返回格式异常")
+                    results[role] = {"ok": True, "message": "连接成功"}
+            except Exception as e:
+                results[role] = {"ok": False, "message": str(e)}
+        result["test"] = {"results": results}
     return result
+
+
+ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+
+@router.post("/upload")
+def upload_image(
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    bg: BackgroundTasks = BackgroundTasks(),
+):
+    """浏览器/拖拽导入图片：浏览器直写本地目录后，此接口接收副本写入自管导入库并入库展示。"""
+    # 自管可写导入目录（应用数据目录下，天然存在写权限，避免受用户目录权限影响）
+    target_dir = Path(env_settings.data_dir) / "import"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 将自管导入目录纳入扫描根，导入图片即可实时入库展示
+    roots = list(scanner.get_scan_roots(session))
+    key = str(target_dir)
+    if key not in [str(r.resolve()) for r in roots]:
+        roots.append(target_dir)
+        scanner.save_scan_roots(session, [str(r) for r in roots])
+
+    name = Path(file.filename or "").name
+    if not name:
+        raise HTTPException(400, "缺少文件名")
+    ext = Path(name).suffix.lower()
+    if ext not in ALLOWED_IMG_EXTS:
+        raise HTTPException(400, f"仅支持图片格式: {', '.join(sorted(ALLOWED_IMG_EXTS))}")
+
+    target_path = target_dir / name
+    try:
+        with open(target_path, "wb") as f:
+            f.write(file.file.read())
+    except OSError as exc:
+        raise HTTPException(500, f"写入图片失败：{exc}")
+
+    bg.add_task(_background_scan, str(target_dir))
+    return {"saved": True, "path": str(target_path), "name": name}

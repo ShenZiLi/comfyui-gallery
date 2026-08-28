@@ -209,10 +209,23 @@ def file(image_id: int, session: Session = Depends(get_session)):
 
 @router.delete("/{image_id}")
 def delete_image(image_id: int, session: Session = Depends(get_session)):
-    """软删一张图片：解除并回收其标签计数，递增同步版本。"""
+    """删除一张图片：物理文件移入系统废纸篓，并软删其入库记录。"""
     im = session.get(ImageAsset, image_id)
     if im is None or im.is_deleted:
         raise HTTPException(404, "image not found")
+
+    # 物理删除：把原始文件移入系统废纸篓（可恢复）
+    physical_deleted = False
+    try:
+        import send2trash
+        path = Path(im.abs_path)
+        if path.exists():
+            send2trash.send2trash(str(path))
+            physical_deleted = True
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, f"移入废纸篓失败：{exc}")
+
+    # 软删入库记录并回收标签计数
     im.is_deleted = 1
     for link in session.exec(
         select(ImageTag).where(ImageTag.image_id == image_id)
@@ -223,7 +236,7 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
             tag.count = max(0, (tag.count or 0) - 1)
     session.commit()
     watcher.bump()
-    return {"ok": True, "id": image_id}
+    return {"ok": True, "id": image_id, "moved_to_trash": physical_deleted}
 
 
 @router.post("/{image_id}/reparse-models")
