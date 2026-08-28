@@ -55,9 +55,19 @@
       if (opts.tag) qs.push("tag=" + encodeURIComponent(opts.tag));
       if (opts.q) qs.push("q=" + encodeURIComponent(opts.q));
       qs.push("sort=" + (opts.sort || "ai"));
+      qs.push("limit=" + (opts.limit || 60));
+      qs.push("offset=" + (opts.offset || 0));
       return req("api/images?" + qs.join("&")).catch(function () {
         Api._fallback = true;
-        return ok(window.Mock.getImages());
+        var all = window.Mock.getImages();
+        var off = opts.offset || 0, lim = opts.limit || 60;
+        return ok({
+          items: all.slice(off, off + lim),
+          total: all.length,
+          limit: lim,
+          offset: off,
+          hasMore: off + lim < all.length
+        });
       });
     },
 

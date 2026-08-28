@@ -422,3 +422,6 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 .mb { margin-bottom: 12px; }
 .empty { color: var(--text-3); text-align: center; padding: 40px; }
 .sticky-actions { position: sticky; bottom: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+
+/* 无限滚动哨兵 */
+.loading-more { padding: 16px; text-align: center; }

@@ -226,6 +226,15 @@
       </div>
       <div class="empty" x-show="!visibleGroups().length">没有符合条件的提示词组。</div>
     </div>
+
+    <!-- 无限滚动哨兵：平铺/沉浸 -->
+    <div id="am-sentinel" class="loading-more" x-show="mode!=='aggregate' && hasMore" x-cloak>
+      <span class="muted" x-show="loadingMore">加载中…</span>
+    </div>
+    <!-- 无限滚动哨兵：聚合组列表（Task 6 启用） -->
+    <div id="am-group-sentinel" class="loading-more" x-show="mode==='aggregate' && false" x-cloak>
+      <span class="muted">加载中…</span>
+    </div>
   </div>
 
   <!-- 工作流预览弹窗 -->
@@ -299,7 +308,8 @@
     folders: [], images: [], groups: [], groupCount: 0, tags: [], q: "", mode: "flat", currentFolder: "",
     folderOpen: false, sortOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0,
+    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
+    limit: 60, total: 0, hasMore: false, loadingMore: false,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -338,7 +348,28 @@
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
       this.loadImages();
+      this._initObservers();
       setInterval(function () { self.pollSync(); }, 3000);
+    },
+    _initObservers() {
+      var self = this;
+      if (!("IntersectionObserver" in window)) return;
+      this._io = new IntersectionObserver(function (ents) {
+        if (ents[0].isIntersecting) self.loadMore();
+      }, { rootMargin: "600px" });
+      this._gio = new IntersectionObserver(function (ents) {
+        if (ents[0].isIntersecting) self.loadMoreGroups();
+      }, { rootMargin: "600px" });
+    },
+    // 重新观察哨兵：observe() 会立即回调当前交叉状态，
+    // 覆盖「列表重置后哨兵仍处于交叉态、不再触发回调」的场景
+    _rearm(which) {
+      var io = which === "groups" ? this._gio : this._io;
+      var el = document.getElementById(which === "groups" ? "am-group-sentinel" : "am-sentinel");
+      if (io && el) { io.unobserve(el); io.observe(el); }
+    },
+    _afterRender(fn) {
+      requestAnimationFrame(function () { requestAnimationFrame(fn); });
     },
     pollSync() {
       var self = this;
@@ -365,23 +396,28 @@
       return "按时间";
     },
     fmtSize: App.fmtSize,
+    _initCards(list) {
+      // 初始化卡片状态；默认源：有原生优先原生，否则反推
+      list.forEach(function (im) {
+        im._exp = false;
+        im._src = (im.prompt && im.prompt !== "") ? "origin" : "reverse";
+        im._aiParse = false; im._rParse = false; im._wantSrc = ""; im._pErr = ""; im._mErr = "";
+      });
+    },
     loadImages() {
       this.loading = true;
-      var self = this;
-      Api.listImages({ folderId: this.currentFolder || null, tag: this.selectedTag, q: this.q, sort: this.sort })
-        .then(function (list) {
-          if (self.sort === "time") list.sort((a, b) => (b.id || 0) - (a.id || 0));
-          else if (self.sort === "ai") list.sort((a, b) => (b.aiRating || 0) - (a.aiRating || 0));
-          else if (self.sort === "manual") list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-          // 初始化卡片状态；默认源：有原生优先原生，否则反推
-          list.forEach(function (im) {
-            im._exp = false;
-            im._src = (im.prompt && im.prompt !== "") ? "origin" : "reverse";
-            im._aiParse = false; im._rParse = false; im._wantSrc = ""; im._pErr = ""; im._mErr = "";
-          });
-          self.images = list;
-          self.summary = "共 " + list.length + " 张";
+      var self = this, seq = ++this._reqSeq;
+      Api.listImages({ folderId: this.currentFolder || null, tag: this.selectedTag, q: this.q,
+                       sort: this.sort, limit: this.limit, offset: 0 })
+        .then(function (page) {
+          if (seq !== self._reqSeq) return; // 过期响应丢弃
+          self._initCards(page.items);
+          self.images = page.items;
+          self.total = page.total;
+          self.hasMore = page.hasMore;
+          self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
           self.loading = false;
+          self._afterRender(function () { self._rearm("list"); });
           // 从详情页返回：先不可见，等 Alpine 渲染出完整布局（双 rAF）再定位并一次性显示
           if (self._restoreScroll) {
             var y = self._restoreScroll;
@@ -397,6 +433,28 @@
             })();
           }
         });
+    },
+    loadMore() {
+      if (this.mode === "aggregate") return;
+      if (this.loading || this.loadingMore || !this.hasMore) return;
+      var self = this, seq = this._reqSeq;
+      this.loadingMore = true;
+      Api.listImages({ folderId: this.currentFolder || null, tag: this.selectedTag, q: this.q,
+                       sort: this.sort, limit: this.limit, offset: this.images.length })
+        .then(function (page) {
+          self.loadingMore = false;
+          if (seq !== self._reqSeq) return; // 过期响应丢弃
+          self._initCards(page.items);
+          self.images = self.images.concat(page.items);
+          self.total = page.total;
+          self.hasMore = page.hasMore;
+          self.summary = "已显示 " + self.images.length + " / 共 " + page.total + " 张";
+          self._afterRender(function () { self._rearm("list"); });
+        })
+        .catch(function () { self.loadingMore = false; });
+    },
+    loadMoreGroups() {
+      if (this.mode !== "aggregate") return; // Task 6 实现具体逻辑
     },
     reloadGroups() {
       var self = this;
