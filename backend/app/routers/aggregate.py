@@ -1,5 +1,6 @@
 """聚合与维度分组路由（需求 7/11）。"""
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import String, case, cast, func
 from sqlmodel import Session, select
 
 from ..database import get_session
@@ -15,22 +16,51 @@ def _normalize(p: str) -> str:
 
 def _first_prompt(meta) -> str:
     """取提示词列表中的第一条作为聚合主维度（旧的未带列表则回退 prompt）。"""
-    if meta and meta.origin_prompts_json:
+    return _first_prompt_of(meta.prompt if meta else "", meta.origin_prompts_json if meta else "")
+
+
+def _first_prompt_of(prompt: str, origin_json: str) -> str:
+    if origin_json:
         try:
             import json
 
-            arr = json.loads(meta.origin_prompts_json)
+            arr = json.loads(origin_json)
             if isinstance(arr, list) and arr and str(arr[0]).strip():
                 return str(arr[0]).strip()
         except Exception:  # noqa: BLE001
             pass
-    return (meta.prompt if meta else "") or ""
+    return prompt or ""
+
+
+# 聚合维度取提示词列表第一条（json_extract 下推到 SQL，万行级别省去逐行 json.loads）；
+# 无效 JSON / 空数组 / 空串回退 prompt。
+_FP_SQL = case(
+    (
+        func.json_valid(WorkflowMeta.origin_prompts_json) == 1,
+        func.coalesce(
+            func.nullif(
+                func.trim(cast(func.json_extract(WorkflowMeta.origin_prompts_json, "$[0]"), String)),
+                "",
+            ),
+            WorkflowMeta.prompt,
+        ),
+    ),
+    else_=WorkflowMeta.prompt,
+)
 
 
 def _group_all(session: Session) -> list[dict]:
-    """按提示词首条分组（内存 O(n)），按 maxScore 降序返回组列表。"""
+    """按提示词首条分组（内存 O(n)），按 maxScore 降序返回组列表。
+
+    只取轻量列（避免整表 ORM 实体化开销）；成员按 ai_rating 降序、id 降序确定排序。
+    """
     rows = session.exec(
-        select(ImageAsset, WorkflowMeta)
+        select(
+            ImageAsset.id,
+            ImageAsset.file_name,
+            ImageAsset.ai_rating,
+            _FP_SQL,
+        )
         .join(WorkflowMeta, WorkflowMeta.image_id == ImageAsset.id)
         .where(
             ImageAsset.is_deleted == 0,
@@ -38,37 +68,38 @@ def _group_all(session: Session) -> list[dict]:
         )
     ).all()
 
-    groups: dict[str, list] = {}
-    titles: dict[str, str] = {}
-    for im, meta in rows:
-        fp = _first_prompt(meta)
+    groups: dict[str, dict] = {}
+    key_cache: dict[str, str] = {}
+    for im_id, file_name, ai_rating, fp in rows:
         if not fp:
             continue
-        key = _normalize(fp)
-        groups.setdefault(key, []).append(im)
-        titles[key] = fp
+        key = key_cache.get(fp)
+        if key is None:
+            key = key_cache[fp] = _normalize(fp)
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {"key": key, "title": fp, "members": []}
+        g["members"].append({"id": im_id, "name": file_name, "aiRating": ai_rating or 0})
 
-    ordered = sorted(groups.items(), key=lambda kv: -max(
-        (im.ai_rating or 0) for im in kv[1]
-    ))
-    out = []
-    for key, members in ordered:
-        sorted_members = sorted(members, key=lambda m: -(m.ai_rating or 0))
-        out.append({"key": key, "title": titles.get(key) or "", "members": sorted_members})
+    out = list(groups.values())
+    for g in out:
+        g["members"].sort(key=lambda m: (-m["aiRating"], -m["id"]))
+    out.sort(key=lambda g: -g["members"][0]["aiRating"])
     return out
 
 
 def _group_payload(g: dict) -> dict:
     """组卡片：封面行直接可渲染，不携带全部成员。"""
+    members = g["members"]
     return {
         "id": g["key"],
         "title": g["title"],
         "kind": "exact",
-        "count": len(g["members"]),
-        "maxScore": g["members"][0].ai_rating or 0,
+        "count": len(members),
+        "maxScore": members[0]["aiRating"],
         "coverThumbs": [
-            {"id": m.id, "name": m.file_name, "thumb": f"/api/images/{m.id}/thumb"}
-            for m in g["members"][:6]
+            {"id": m["id"], "name": m["name"], "thumb": f"/api/images/{m['id']}/thumb"}
+            for m in members[:6]
         ],
     }
 
@@ -113,8 +144,13 @@ def group_members(
             continue
         members = g["members"]
         page = members[offset:offset + limit]
+        ids = [m["id"] for m in page]
+        by_id = {im.id: im for im in session.exec(
+            select(ImageAsset).where(ImageAsset.id.in_(ids))
+        ).all()}
+        ordered = [by_id[i] for i in ids if i in by_id]
         return {
-            "items": to_cards(session, page),
+            "items": to_cards(session, ordered),
             "total": len(members),
             "limit": limit,
             "offset": offset,
