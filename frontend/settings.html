@@ -86,13 +86,19 @@
                   x-text="testState[r.key] && testState[r.key].ok ? '连接成功' : '连接失败'"
                   style="white-space:nowrap"></span>
             <span style="flex:1"></span>
-            <select x-model="cfg.llm[r.key].vendor" @change="onVendorChange(r.key)" style="width:auto">
-              <option value="deepseek">DeepSeek</option>
-              <option value="qwen">通义千问 Qwen</option>
-              <option value="glm">智谱 GLM</option>
-              <option value="openai">OpenAI</option>
-              <option value="custom">自定义</option>
-            </select>
+            <div class="dropdown">
+              <button class="dropdown-btn" :class="{open:vendorOpen===r.key}" @click="vendorOpen = vendorOpen===r.key ? null : r.key">
+                <span x-text="vendorLabel(r.key)"></span>
+                <svg class="chev" :class="{up:vendorOpen===r.key}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div class="dropdown-menu" x-show="vendorOpen===r.key" x-cloak>
+                <button class="dropdown-item" :class="{active: cfg.llm[r.key].vendor==='deepseek'}" @click="pickVendor(r.key,'deepseek')">DeepSeek</button>
+                <button class="dropdown-item" :class="{active: cfg.llm[r.key].vendor==='qwen'}" @click="pickVendor(r.key,'qwen')">通义千问 Qwen</button>
+                <button class="dropdown-item" :class="{active: cfg.llm[r.key].vendor==='glm'}" @click="pickVendor(r.key,'glm')">智谱 GLM</button>
+                <button class="dropdown-item" :class="{active: cfg.llm[r.key].vendor==='openai'}" @click="pickVendor(r.key,'openai')">OpenAI</button>
+                <button class="dropdown-item" :class="{active: cfg.llm[r.key].vendor==='custom'}" @click="pickVendor(r.key,'custom')">自定义</button>
+              </div>
+            </div>
           </div>
           <div class="muted" style="font-size:12px;margin-bottom:8px" x-text="r.desc"></div>
           <div class="muted" x-show="testState[r.key] && testState[r.key].msg"
@@ -145,11 +151,6 @@
           </div>
           <textarea x-model="cfg.prompts[p.key]" rows="5" style="width:100%;margin-top:6px;font-size:12px;resize:vertical"
                     placeholder="留空则使用默认提示词" @change="savePrompts()"></textarea>
-          <div class="muted" style="font-size:11px;margin-top:4px">
-            默认：<a href="javascript:void(0)" style="cursor:pointer;text-decoration:underline dotted;color:var(--text-2)"
-                   @click.prevent="copyPromptDefault(p.key)" title="点击复制完整默认提示词">
-              <span x-text="promptHint(p.key)"></span></a>
-          </div>
         </div>
       </template>
     </div>
@@ -215,6 +216,7 @@
     scanned: [],
     newRoot: "",
     scanning: false, testing: false, progress: 0, doneMsg: "", llmMsg: "",
+    vendorOpen: null,
     testState: {},
     scope: ["all"],
     _lastVer: -1,
@@ -244,7 +246,8 @@
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
         ["reverse", "score", "translate", "analyze"].forEach(function (k) {
-          if (p[k] !== undefined) self.cfg.prompts[k] = p[k] || "";
+          // 自定义为空时，展示默认提示词全文（可编辑）；保存时若未改动会归一化为空
+          self.cfg.prompts[k] = (p[k] || "") || (self.promptDefaults[k] || "");
         });
         var llm = s.llm || {};
         ROLES.forEach(function (r) {
@@ -262,6 +265,10 @@
         });
       });
       Api.listFolders().then(function (f) { self.scanned = f; });
+      // 点击任意下拉框外部时关闭厂商下拉（共享 vendorOpen 状态，不能逐项用 @click.outside）
+      window.addEventListener("click", function (e) {
+        if (!e.target || !e.target.closest || !e.target.closest(".dropdown")) self.vendorOpen = null;
+      });
       // 轮询同步版本，本地增删后刷新已扫描文件夹
       setInterval(function () { self.pollSync(); }, 3000);
     },
@@ -325,6 +332,15 @@
         this.applyVendorDefaults(role);
       }
       this.saveRoleLLM(role);
+    },
+    vendorLabel(role) {
+      return { deepseek: "DeepSeek", qwen: "通义千问 Qwen", glm: "智谱 GLM", openai: "OpenAI", custom: "自定义" }[this.cfg.llm[role].vendor] || this.cfg.llm[role].vendor;
+    },
+    pickVendor(role, vendor) {
+      this.vendorOpen = null;
+      if (this.cfg.llm[role].vendor === vendor) return;
+      this.cfg.llm[role].vendor = vendor;
+      this.onVendorChange(role);
     },
     // 保存单个角色的模型配置（含所属厂商归档）
     saveRoleLLM(role) {
@@ -412,24 +428,18 @@
     // ---- AI 提示词配置 ----
     savePrompts() {
       var self = this;
-      Api.updateSettings({ prompts: this.cfg.prompts }).catch(function (e) {
+      var payload = {};
+      ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+        // 内容与默认提示词一致时存空（= 使用内置默认），保持「留空=默认」语义
+        payload[k] = (self.cfg.prompts[k] === (self.promptDefaults[k] || "")) ? "" : self.cfg.prompts[k];
+      });
+      Api.updateSettings({ prompts: payload }).catch(function (e) {
         self.doneMsg = "提示词保存失败：" + ((e && e.message) || e);
       });
     },
     resetPrompt(key) {
-      this.cfg.prompts[key] = "";
+      this.cfg.prompts[key] = (this.promptDefaults[key] || "");
       this.savePrompts();
-    },
-    copyPromptDefault(key) {
-      var d = (this.promptDefaults || {})[key] || "";
-      if (!d) return;
-      App.copyText(d);  // copyText 内部会提示「已复制」
-    },
-    promptHint(key) {
-      var d = (this.promptDefaults || {})[key] || "";
-      if (!d) return "";
-      var t = String(d).replace(/\s+/g, " ").trim();
-      return t.length > 120 ? (t.slice(0, 120) + "…") : t;
     },
   };
 </script>

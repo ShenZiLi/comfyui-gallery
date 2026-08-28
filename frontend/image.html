@@ -28,10 +28,17 @@
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span x-text="im.name" style="font-weight:600"></span>
           <span class="muted" x-text="fmt(im)"></span>
-          <div style="margin-left:auto;display:flex;gap:8px">
-            <button class="btn" @click="copyImage()">复制</button>
-            <button class="btn" @click="download()">下载</button>
-            <a class="btn" @click="goGallery()">← 返回图库</a>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+            <button class="icon-btn" title="复制图片" @click="copyImage()">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+            <button class="icon-btn" title="下载" @click="download()">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            </button>
+            <button class="icon-btn danger" title="删除" @click="reqDelete()">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+            </button>
+            <a class="btn" @click="goGallery()">返回图库</a>
           </div>
         </div>
       </div>
@@ -157,6 +164,23 @@
     </div>
   </div>
 
+  <!-- 删除二次确认弹窗 -->
+  <div class="modal-mask" x-show="delTarget" x-cloak @keydown.escape.window="delTarget=null">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-head">
+        <h3>删除确认</h3>
+        <button class="modal-x" @click="delTarget=null">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0 0 16px;color:var(--text-2)">确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？原文件将移入系统废纸篓，可从废纸篓中恢复。</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn sm" @click="delTarget=null">取消</button>
+          <button class="btn sm danger" @click="confirmDelete()">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 工作流预览 Modal -->
   <div class="modal-mask" x-show="showModal" @keydown.escape.window="showModal=false">
     <div class="modal">
@@ -178,6 +202,7 @@
 <script>
   window.Detail = {
     im: null, showModal: false, aState: "", mState: "", mErr: "", hoverRating: 0,
+    delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trText: "",
     trIng: false, revIng: false, revOn: false, revText: "",
     init() {
@@ -220,6 +245,18 @@
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则回退全量导航
       if (document.referrer && document.referrer.indexOf("gallery.html") >= 0) { history.back(); }
       else { location.href = "gallery.html"; }
+    },
+    reqDelete() { if (this.im) this.delTarget = this.im; },
+    confirmDelete() {
+      var im = this.delTarget;
+      if (!im) return;
+      this.delTarget = null;
+      Api.deleteImage(im.id).then(function () {
+        App.toast("已删除");
+        location.href = "gallery.html";
+      }).catch(function (e) {
+        alert((e && e.message) || "删除失败");
+      });
     },
     setRating(n) {
       var self = this;

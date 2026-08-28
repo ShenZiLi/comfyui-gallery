@@ -25,12 +25,21 @@
       <button class="btn primary" @click="$refs.fileInput.click()">导入</button>
       <input type="file" multiple accept="image/*" style="display:none" x-ref="fileInput" @change="imported($event)" />
 
-      <select x-model="currentFolder" @change="loadImages()" style="width:auto;max-width:220px">
-        <option value="">全部目录</option>
-        <template x-for="f in foldersWithImages" :key="f.id">
-          <option :value="f.id" x-text="(f.path||'根目录')+' ('+f.count+')'"></option>
-        </template>
-      </select>
+      <div class="dropdown" @keydown.escape.window="folderOpen=false" @click.outside="folderOpen=false">
+        <button class="dropdown-btn" :class="{open:folderOpen}" @click="folderOpen=!folderOpen">
+          <span x-text="folderLabel()"></span>
+          <svg class="chev" :class="{up:folderOpen}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="dropdown-menu" x-show="folderOpen" x-cloak>
+          <button class="dropdown-item" :class="{active: currentFolder===''}" @click="currentFolder='';folderOpen=false;loadImages()">全部目录</button>
+          <template x-for="f in foldersWithImages" :key="f.id">
+            <button class="dropdown-item" :class="{active: String(currentFolder)===String(f.id)}" @click="currentFolder=f.id;folderOpen=false;loadImages()">
+              <span x-text="f.path||'根目录'"></span>
+              <span class="count" x-text="f.count"></span>
+            </button>
+          </template>
+        </div>
+      </div>
 
       <div class="seg">
         <button :class="{active:mode==='flat'}" @click="mode='flat';loadImages()">平铺</button>
@@ -38,15 +47,22 @@
         <button :class="{active:mode==='aggregate'}" @click="mode='aggregate';reloadGroups()">聚合</button>
       </div>
 
-      <select x-model="sort" @change="loadImages()" style="width:auto">
-        <option value="time">按时间</option>
-        <option value="ai">按 AI 评分</option>
-        <option value="manual">按人工评分</option>
-      </select>
+      <div class="dropdown" @keydown.escape.window="sortOpen=false" @click.outside="sortOpen=false">
+        <button class="dropdown-btn" :class="{open:sortOpen}" @click="sortOpen=!sortOpen">
+          <span x-text="sortLabel()"></span>
+          <svg class="chev" :class="{up:sortOpen}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="dropdown-menu" x-show="sortOpen" x-cloak>
+          <button class="dropdown-item" :class="{active: sort==='time'}" @click="sort='time';sortOpen=false;loadImages()">按时间</button>
+          <button class="dropdown-item" :class="{active: sort==='ai'}" @click="sort='ai';sortOpen=false;loadImages()">按 AI 评分</button>
+          <button class="dropdown-item" :class="{active: sort==='manual'}" @click="sort='manual';sortOpen=false;loadImages()">按人工评分</button>
+        </div>
+      </div>
 
       <span class="nav-spacer"></span>
 
       <div class="searchbox">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
                @keyup.debounce.300ms="loadImages()" />
       </div>
@@ -113,7 +129,7 @@
               </div>
               <div class="chips" x-show="modelChips(im).length" style="margin-top:6px">
                 <template x-for="t in modelChips(im)" :key="t.category+t.name">
-                  <span class="chip" :class="t.category" x-text="t.name"></span>
+                  <span class="chip" :class="t.category" x-text="t.name" :data-tip="t.name" data-tip-cond></span>
                 </template>
               </div>
               <div class="muted" style="font-size:11px;margin-top:6px" x-show="!modelChips(im).length">
@@ -171,7 +187,8 @@
     <div class="masonry immersive" x-show="mode==='immersive' && images.length">
       <template x-for="im in images" :key="im.id">
         <div class="card img-card immersive-cell" @click="open(im.id)" title="点击查看详情">
-          <div class="thumb-wrap"><img :src="im.thumb" :alt="im.name" loading="lazy" /></div>
+          <div class="thumb-wrap"><img :src="im.thumb" :alt="im.name" loading="lazy"
+               :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" /></div>
         </div>
       </template>
     </div>
@@ -279,7 +296,8 @@
 
 <script>
   window.Gallery = {
-    folders: [], images: [], groups: [], tags: [], q: "", mode: "flat", currentFolder: "",
+    folders: [], images: [], groups: [], groupCount: 0, tags: [], q: "", mode: "flat", currentFolder: "",
+    folderOpen: false, sortOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
     delTarget: null, _ver: -1, _restoreScroll: 0,
     permModal: false, permMsg: "", permFiles: null,
@@ -336,6 +354,16 @@
     allTags() { return this.tags; },
     // 下拉框只显示有图片的目录；无图片目录隐藏
     foldersWithImages() { return (this.folders || []).filter(function (f) { return (f.count || 0) > 0; }); },
+    folderLabel() {
+      var self = this;
+      var f = (this.folders || []).find(function (x) { return String(x.id) === String(self.currentFolder); });
+      return f ? ((f.path || "根目录") + " (" + f.count + ")") : "全部目录";
+    },
+    sortLabel() {
+      if (this.sort === "ai") return "按 AI 评分";
+      if (this.sort === "manual") return "按人工评分";
+      return "按时间";
+    },
     fmtSize: App.fmtSize,
     loadImages() {
       this.loading = true;
@@ -586,6 +614,8 @@
       state.cur = el;
       var tip = el.getAttribute("data-tip") || "";
       if (!tip) return;
+      // data-tip-cond：仅当内容实际溢出（被省略号截断）时才弹气泡
+      if (el.hasAttribute("data-tip-cond") && el.scrollWidth <= el.clientWidth + 1) return;
       var b = document.createElement("div");
       b.className = "am-tip-bubble";
       b.textContent = tip;

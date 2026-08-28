@@ -37,21 +37,29 @@ def list_folders(session: Session = Depends(get_session)):
 
     强调关联：仅返回落在当前注册根目录前缀下的文件夹；根目录增删导致该集合变化。
     """
+    from pathlib import Path
+
     from ..services import scanner
 
     roots = scanner.get_scan_roots(session)
-    root_prefixes = [str(r).rstrip("/") for r in roots]
+    # 统一为 / 分隔符，兼容 Windows 反斜杠路径
+    root_prefixes = [str(r).replace("\\", "/").rstrip("/") for r in roots]
+
+    def _norm(path: str) -> str:
+        return str(path).replace("\\", "/").rstrip("/")
 
     def _under_root(path: str) -> bool:
         # 精确匹配根目录自身，或严格落在某个根目录「之下」的路径
+        p = _norm(path)
         return any(
-            path == rp or path.startswith(rp + "/") for rp in root_prefixes if rp
+            p == rp or p.startswith(rp + "/") for rp in root_prefixes if rp
         )
 
     folders = session.exec(
-        select(Folder).where(Folder.is_deleted == 0, Folder.path.startswith("/")).order_by(Folder.path)
+        select(Folder).where(Folder.is_deleted == 0).order_by(Folder.path)
     ).all()
-    folders = [f for f in folders if _under_root(f.path)]
+    # 仅保留绝对路径节点（Windows 盘符路径不以 / 开头，不能用 startswith("/") 过滤）
+    folders = [f for f in folders if Path(f.path).is_absolute() and _under_root(f.path)]
 
     counts = {}
     for row in session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all():

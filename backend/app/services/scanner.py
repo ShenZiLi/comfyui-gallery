@@ -91,24 +91,25 @@ def add_root(session: Session, root: Path) -> ScanStats:
 def unlink_root(session: Session, root: Path) -> int:
     """移除根目录：软删其下图片并删除其目录节点，返回移除的图片数。"""
     root = Path(root).resolve()
-    prefix = str(root)
-    images = session.exec(
-        select(ImageAsset).where(
-            ImageAsset.is_deleted == 0,
-            (ImageAsset.abs_path == prefix) | ImageAsset.abs_path.like(f"{prefix}/%"),
-        )
-    ).all()
-    for im in images:
-        im.is_deleted = 1
-    folders = session.exec(
-        select(Folder).where(
-            (Folder.path == prefix) | Folder.path.like(f"{prefix}/%")
-        )
-    ).all()
-    for f in folders:
-        session.delete(f)
+    # 统一为 / 分隔符，兼容 Windows 反斜杠路径
+    prefix = str(root).replace("\\", "/")
+
+    def _under(p: str) -> bool:
+        n = str(p).replace("\\", "/")
+        return n == prefix or n.startswith(prefix + "/")
+
+    removed = 0
+    for im in session.exec(
+        select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    ).all():
+        if _under(im.abs_path):
+            im.is_deleted = 1
+            removed += 1
+    for f in session.exec(select(Folder)).all():
+        if _under(f.path):
+            session.delete(f)
     session.commit()
-    return len(images)
+    return removed
 
 
 def _hash_bytes(data: bytes) -> str:
