@@ -29,7 +29,15 @@
   }
 
   function toggleTheme() {
-    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    // 用 View Transitions 做圆形扩散动效（右上角按钮处展开至全屏）
+    if (document.startViewTransition) {
+      try {
+        document.startViewTransition(function () { applyTheme(next); });
+        return;
+      } catch (e) {}
+    }
+    applyTheme(next);
   }
 
   function initNav(active) {
@@ -84,5 +92,45 @@
     return v.toFixed(v >= 10 || i === 0 ? 0 : 1) + " " + u[i];
   }
 
-  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize };
+  var _toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById("am-toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "am-toast";
+      el.className = "am-toast";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function () { el.classList.remove("show"); }, 1400);
+  }
+
+  // 可靠复制：优先异步剪贴板，非安全上下文/拒绝时回退 execCommand；执行后给反馈
+  function copyText(text) {
+    text = text == null ? "" : String(text);
+    function legacy() {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        toast(ok ? "已复制" : "复制失败");
+      } catch (e) { toast("复制失败"); }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast("已复制"); }, legacy);
+    } else {
+      legacy();
+    }
+  }
+
+  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast };
 })();

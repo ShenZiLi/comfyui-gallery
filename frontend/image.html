@@ -34,22 +34,42 @@
 
     <!-- 信息栏 -->
     <div>
-      <!-- 原生提示词 -->
+      <!-- 提示词（原生 / 反推 / AI） -->
       <div class="card section pad">
-        <h3>工作流提示词 <span class="sub-badge origin">原生</span>
+        <h3>提示词
+          <span class="src-tabs" style="margin-left:8px">
+            <button class="src-tab origin" :class="{active: im._src==='origin', dim: promptGrey('origin')}"
+                    @click="selectPrompt('origin')">原生</button>
+            <button class="src-tab reverse" :class="{active: im._src==='reverse', dim: promptGrey('reverse')&&!pState}"
+                    @click="selectPrompt('reverse')">
+              <span x-text="pState==='rev' ? '反推中' : '反推'"></span>
+            </button>
+            <button class="src-tab ai" :class="{active: im._src==='ai', 'ai-has': !!im.aiPrompt, dim: !im.aiPrompt && pState!=='parse'}"
+                    @click="selectPrompt('ai')">
+              <span x-text="pState==='parse' ? '解析中' : 'AI'"></span>
+            </button>
+          </span>
           <span style="margin-left:auto;display:flex;gap:6px">
-            <button class="btn sm" @click="copy(im.prompt)">复制</button>
+            <button class="btn sm" @click="copy(activePrompt())" x-show="activePrompt()">复制</button>
           </span>
         </h3>
-        <div style="color:var(--text-2)"><span x-text="im.prompt || '（无原生提示词）'"></span></div>
-        <div class="muted mt" x-show="im.negative" style="font-size:12px">
-          <b>负向：</b><span x-text="im.negative"></span>
+        <div class="muted" style="font-size:12px" x-show="pErr"><b x-text="pErr"></b></div>
+        <div style="color:var(--text-2)">
+          <template x-for="(txt, pi) in activePrompts()" :key="pi">
+            <div class="prompt-item" :class="{'first':pi===0}" x-text="txt"></div>
+          </template>
+          <span x-show="!activePrompts().length && pState==='parse'" style="color:var(--text-3)">AI 解析中…</span>
+          <span x-show="!activePrompts().length && pState==='rev'" style="color:var(--text-3)">AI 反推中…</span>
+          <span x-show="!activePrompts().length && !pState" style="color:var(--text-3)">（无提示词）</span>
+        </div>
+        <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
+          <b>负向：</b><span x-text="activeNegative()"></span>
         </div>
       </div>
 
-      <!-- 反推提示词 -->
+      <!-- 反推原文（另开卡片供对照 + 中译） -->
       <div class="card section pad" x-show="im.reversePrompt">
-        <h3>AI 反推提示词 <span class="sub-badge reverse">反推</span>
+        <h3>反推原文
           <span style="margin-left:auto;display:flex;gap:6px">
             <button class="btn sm" @click="translate()" x-text="tState==='ing'?'翻译中…':'中译'"></button>
             <button class="btn sm" @click="copy(im.reversePrompt)">复制</button>
@@ -66,16 +86,22 @@
         <h3>工作流</h3>
         <div class="btn-row">
           <button class="btn" @click="preview()">预览工作流</button>
-          <button class="btn" @click="exportWorkflow()">导出 .json</button>
-          <button class="btn" @click="copy(workflowJSON())">复制 JSON</button>
+          <button class="btn" @click="exportWorkflow()">导出</button>
+          <button class="btn" @click="copy(workflowJSON())">复制</button>
         </div>
         <div class="muted" style="font-size:12px;margin-top:8px">提示：可将导出的 JSON 拖回 ComfyUI 画布复现。</div>
       </div>
 
       <!-- 模型 / 参数 -->
       <div class="card section pad">
-        <h3>模型与参数</h3>
-        <div class="chips" style="margin-top:0">
+        <h3>模型
+          <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+            <button class="btn sm" :class="{spin:mState==='ing'}" @click="reparseModels()"
+                    x-text="mState==='ing' ? '解析中' : 'AI'"></button>
+          </span>
+        </h3>
+        <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
+        <div class="chips" style="margin-top:6px">
           <template x-for="t in im.tags || []" :key="t.category+t.name">
             <span class="chip" :class="t.category" x-text="(t.category+': ')+t.name"></span>
           </template>
@@ -93,11 +119,13 @@
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
           <div>
             <div class="muted" style="font-size:12px">人工评分</div>
-            <div>
+            <div @mouseleave="hoverRating=0">
               <template x-for="n in 5" :key="n">
-                <span class="star" :class="{off:n>Math.round(im.rating||0)}" style="font-size:20px;cursor:pointer;color:var(--f6b130n, #f6b130)" @click="setRating(n)">★</span>
+                <span class="star" :class="{off:(hoverRating? n>hoverRating : n>Math.round(im.rating||0))}"
+                      style="font-size:20px"
+                      @mouseenter="hoverRating=n" @click="setRating(n)">★</span>
               </template>
-              <span class="star-tip" x-text="im.rating ? im.rating+' 分' : '未评分'"></span>
+              <span class="star-tip" x-text="hoverRating ? (hoverRating+' 分') : (im.rating ? im.rating+' 分' : '未评分')"></span>
             </div>
           </div>
           <div>
@@ -122,8 +150,8 @@
       </div>
       <div class="modal-body">
         <div class="btn-row mb">
-          <button class="btn sm" @click="copy(workflowJSON())">复制 JSON</button>
-          <button class="btn sm" @click="exportWorkflow()">导出 .json</button>
+          <button class="btn sm" @click="copy(workflowJSON())">复制</button>
+          <button class="btn sm" @click="exportWorkflow()">导出</button>
         </div>
         <pre class="code" x-text="workflowJSON()"></pre>
       </div>
@@ -133,16 +161,71 @@
 
 <script>
   window.Detail = {
-    im: null, showModal: false, tState: "", aState: "",
+    im: null, showModal: false, tState: "", aState: "", mState: "", mErr: "", hoverRating: 0,
+    pState: "", pErr: "",
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
       var self = this;
-      Api.getImage(id).then(function (image) { self.im = image; });
+      Api.getImage(id).then(function (image) {
+        self.im = image;
+        image._src = (image.prompt && image.prompt !== "") ? "origin" : "reverse";
+      });
     },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3) + " · " + (im.params && im.params.seed || ""); },
-    copy(text, label) { navigator.clipboard && navigator.clipboard.writeText(text); },
-    setRating(n) { this.im.rating = n; },
+    copy(text, label) { App.copyText(text); },
+    setRating(n) {
+      var self = this;
+      this.hoverRating = 0;
+      this.im.rating = n;
+      Api.setRating(this.im.id, n).then(function (card) {
+        if (card && card.rating !== undefined) self.im.rating = card.rating;
+      }).catch(function () { App.toast("评分保存失败"); });
+    },
+    // 提示词三源（原生/反推/AI）
+    activePrompts() {
+      var im = this.im; if (!im) return [];
+      var raw;
+      if (im._src === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
+      else if (im._src === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
+      else raw = (Array.isArray(im.originPrompts) && im.originPrompts.length) ? im.originPrompts.slice() : ((im.prompt || "") ? [im.prompt] : []);
+      if (raw.length > 1) raw = raw.filter(function (t) { return (t || "").length >= 10; });
+      raw.sort(function (a, b) { return b.length - a.length; });
+      return raw;
+    },
+    activePrompt() { return this.activePrompts().join("\n"); },
+    activeNegative() {
+      if (!this.im) return "";
+      if (this.im._src === "ai") return (this.im.aiNegative || "");
+      if (Array.isArray(this.im.negativePrompts) && this.im.negativePrompts.length) return this.im.negativePrompts.join("\n");
+      return (this.im.negative || "");
+    },
+    promptGrey(kind) {
+      var im = this.im; if (!im) return true;
+      if (kind === "origin") return !(im.prompt || "");
+      if (kind === "reverse") return !(im.reversePrompt || "");
+      if (kind === "ai") return !(im.aiPrompt || "");
+      return false;
+    },
+    selectPrompt(kind) {
+      var im = this.im; if (!im) return;
+      if (!this.promptGrey(kind)) { im._src = kind; return; }
+      if (kind === "reverse") this.reverseGen();
+      else if (kind === "ai") this.reparseModels(true);
+    },
+    reverseGen() {
+      var self = this;
+      if (this.pState === "rev") return;
+      this.pState = "rev"; this.pErr = "";
+      Api.reversePrompt(this.im.id).then(function (d) {
+        self.pState = "";
+        if (d && d.reversePrompt) self.im.reversePrompt = d.reversePrompt;
+        self.im._src = "reverse";
+      }).catch(function (e) {
+        self.pState = "";
+        self.pErr = (e && e.message) || "AI 反推失败";
+      });
+    },
     preview() { this.showModal = true; },
     exportWorkflow() {
       var blob = new Blob([this.workflowJSON()], { type: "application/json" });
@@ -166,9 +249,36 @@
       setTimeout(function () { self.im.translationZH = "（原型）处理器渲染中译：赛博朋克 / 宇航员光影。"; self.tState = ""; }, 900);
     },
     aiScore() {
-      this.aState = "ing";
       var self = this;
-      setTimeout(function () { self.im.aiRating = Math.round(60 + Math.random() * 38); self.aState = ""; }, 900);
+      if (this.aState === "ing") return;
+      this.aState = "ing";
+      Api.scoreImage(this.im.id).then(function (card) {
+        self.aState = "";
+        if (card && card.aiRating !== undefined) self.im.aiRating = card.aiRating;
+        if (card && card.aiReason !== undefined) self.im.aiReason = card.aiReason;
+      }).catch(function (e) {
+        self.aState = "";
+        alert((e && e.message) || "AI 评分失败");
+      });
+    },
+    reparseModels(triggerAi) {
+      var self = this;
+      if (this.mState === "ing" || !this.im) return;
+      this.mState = "ing"; this.mErr = ""; this.pState = "parse"; this.pErr = "";
+      Api.reparseModels(this.im.id).then(function (card) {
+        self.mState = ""; self.pState = "";
+        if (card && card.tags) self.im.tags = card.tags;
+        if (card && card.model) self.im.model = card.model;
+        if (card && (card.aiPrompt !== undefined)) {
+          self.im.aiPrompt = card.aiPrompt || "";
+          self.im.aiNegative = card.aiNegative || "";
+          self.im.aiPrompts = (Array.isArray(card.aiPrompts) && card.aiPrompts.length) ? card.aiPrompts : ((self.im.aiPrompt) ? [self.im.aiPrompt] : []);
+        }
+        if (triggerAi) self.im._src = "ai";
+      }).catch(function (e) {
+        self.mState = ""; self.pState = "";
+        self.mErr = self.pErr = (e && e.message) || "AI 重解析失败";
+      });
     },
   };
 </script>

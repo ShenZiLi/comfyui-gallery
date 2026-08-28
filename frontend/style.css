@@ -53,12 +53,29 @@ html[data-theme="dark"] .code { background: #0b0f16; }
 html[data-theme="dark"] .stars .off { color: #3a4251; }
 
 html, body { margin: 0; padding: 0; }
+html { background: var(--bg); }
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
   line-height: 1.55;
+}
+a { color: var(--brand); text-decoration: none; }
+
+/* 明暗主题切换：从右上角按钮处圆形扩散至全屏（View Transitions） */
+::view-transition-old(root) { animation: vt-out .3s ease-out; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: vt-in .55s cubic-bezier(.45,.05,.2,1); mix-blend-mode: normal; }
+@keyframes vt-out {
+  to { opacity: .55; transform: scale(.99); }
+}
+@keyframes vt-in {
+  from { clip-path: circle(0% at 100% 0%); transform: scale(.99); }
+  to { clip-path: circle(150% at 100% 0%); transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root),
+  ::view-transition-old(root) { animation: none; }
 }
 a { color: var(--brand); text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }
@@ -142,6 +159,20 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 }
 .icon-btn:hover { color: var(--brand); background: var(--brand-weak); }
 .icon-btn:active { transform: scale(.92); }
+.icon-btn.spin svg { animation: am-spin 1s linear infinite; }
+@keyframes am-spin { to { transform: rotate(360deg); } }
+.icon-btn.danger:hover { color: #e5484d; background: rgba(229,72,77,.12); }
+.btn.danger { color: #fff; background: #e5484d; border-color: #e5484d; }
+.btn.danger:hover { color: #fff; background: #d93a40; border-color: #d93a40; }
+
+/* 轻量 toast（复制反馈等） */
+.am-toast {
+  position: fixed; left: 50%; bottom: 40px; transform: translate(-50%, 12px);
+  background: rgba(0,0,0,.78); color: #fff; font-size: 13px; padding: 7px 16px;
+  border-radius: 999px; opacity: 0; pointer-events: none; transition: .18s ease; z-index: 9999;
+}
+.am-toast.show { opacity: 1; transform: translate(-50%, 0); }
+html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #111; }
 
 /* ===== 输入检索 ===== */
 .searchbox { position: relative; min-width: 240px; }
@@ -182,17 +213,35 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 .ai-score { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
 .rating-row { position: absolute; bottom: 8px; left: 8px; }
 .img-card .info { padding: 10px 12px 12px; }
-.prompt-box { font-size: 13px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.prompt-box.expanded { -webkit-line-clamp: unset; display: block; }
+.prompt-box { font-size: 13px; color: var(--text-2); }
+.prompt-box .prompt-item { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.prompt-box.expanded .prompt-item { -webkit-line-clamp: unset; display: block; }
+.prompt-item + .prompt-item { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
 .prompt-box mark { background: #fff3bf; color: var(--text); border-radius: 3px; padding: 0 2px; }
 .prompt-header { display: flex; align-items: center; justify-content: space-between; }
 .toggle-prompt { color: var(--brand); font-size: 12px; cursor: pointer; background: none; border: none; padding: 0; }
 
+/* 提示词来源标签（原生/反推，弱化、贴近标题） */
+.src-tabs { display: inline-flex; align-items: center; gap: 3px; }
+.src-tab {
+  font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 999px;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-3); opacity: .55; transition: .15s;
+}
+.src-tab:hover { opacity: 1; }
+.src-tab.origin.active { background: color-mix(in srgb,var(--brand) 14%,transparent); color: var(--brand); opacity: 1; }
+.src-tab.reverse.active { background: color-mix(in srgb,#833ab4 14%,transparent); color: #833ab4; opacity: 1; }
+.src-tab.ai.active { background: color-mix(in srgb,#eab308 18%,transparent); color: #92600a; opacity: 1; }
+.src-tab.ai.ai-has { background: #fff3cd; color: #8a6d1a; opacity: 1; }
+.src-tab.ai.ai-ing { background: color-mix(in srgb,var(--brand) 16%,transparent); color: var(--brand); opacity: 1; }
+.src-tab.dim { opacity: .38; }
+.src-tab.dim:hover { opacity: .6; }
+
 /* ===== 标签 chips ===== */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
-.chip.model { color: var(--model); border-color: color-mix(in srgb,var(--model) 30%,#fff); background: color-mix(in srgb,var(--model) 8%,#fff); }
-.chip.lora { color: var(--lora); border-color: color-mix(in srgb,var(--lora) 30%,#fff); background: color-mix(in srgb,var(--lora) 8%,#fff); }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.chip.model { color: var(--model); border-color: color-mix(in srgb,var(--model) 40%,#fff); background: color-mix(in srgb,var(--model) 14%,#fff); }
+.chip.lora { color: var(--lora); border-color: color-mix(in srgb,var(--lora) 40%,#fff); background: color-mix(in srgb,var(--lora) 14%,#fff); }
 .chip.vae { color: var(--vae); border-color: color-mix(in srgb,var(--vae) 30%,#fff); background: color-mix(in srgb,var(--vae) 8%,#fff); }
 .chip.style { color: var(--style); border-color: color-mix(in srgb,var(--style) 30%,#fff); background: color-mix(in srgb,var(--style) 8%,#fff); }
 .chip.special { color: var(--special); border-color: color-mix(in srgb,var(--special) 30%,#fff); background: color-mix(in srgb,var(--special) 8%,#fff); }
@@ -202,6 +251,10 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 /* ===== 星级 ===== */
 .stars { color: #f6b130; font-size: 15px; cursor: pointer; letter-spacing: 2px; }
 .stars .off { color: #d8dbe0; }
+.star { color: #f6b130; cursor: pointer; }
+.star.off { color: #d8dbe0; }
+html[data-theme="dark"] .star.off { color: #3a4251; }
+html[data-theme="dark"] .stars .off { color: #3a4251; }
 .star-tip { font-size: 12px; color: var(--text-3); margin-left: 6px; }
 
 /* ===== 聚合页 ===== */

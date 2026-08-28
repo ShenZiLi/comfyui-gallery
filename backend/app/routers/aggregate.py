@@ -13,9 +13,25 @@ def _normalize(p: str) -> str:
     return " ".join((p or "").lower().split())
 
 
+def _first_prompt(meta) -> str:
+    """取提示词列表中的第一条作为聚合主维度（旧的未带列表则回退 prompt）。"""
+    if meta and meta.origin_prompts_json:
+        try:
+            import json
+
+            arr = json.loads(meta.origin_prompts_json)
+            if isinstance(arr, list) and arr and str(arr[0]).strip():
+                return str(arr[0]).strip()
+        except Exception:  # noqa: BLE001
+            pass
+    return (meta.prompt if meta else "") or ""
+
+
 @router.get("/by-prompt")
 def aggregate_by_prompt(kind: str = "exact", session: Session = Depends(get_session)):
-    """按提示词分组（exact=相同；similar=相似，MVP 用 SequenceMatcher）。"""
+    """按提示词分组（exact=相同；similar=相似，MVP 用 SequenceMatcher）。
+    聚合维度取提示词列表的第一条。
+    """
     rows = session.exec(
         select(ImageAsset, WorkflowMeta)
         .join(WorkflowMeta, WorkflowMeta.image_id == ImageAsset.id)
@@ -26,22 +42,22 @@ def aggregate_by_prompt(kind: str = "exact", session: Session = Depends(get_sess
     ).all()
 
     groups: dict[str, list] = {}
+    titles: dict[str, str] = {}
     for im, meta in rows:
-        groups.setdefault(_normalize(meta.prompt), []).append(im)
+        fp = _first_prompt(meta)
+        if not fp:
+            continue
+        key = _normalize(fp)
+        groups.setdefault(key, []).append(im)
+        titles[key] = fp
 
     ordered = sorted(groups.items(), key=lambda kv: -max(
         (im.ai_rating or 0) for im in kv[1]
     ))
     out = []
-    titles = {}
     for key, members in ordered:
         sorted_members = sorted(members, key=lambda m: -(m.ai_rating or 0))
-        title = session.exec(
-            select(WorkflowMeta).where(
-                WorkflowMeta.image_id == sorted_members[0].id
-            )
-        ).first().prompt
-        titles[key] = title
+        title = titles.get(key) or ""
         out.append({
             "id": key,
             "title": title,

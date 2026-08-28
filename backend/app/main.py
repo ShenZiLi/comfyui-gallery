@@ -18,9 +18,9 @@ class NoCacheStaticFiles(StaticFiles):
         return resp
 
 from .config import settings
-from .database import init_db
+from .database import init_db, get_session
 from .routers import aggregate, folders, fs, images, settings as settings_router, sync, tags
-from .services import watcher
+from .services import watcher, meta_service
 
 app = FastAPI(title="画镜 ArtMirror", version="0.1.0")
 
@@ -57,8 +57,10 @@ def health() -> dict:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """启动初始化：建表、创建目录并启动后台实时同步。"""
+    """启动初始化：建表、迁移标签、创建目录并启动后台实时同步。"""
     init_db()
+    with next(get_session()) as session:
+        meta_service.migrate_tag_paths(session)
     watcher.start()
 
 

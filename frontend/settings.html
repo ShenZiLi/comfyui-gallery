@@ -115,13 +115,6 @@
       </div>
     </div>
   </div>
-
-  <!-- 数据目录 -->
-  <div class="card pad mt">
-    <h3 style="margin-top:0">数据目录</h3>
-    <p class="muted">图片数据库与缩略图存储于此，随应用自动创建。</p>
-    <code x-text="dataHint" style="background:var(--bg);padding:4px 8px;border-radius:6px"></code>
-  </div>
 </div>
 
 <script>
@@ -152,7 +145,7 @@
     scanned: [],
     newRoot: "",
     scanning: false, testing: false, progress: 0, doneMsg: "", llmMsg: "",
-    scope: ["all"], dataHint: "…/data（库 + thumbs 缩略图）",
+    scope: ["all"],
     _lastVer: -1,
 
     init() {

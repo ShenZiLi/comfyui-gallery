@@ -8,6 +8,7 @@
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/motion@11/dist/motion.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
@@ -75,31 +76,69 @@
             <img :src="im.thumb" :alt="im.name" loading="lazy" />
           </div>
           <div class="info">
+            <!-- 1) 尺寸 / 大小 + 复制/下载/删除 一行 -->
             <div class="meta-row">
-              <span class="chip reverse" style="border:none;background:#f3e8ff;color:#833ab4;padding:1px 8px" x-show="im.reversePrompt">反推</span>
-              <span class="muted" style="font-size:12px;color:var(--text-3)" x-show="im.prompt&&!im.reversePrompt">原生</span>
-              <span style="font-size:12px;color:var(--text-2);font-weight:600" x-show="im.aiRating!=null">AI <span x-text="im.aiRating"></span></span>
+              <span class="muted" style="font-size:11px" x-text="im.width+'×'+im.height + ' · ' + fmtSize(im.fileSize)"></span>
+              <span style="font-size:12px;color:var(--text-2);font-weight:600;margin-left:8px" x-show="im.aiRating!=null">AI <span x-text="im.aiRating"></span></span>
               <span class="nav-spacer"></span>
+              <button class="icon-btn" title="复制图片" @click.stop="copyImage(im)">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              </button>
               <button class="icon-btn" title="下载" @click.stop="download(im)">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+              </button>
+              <button class="icon-btn danger" title="删除" @click.stop="reqDelete(im)">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
               </button>
             </div>
-            <div class="muted" style="font-size:11px;margin-top:4px" x-text="im.width+'×'+im.height + ' · ' + fmtSize(im.fileSize)"></div>
-            <div class="chips" x-show="im.tags.length" style="margin-top:8px">
-              <template x-for="t in im.tags" :key="t.category+t.name">
-                <span class="chip" :class="t.category" x-text="t.name"></span>
-              </template>
+
+            <!-- 2) 模型（主模型 / LoRA） + 刷新 -->
+            <div style="margin-top:8px">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:12px;color:var(--text-3)">模型</span>
+                <span class="nav-spacer"></span>
+                <button class="src-tab ai" :class="{'ai-ing':isReparsing(im)}" title="用 AI 解析模型与提示词"
+                        @click.stop="reparseAll(im)">
+                  <span x-text="isReparsing(im) ? '解析中' : 'AI'"></span>
+                </button>
+              </div>
+              <div class="chips" x-show="modelChips(im).length" style="margin-top:6px">
+                <template x-for="t in modelChips(im)" :key="t.category+t.name">
+                  <span class="chip" :class="t.category" x-text="t.name"></span>
+                </template>
+              </div>
+              <div class="muted" style="font-size:11px;margin-top:6px" x-show="!modelChips(im).length">
+                <span x-text="isReparsing(im) ? 'AI 解析中…' : '未识别到模型'" x-show="!im._mErr"></span>
+                <span x-show="im._mErr" x-text="im._mErr"></span>
+                <span x-show="!im._mErr && !isReparsing(im) && !modelChips(im).length" style="display:inline">—— 点右上角 AI 解析</span>
+              </div>
             </div>
-            <div style="margin-top:8px" x-show="im.prompt">
+
+            <!-- 3) 提示词（原生 / 反推 / AI） -->
+            <div style="margin-top:8px">
               <div class="prompt-header">
-                <span style="font-size:12px;color:var(--text-3)">提示词</span>
+                <span style="display:inline-flex;align-items:center;gap:6px">
+                  <span style="font-size:12px;color:var(--text-3)">提示词</span>
+                  <span class="src-tabs">
+                    <button class="src-tab origin" :class="{active: im._src==='origin', dim: promptGrey(im,'origin')}"
+                            @click.stop="selectPrompt(im,'origin')">原生</button>
+                    <button class="src-tab reverse" :class="{active: im._src==='reverse', dim: promptGrey(im,'reverse')&&!im._rParse}"
+                            @click.stop="selectPrompt(im,'reverse')">
+                      <span x-text="im._rParse ? '反推中' : '反推'"></span>
+                    </button>
+                    <button class="src-tab ai" :class="{active: im._src==='ai', 'ai-has': !!im.aiPrompt, dim: !im.aiPrompt && !isReparsing(im)}"
+                            @click.stop="selectPrompt(im,'ai')">
+                      <span x-text="isReparsing(im) ? '解析中' : 'AI'"></span>
+                    </button>
+                  </span>
+                </span>
                 <span style="display:inline-flex;align-items:center;gap:2px">
-                  <button class="icon-btn" title="展开/收起" x-show="im._hasMore"
+                  <button class="icon-btn" title="展开/收起" x-show="promptMore(im)"
                           @click.stop="im._exp=!im._exp">
                     <svg x-show="!im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5 5 5-5"/></svg>
                     <svg x-show="im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14l-5-5-5 5"/></svg>
                   </button>
-                  <button class="icon-btn" title="复制提示词" @click.stop="copy(im.prompt)">
+                  <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompt(im))">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                   </button>
                   <button class="icon-btn" title="预览工作流" @click.stop="previewWorkflow(im)">
@@ -108,9 +147,16 @@
                 </span>
               </div>
               <div class="prompt-box" :class="{expanded:im._exp}"
-                   x-ref="pb" :id="'pb-'+im.id"
+                   x-ref="pb" :id="'pb-'+im.id" x-show="activePrompts(im).length || isReparsing(im) || im._rParse"
                    @click="im._exp=!im._exp">
-                <span x-html="mark(im.prompt || '（无原生提示词）')"></span>
+                <template x-for="(txt, pi) in activePrompts(im)" :key="pi">
+                  <div class="prompt-item" :class="{'first':pi===0}" x-html="mark(txt)"></div>
+                </template>
+                <span x-show="isReparsing(im) && !activePrompts(im).length" style="color:var(--text-3)">AI 解析中…</span>
+                <span x-show="im._rParse && !activePrompts(im).length" style="color:var(--text-3)">AI 反推中…</span>
+              </div>
+              <div class="muted" style="font-size:11px;margin-top:4px" x-show="promptErr(im)">
+                <span x-text="promptErr(im)"></span>
               </div>
             </div>
           </div>
@@ -174,10 +220,27 @@
       </div>
       <div class="modal-body">
         <div class="btn-row mb">
-          <button class="btn sm" @click="copy(workflowJSON())">复制 JSON</button>
-          <button class="btn sm" @click="exportWorkflow()">导出 .json</button>
+          <button class="btn sm" @click="copy(workflowJSON())">复制</button>
+          <button class="btn sm" @click="exportWorkflow()">导出</button>
         </div>
         <pre class="code" x-text="workflowJSON()"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除二次确认弹窗 -->
+  <div class="modal-mask" x-show="delTarget" @keydown.escape.window="delTarget=null">
+    <div class="modal" style="max-width:400px">
+      <div class="modal-head">
+        <h3>删除确认</h3>
+        <button class="modal-x" @click="delTarget=null">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0 0 16px;color:var(--text-2)">确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？此操作会从图库中移除，不可恢复。</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn sm" @click="delTarget=null">取消</button>
+          <button class="btn sm danger" @click="confirmDelete()">删除</button>
+        </div>
       </div>
     </div>
   </div>
@@ -188,10 +251,21 @@
   window.Gallery = {
     folders: [], images: [], groups: [], tags: [], q: "", mode: "flat", currentFolder: "",
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    _ver: -1,
+    delTarget: null, _ver: -1, _restoreScroll: 0,
     init() {
       App.initNav("gallery");
       var self = this;
+      // 从详情页返回时恢复视图状态与滚动位置
+      var saved = null;
+      try { saved = JSON.parse(sessionStorage.getItem("am_gallery_state") || "null"); sessionStorage.removeItem("am_gallery_state"); } catch (e) {}
+      if (saved) {
+        self.mode = saved.mode || "flat";
+        self.currentFolder = saved.folder || "";
+        self.sort = saved.sort || "time";
+        self.q = saved.q || "";
+        self.selectedTag = saved.tag || null;
+        self._restoreScroll = saved.scroll || 0;
+      }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
       this.loadImages();
@@ -218,15 +292,56 @@
           if (self.sort === "time") list.sort((a, b) => (b.id || 0) - (a.id || 0));
           else if (self.sort === "ai") list.sort((a, b) => (b.aiRating || 0) - (a.aiRating || 0));
           else if (self.sort === "manual") list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-          // 检查提示词是否可折叠
+          // 初始化卡片状态；默认源：有原生优先原生，否则反推
           list.forEach(function (im) {
-            im._hasMore = (im.prompt || "").length > 80 || ((im.prompt || "").match(/\n/g) || []).length > 1;
             im._exp = false;
+            im._src = (im.prompt && im.prompt !== "") ? "origin" : "reverse";
+            im._aiParse = false; im._rParse = false; im._wantSrc = ""; im._pErr = ""; im._mErr = "";
           });
           self.images = list;
           self.summary = "共 " + list.length + " 张";
           self.loading = false;
+          // 从详情页返回后，等 DOM 渲染完成再恢复滚动位置
+          if (self._restoreScroll) {
+            var y = self._restoreScroll;
+            self._restoreScroll = 0;
+            setTimeout(function () { window.scrollTo(0, y); }, 80);
+          }
+          self.microInit();
         });
+    },
+    _entered: false, _motionBound: false,
+    // 卡片微交互（Motion，~3.5KB）：首次入场交错 + 悬浮拾起
+    microInit() {
+      if (!window.Motion || !window.Motion.animate) return;
+      var self = this;
+      var M = window.Motion;
+      // 等 Alpine 完成本轮渲染后再取卡片/容器
+      setTimeout(function () {
+        if (!self._entered) {
+          self._entered = true;
+          var cards = document.querySelectorAll(".masonry .img-card");
+          if (cards.length) {
+            M.animate(cards, { opacity: [0, 1], y: [14, 0] }, {
+              duration: .34, delay: M.stagger(18), easing: [0.22, 0.9, 0.28, 1]
+            });
+          }
+        }
+        if (!self._motionBound) {
+          self._motionBound = true;
+          var host = document.querySelector(".masonry");
+          if (host) {
+            host.addEventListener("pointerover", function (e) {
+              var c = e.target.closest ? e.target.closest(".img-card") : null;
+              if (c) M.animate(c, { y: -3 }, { duration: .18, easing: "ease-out" });
+            });
+            host.addEventListener("pointerout", function (e) {
+              var c = e.target.closest ? e.target.closest(".img-card") : null;
+              if (c) M.animate(c, { y: 0 }, { duration: .22, easing: "ease-out" });
+            });
+          }
+        }
+      }, 40);
     },
     reloadGroups() {
       var self = this;
@@ -253,13 +368,109 @@
     },
     mark(text) { return App.highlight(text, this.q ? [this.q] : []); },
     download(im) {
-      fetch(im.thumb).then(r => r.blob()).then(function (b) {
-        var a = document.createElement("a");
-        a.href = URL.createObjectURL(b); a.download = im.name || "image.png"; a.click();
+      var a = document.createElement("a");
+      a.href = "api/images/" + im.id + "/file";
+      a.download = im.name || "image.png"; a.click();
+    },
+    copyImage(im) {
+      fetch("api/images/" + im.id + "/file").then(r => r.blob()).then(function (b) {
+        if (!navigator.clipboard || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
+          throw new Error("unsupported");
+        }
+        return navigator.clipboard.write([new ClipboardItem({ "image/png": b })]);
+      }).then(function () {
+        App.toast("已复制");
       }).catch(function () {
-        var a = document.createElement("a"); a.href = im.thumb; a.download = im.name || "image.png"; a.click();
+        App.toast("复制失败（当前环境不支持复制图片）");
       });
     },
+    reqDelete(im) { this.delTarget = im; },
+    confirmDelete() {
+      var self = this;
+      var im = this.delTarget;
+      if (!im) return;
+      this.delTarget = null;
+      Api.deleteImage(im.id).then(function () {
+        self.images = self.images.filter(function (x) { return x.id !== im.id; });
+      }).catch(function (e) {
+        alert((e && e.message) || "删除失败");
+      });
+    },
+    // 图库卡片「模型」块：仅主模型 + LoRA（不含 VAE）
+    modelChips(im) {
+      return (im && im.tags || []).filter(function (t) {
+        return t.category === "model" || t.category === "lora";
+      });
+    },
+    isReparsing(im) { return !!(im && im._aiParse); },
+    // 任一处 AI 触发：同时解析模型与提示词（模型/提示词两按钮共享高亮）
+    reparseAll(im) {
+      var self = this;
+      if (im._aiParse) return;
+      im._aiParse = true; im._mErr = ""; im._pErr = "";
+      Api.reparseModels(im.id).then(function (card) {
+        im._aiParse = false;
+        if (card && card.tags) im.tags = card.tags;
+        if (card && card.model) im.model = card.model;
+        if (card && (card.aiPrompt !== undefined || card.aiNegative !== undefined)) {
+          im.aiPrompt = card.aiPrompt || "";
+          im.aiNegative = card.aiNegative || "";
+          im.aiPrompts = (Array.isArray(card.aiPrompts) && card.aiPrompts.length) ? card.aiPrompts : ((im.aiPrompt) ? [im.aiPrompt] : []);
+        }
+        if (im._wantSrc === "ai") { im._wantSrc = ""; im._src = "ai"; }
+      }).catch(function (e) {
+        im._aiParse = false;
+        im._mErr = e && e.message ? e.message : "AI 解析失败";
+        im._pErr = im._mErr;
+      });
+    },
+    modelAIGrey() { return !this._aiParse; },
+    // 提示词三种来源是否有内容
+    promptGrey(im, kind) {
+      if (kind === "origin") return !(im.prompt || "");
+      if (kind === "reverse") return !(im.reversePrompt || "");
+      if (kind === "ai") return !(im.aiPrompt || "");
+      return false;
+    },
+    selectPrompt(im, kind) {
+      if (!this.promptGrey(im, kind)) { im._src = kind; return; }
+      if (kind === "reverse") { this.reverseGen(im); }
+      else if (kind === "ai") { im._wantSrc = "ai"; this.reparseAll(im); }
+      // origin 无内容不可生成，静默
+    },
+    reverseGen(im) {
+      var self = this;
+      if (im._rParse) return;
+      im._rParse = true; im._pErr = "";
+      Api.reversePrompt(im.id).then(function (d) {
+        im._rParse = false;
+        if (d && d.reversePrompt) im.reversePrompt = d.reversePrompt;
+        im._src = "reverse";
+      }).catch(function (e) {
+        im._rParse = false;
+        im._pErr = e && e.message ? e.message : "AI 反推失败";
+      });
+    },
+    promptErr(im) { return (im && im._pErr) || ""; },
+    promptMore(im) {
+      var t = this.activePrompt(im) || "";
+      return t.length > 80 || (t.match(/\n/g) || []).length > 2 || this.activePrompts(im).length > 1;
+    },
+    // 当前选中提示词源的提示词列表（内容多者在上；多条时忽略 <10 字符的短文本）
+    activePrompts(im) {
+      var raw;
+      if (im._src === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
+      else if (im._src === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
+      else raw = (Array.isArray(im.originPrompts) && im.originPrompts.length) ? im.originPrompts.slice() : ((im.prompt || "") ? [im.prompt] : []);
+      return this.decoratePrompts(raw);
+    },
+    decoratePrompts(list) {
+      if (list.length > 1) list = list.filter(function (t) { return (t || "").length >= 10; });
+      list.sort(function (a, b) { return b.length - a.length; });
+      return list;
+    },
+    // 当前选中提示词源的实际文本（拼接）
+    activePrompt(im) { return this.activePrompts(im).join("\n"); },
     imported(ev) {
       this._import([].slice.call(ev.target.files || []));
       ev.target.value = "";
@@ -282,7 +493,7 @@
       });
       this.loadImages();
     },
-    copy(text) { if (navigator.clipboard) navigator.clipboard.writeText(text || ""); },
+    copy(text) { App.copyText(text); },
     previewWorkflow(im) {
       var self = this;
       Api.getImage(im.id).then(function (d) {
@@ -301,7 +512,16 @@
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = "workflow.json"; a.click();
     },
-    open(id) { location.href = "image.html?id=" + id; },
+    open(id) {
+      // 记录视图状态与滚动位置，返回时恢复
+      try {
+        sessionStorage.setItem("am_gallery_state", JSON.stringify({
+          scroll: window.scrollY, mode: this.mode, folder: this.currentFolder,
+          sort: this.sort, q: this.q, tag: this.selectedTag
+        }));
+      } catch (e) {}
+      location.href = "image.html?id=" + id;
+    },
   };
 </script>
 </body>

@@ -13,7 +13,12 @@
     var init = { method: opts.method || "GET", headers: { "Content-Type": "application/json" } };
     if (opts.body) init.body = JSON.stringify(opts.body);
     return fetch(path, init).then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
+      if (!r.ok) {
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          var msg = (body && body.detail) || ("HTTP " + r.status);
+          throw new Error(msg);
+        });
+      }
       return r.json();
     });
   }
@@ -54,6 +59,36 @@
       return req("api/images/" + id).catch(function () {
         Api._fallback = true;
         return ok(window.Mock.getImage(id) || {});
+      });
+    },
+
+    reparseModels: function (id) {
+      return req("api/images/" + id + "/reparse-models", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+
+    reversePrompt: function (id) {
+      return req("api/images/" + id + "/reverse", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+
+    deleteImage: function (id) {
+      return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
+        throw e;
+      });
+    },
+
+    scoreImage: function (id) {
+      return req("api/images/" + id + "/score", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+
+    setRating: function (id, score) {
+      return req("api/images/" + id + "/rating", { method: "POST", body: { score: score } }).catch(function (e) {
+        throw e;
       });
     },
 

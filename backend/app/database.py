@@ -2,9 +2,14 @@
 
 使用 SQLModel 连接 SQLite，建表逻辑集中在 models 包中导入后创建。
 """
+import logging
+import sqlite3
+
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 # SQLite 需 check_same_thread=False，便于后台线程访问；timeout 让并发写入等待而非报“database is locked”。
 engine = create_engine(
@@ -16,9 +21,39 @@ engine = create_engine(
 from . import models  # noqa: E402,F401
 
 
+# 新增列迁移：SQLModel create_all 不会给既有表加列，这里手工补齐。
+_WORKFLOW_META_COLUMNS = {
+    "ai_prompt": "TEXT DEFAULT ''",
+    "ai_negative_prompt": "TEXT DEFAULT ''",
+    "origin_prompts_json": "TEXT DEFAULT ''",
+    "negative_prompts_json": "TEXT DEFAULT ''",
+    "ai_prompts_json": "TEXT DEFAULT ''",
+}
+
+
+def _migrate_sqlite() -> None:
+    settings.ensure_dirs()
+    if not settings.db_path.exists():
+        return
+    conn = sqlite3.connect(settings.db_path, timeout=30)
+    try:
+        cur = conn.cursor()
+        tables = {r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "workflowmeta" in tables:
+            cols = {r[1] for r in cur.execute("PRAGMA table_info(workflowmeta)")}
+            for name, ddl in _WORKFLOW_META_COLUMNS.items():
+                if name not in cols:
+                    cur.execute(f"ALTER TABLE workflowmeta ADD COLUMN {name} {ddl}")
+                    logger.info("migrate: ADD COLUMN workflowmeta.%s", name)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     """创建数据表与运行目录（幂等）。"""
     settings.ensure_dirs()
+    _migrate_sqlite()
     SQLModel.metadata.create_all(engine)
 
 
