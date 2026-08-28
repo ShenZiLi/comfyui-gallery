@@ -1,10 +1,10 @@
 """聚合与维度分组路由（需求 7/11）。"""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..database import get_session
 from ..models import ImageAsset, Tag, ImageTag, WorkflowMeta
-from .images import to_card
+from .images import to_cards
 
 router = APIRouter(prefix="/api/aggregate", tags=["aggregate"])
 
@@ -27,11 +27,8 @@ def _first_prompt(meta) -> str:
     return (meta.prompt if meta else "") or ""
 
 
-@router.get("/by-prompt")
-def aggregate_by_prompt(kind: str = "exact", session: Session = Depends(get_session)):
-    """按提示词分组（exact=相同；similar=相似，MVP 用 SequenceMatcher）。
-    聚合维度取提示词列表的第一条。
-    """
+def _group_all(session: Session) -> list[dict]:
+    """按提示词首条分组（内存 O(n)），按 maxScore 降序返回组列表。"""
     rows = session.exec(
         select(ImageAsset, WorkflowMeta)
         .join(WorkflowMeta, WorkflowMeta.image_id == ImageAsset.id)
@@ -57,29 +54,84 @@ def aggregate_by_prompt(kind: str = "exact", session: Session = Depends(get_sess
     out = []
     for key, members in ordered:
         sorted_members = sorted(members, key=lambda m: -(m.ai_rating or 0))
-        title = titles.get(key) or ""
-        out.append({
-            "id": key,
-            "title": title,
-            "kind": "exact",
-            "count": len(sorted_members),
-            "maxScore": sorted_members[0].ai_rating or 0,
-            "cover": to_card(session, sorted_members[0]),
-            "members": [to_card(session, m) for m in sorted_members],
-        })
-
-    if kind == "similar":
-        out = _cluster_similar(out, titles)
-    session.rollback()
+        out.append({"key": key, "title": titles.get(key) or "", "members": sorted_members})
     return out
 
 
-def _cluster_similar(groups: list[dict], titles: dict) -> list[dict]:
-    """序列相似聚类（MVP）：按相似度阈值建边 + 并查集。"""
+def _group_payload(g: dict) -> dict:
+    """组卡片：封面行直接可渲染，不携带全部成员。"""
+    return {
+        "id": g["key"],
+        "title": g["title"],
+        "kind": "exact",
+        "count": len(g["members"]),
+        "maxScore": g["members"][0].ai_rating or 0,
+        "coverThumbs": [
+            {"id": m.id, "name": m.file_name, "thumb": f"/api/images/{m.id}/thumb"}
+            for m in g["members"][:6]
+        ],
+    }
+
+
+@router.get("/by-prompt")
+def aggregate_by_prompt(
+    kind: str = "exact",
+    limit: int = 20,
+    offset: int = 0,
+    session: Session = Depends(get_session),
+):
+    """按提示词分组（分页返回组列表；exact=相同，similar=页内相似聚类）。"""
+    limit = max(1, min(100, limit))
+    offset = max(0, offset)
+    all_groups = _group_all(session)
+    total = len(all_groups)
+    page = all_groups[offset:offset + limit]
+    items = [_group_payload(g) for g in page]
+    if kind == "similar":
+        items = _cluster_page(items)
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "hasMore": offset + len(page) < total,
+    }
+
+
+@router.get("/by-prompt/members")
+def group_members(
+    group: str,
+    limit: int = 24,
+    offset: int = 0,
+    session: Session = Depends(get_session),
+):
+    """某提示词组的成员（展开组时懒加载、分页）。"""
+    limit = max(1, min(200, limit))
+    offset = max(0, offset)
+    for g in _group_all(session):
+        if g["key"] != group:
+            continue
+        members = g["members"]
+        page = members[offset:offset + limit]
+        return {
+            "items": to_cards(session, page),
+            "total": len(members),
+            "limit": limit,
+            "offset": offset,
+            "hasMore": offset + len(page) < len(members),
+        }
+    raise HTTPException(404, "group not found")
+
+
+def _cluster_page(items: list[dict]) -> list[dict]:
+    """页内相似聚类：仅对当前页的组两两比较（页 ≤ 100 组，毫秒级）。
+
+    相似簇的 id 取首个子组键；members 懒加载只返回该键的成员（UI 当前仅用 exact）。
+    """
     import difflib
 
-    parent = list(range(len(groups)))
-    ordering = [g["id"] for g in groups]
+    n = len(items)
+    parent = list(range(n))
 
     def find(x):
         while parent[x] != x:
@@ -91,32 +143,32 @@ def _cluster_similar(groups: list[dict], titles: dict) -> list[dict]:
         parent[find(a)] = find(b)
 
     threshold = 0.92
-    for i in range(len(groups)):
-        for j in range(i + 1, len(groups)):
-            ratio = difflib.SequenceMatcher(
-                None, titles[groups[i]["id"]], titles[groups[j]["id"]]
-            ).ratio()
+    for i in range(n):
+        for j in range(i + 1, n):
+            ratio = difflib.SequenceMatcher(None, items[i]["title"], items[j]["title"]).ratio()
             if ratio >= threshold:
                 union(i, j)
 
-    clusters: dict[int, list[dict]] = {}
-    for i, g in enumerate(groups):
-        clusters.setdefault(find(i), []).append(g)
+    clusters: dict[int, list[int]] = {}
+    for i in range(n):
+        clusters.setdefault(find(i), []).append(i)
 
     out = []
-    for idx, members in clusters.items():
-        all_members = [m for g in members for m in g["members"]]
-        all_members.sort(key=lambda m: -(m["aiRating"] or 0))
-        cover = all_members[0] if all_members else None
+    for idxs in clusters.values():
+        first = items[idxs[0]]
+        if len(idxs) == 1:
+            out.append(first)
+            continue
+        thumbs = []
+        for i in idxs:
+            thumbs.extend(items[i]["coverThumbs"])
         out.append({
-            "id": f"sim-{idx}",
-            "title": members[0]["title"],
+            "id": first["id"],
+            "title": first["title"],
             "kind": "similar",
-            "count": len(all_members),
-            "maxScore": cover["aiRating"] or 0 if cover else 0,
-            "cover": cover,
-            "samples": [g["title"] for g in members[:3]],
-            "members": all_members,
+            "count": sum(items[i]["count"] for i in idxs),
+            "maxScore": max(items[i]["maxScore"] for i in idxs),
+            "coverThumbs": thumbs[:6],
         })
     out.sort(key=lambda g: -g["maxScore"])
     return out
@@ -125,20 +177,25 @@ def _cluster_similar(groups: list[dict], titles: dict) -> list[dict]:
 @router.get("/dimensions")
 def dimension_groups(session: Session = Depends(get_session)):
     """按模型/LoRA/VAE/风格等维度分组。"""
-    result = {}
     rows = session.exec(
         select(Tag, ImageTag)
         .join(ImageTag, ImageTag.tag_id == Tag.id)
         .where(Tag.is_deleted == 0, Tag.category != "special")
         .order_by(Tag.category, Tag.name)
     ).all()
+    if not rows:
+        return []
+    ids = sorted({link.image_id for _, link in rows})
+    imgs = session.exec(
+        select(ImageAsset).where(ImageAsset.id.in_(ids), ImageAsset.is_deleted == 0)
+    ).all()
+    cards_by = {c["id"]: c for c in to_cards(session, imgs)}
+    result: dict[str, dict[str, list[dict]]] = {}
     for tag, link in rows:
-        bucket = result.setdefault(tag.category, {})
-        im = session.get(ImageAsset, link.image_id)
-        if im is None or im.is_deleted:
+        card = cards_by.get(link.image_id)
+        if card is None:
             continue
-        bucket_list = bucket.setdefault(tag.name, [])
-        bucket_list.append(to_card(session, im))
+        result.setdefault(tag.category, {}).setdefault(tag.name, []).append(card)
     return [
         {"category": cat, "items": [
             {"name": name, "category": cat, "count": len(items), "members": items}
