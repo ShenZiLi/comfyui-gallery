@@ -5,6 +5,7 @@
 import logging
 import sqlite3
 
+from sqlalchemy import text
 from sqlmodel import SQLModel, Session, create_engine
 
 from .config import settings
@@ -50,11 +51,26 @@ def _migrate_sqlite() -> None:
         conn.close()
 
 
+# 查询性能索引：目录过滤 + 评分排序（幂等创建）
+_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS ix_image_folder ON imageasset(folder_id)",
+    "CREATE INDEX IF NOT EXISTS ix_image_ai_rating ON imageasset(ai_rating)",
+    "CREATE INDEX IF NOT EXISTS ix_image_rating ON imageasset(rating)",
+)
+
+
+def _ensure_indexes(conn) -> None:
+    for ddl in _INDEX_DDL:
+        conn.execute(text(ddl))
+
+
 def init_db() -> None:
     """创建数据表与运行目录（幂等）。"""
     settings.ensure_dirs()
     _migrate_sqlite()
     SQLModel.metadata.create_all(engine)
+    with engine.begin() as conn:
+        _ensure_indexes(conn)
 
 
 def get_session():
