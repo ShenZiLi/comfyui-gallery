@@ -52,30 +52,30 @@ html[data-theme="dark"] .progress { background: #1c2430; }
 html[data-theme="dark"] .code { background: #0b0f16; }
 html[data-theme="dark"] .stars .off { color: #3a4251; }
 
+/* ===== 亮/暗主题切换：从右上角按钮处圆形扩散至全屏（View Transitions） ===== */
+::view-transition-old(root) { animation: vt-out .3s ease-out; mix-blend-mode: normal; }
+::view-transition-new(root) { animation: vt-in .55s cubic-bezier(.45,.05,.2,1); mix-blend-mode: normal; }
+
+@keyframes vt-out {
+  to { opacity: .55; transform: scale(.99); }
+}
+@keyframes vt-in {
+  from { clip-path: circle(0% at 100% 0%); transform: scale(.99); }
+  to   { clip-path: circle(150% at 100% 0%); transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root),
+  ::view-transition-old(root) { animation: none; }
+}
+
 html, body { margin: 0; padding: 0; }
-html { background: var(--bg); }
 body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
   line-height: 1.55;
-}
-a { color: var(--brand); text-decoration: none; }
-
-/* 明暗主题切换：从右上角按钮处圆形扩散至全屏（View Transitions） */
-::view-transition-old(root) { animation: vt-out .3s ease-out; mix-blend-mode: normal; }
-::view-transition-new(root) { animation: vt-in .55s cubic-bezier(.45,.05,.2,1); mix-blend-mode: normal; }
-@keyframes vt-out {
-  to { opacity: .55; transform: scale(.99); }
-}
-@keyframes vt-in {
-  from { clip-path: circle(0% at 100% 0%); transform: scale(.99); }
-  to { clip-path: circle(150% at 100% 0%); transform: scale(1); }
-}
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-new(root),
-  ::view-transition-old(root) { animation: none; }
 }
 a { color: var(--brand); text-decoration: none; }
 button { font-family: inherit; cursor: pointer; }

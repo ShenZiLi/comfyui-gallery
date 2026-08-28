@@ -30,14 +30,14 @@
 
   function toggleTheme() {
     var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    // 用 View Transitions 做圆形扩散动效（右上角按钮处展开至全屏）
+    // 亮/暗切换：优先用 View Transitions 从右上角按钮处圆形扩散至全屏
     if (document.startViewTransition) {
       try {
         document.startViewTransition(function () { applyTheme(next); });
         return;
       } catch (e) {}
     }
-    applyTheme(next);
+    applyTheme(next); // 不支持时降级为直接切换
   }
 
   function initNav(active) {

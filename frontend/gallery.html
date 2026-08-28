@@ -8,7 +8,6 @@
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/motion@11/dist/motion.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
@@ -307,41 +306,7 @@
             self._restoreScroll = 0;
             setTimeout(function () { window.scrollTo(0, y); }, 80);
           }
-          self.microInit();
         });
-    },
-    _entered: false, _motionBound: false,
-    // 卡片微交互（Motion，~3.5KB）：首次入场交错 + 悬浮拾起
-    microInit() {
-      if (!window.Motion || !window.Motion.animate) return;
-      var self = this;
-      var M = window.Motion;
-      // 等 Alpine 完成本轮渲染后再取卡片/容器
-      setTimeout(function () {
-        if (!self._entered) {
-          self._entered = true;
-          var cards = document.querySelectorAll(".masonry .img-card");
-          if (cards.length) {
-            M.animate(cards, { opacity: [0, 1], y: [14, 0] }, {
-              duration: .34, delay: M.stagger(18), easing: [0.22, 0.9, 0.28, 1]
-            });
-          }
-        }
-        if (!self._motionBound) {
-          self._motionBound = true;
-          var host = document.querySelector(".masonry");
-          if (host) {
-            host.addEventListener("pointerover", function (e) {
-              var c = e.target.closest ? e.target.closest(".img-card") : null;
-              if (c) M.animate(c, { y: -3 }, { duration: .18, easing: "ease-out" });
-            });
-            host.addEventListener("pointerout", function (e) {
-              var c = e.target.closest ? e.target.closest(".img-card") : null;
-              if (c) M.animate(c, { y: 0 }, { duration: .22, easing: "ease-out" });
-            });
-          }
-        }
-      }, 40);
     },
     reloadGroups() {
       var self = this;
