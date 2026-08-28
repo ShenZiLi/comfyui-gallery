@@ -12,7 +12,6 @@
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
-  <script src="dirstore.js"></script>
   <script src="app.js"></script>
   <script defer src="vendor/alpine.min.js"></script>
 </head>
@@ -28,7 +27,7 @@
 
       <select x-model="currentFolder" @change="loadImages()" style="width:auto;max-width:220px">
         <option value="">全部目录</option>
-        <template x-for="f in folders" :key="f.id">
+        <template x-for="f in foldersWithImages" :key="f.id">
           <option :value="f.id" x-text="(f.path||'根目录')+' ('+f.count+')'"></option>
         </template>
       </select>
@@ -85,7 +84,6 @@
             <!-- 1) 尺寸 / 大小 + 复制/下载/删除 一行 -->
             <div class="meta-row">
               <span class="muted" style="font-size:11px" x-text="im.width+'×'+im.height + ' · ' + fmtSize(im.fileSize)"></span>
-              <span style="font-size:12px;color:var(--text-2);font-weight:600;margin-left:8px" x-show="im.aiRating!=null">AI <span x-text="im.aiRating"></span></span>
               <span class="nav-spacer"></span>
               <button class="icon-btn" title="复制图片" @click.stop="copyImage(im)">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -98,12 +96,17 @@
               </button>
             </div>
 
+            <!-- AI 评分（置于尺寸/大小文字下方） -->
+            <div x-show="im.aiRating!=null" style="font-size:11px;color:var(--brand);margin-top:2px">
+              AI 评分 <span x-text="im.aiRating" style="font-weight:600"></span>
+            </div>
+
             <!-- 2) 模型（主模型 / LoRA） + 刷新 -->
             <div style="margin-top:8px">
               <div style="display:flex;align-items:center;gap:6px">
                 <span style="font-size:12px;color:var(--text-3)">模型</span>
                 <span class="nav-spacer"></span>
-                <button class="src-tab ai" :class="{'ai-ing':isReparsing(im)}" title="用 AI 解析模型与提示词"
+                <button class="src-tab ai" :class="{'ai-ing':isReparsing(im)}" data-tip="AI解析工作流模型"
                         @click.stop="reparseAll(im)">
                   <span x-text="isReparsing(im) ? '解析中' : 'AI'"></span>
                 </button>
@@ -114,9 +117,8 @@
                 </template>
               </div>
               <div class="muted" style="font-size:11px;margin-top:6px" x-show="!modelChips(im).length">
-                <span x-text="isReparsing(im) ? 'AI 解析中…' : '未识别到模型'" x-show="!im._mErr"></span>
+                <span x-text="isReparsing(im) ? 'AI 解析中…' : '未识别到模型，点击 AI 解析工作流'" x-show="!im._mErr"></span>
                 <span x-show="im._mErr" x-text="im._mErr"></span>
-                <span x-show="!im._mErr && !isReparsing(im) && !modelChips(im).length" style="display:inline">—— 点右上角 AI 解析</span>
               </div>
             </div>
 
@@ -126,24 +128,19 @@
                 <span style="display:inline-flex;align-items:center;gap:6px">
                   <span style="font-size:12px;color:var(--text-3)">提示词</span>
                   <span class="src-tabs">
-                    <button class="src-tab origin" :class="{active: im._src==='origin', dim: promptGrey(im,'origin')}"
-                            @click.stop="selectPrompt(im,'origin')">原生</button>
-                    <button class="src-tab reverse" :class="{active: im._src==='reverse', dim: promptGrey(im,'reverse')&&!im._rParse}"
-                            @click.stop="selectPrompt(im,'reverse')">
+                    <button class="src-tab origin" :class="{active: im._src==='origin', has: !promptGrey(im,'origin')}"
+                        @click.stop="selectPrompt(im,'origin')">原生</button>
+                    <button class="src-tab reverse" :class="{active: im._src==='reverse', has: !!(im.reversePrompt||'')||im._rParse}"
+                        @click.stop="selectPrompt(im,'reverse')">
                       <span x-text="im._rParse ? '反推中' : '反推'"></span>
                     </button>
-                    <button class="src-tab ai" :class="{active: im._src==='ai', 'ai-has': !!im.aiPrompt, dim: !im.aiPrompt && !isReparsing(im)}"
-                            @click.stop="selectPrompt(im,'ai')">
+                    <button class="src-tab ai" :class="{active: im._src==='ai', has: !!(im.aiPrompt)||isReparsing(im)}" data-tip="AI解析工作流提示词"
+                        @click.stop="selectPrompt(im,'ai')">
                       <span x-text="isReparsing(im) ? '解析中' : 'AI'"></span>
                     </button>
                   </span>
                 </span>
                 <span style="display:inline-flex;align-items:center;gap:2px">
-                  <button class="icon-btn" title="展开/收起" x-show="promptMore(im)"
-                          @click.stop="im._exp=!im._exp">
-                    <svg x-show="!im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5 5 5-5"/></svg>
-                    <svg x-show="im._exp" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14l-5-5-5 5"/></svg>
-                  </button>
                   <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompts(im)[0] || '')">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                   </button>
@@ -215,7 +212,7 @@
   </div>
 
   <!-- 工作流预览弹窗 -->
-  <div class="modal-mask" x-show="showWorkflow" @keydown.escape.window="showWorkflow=false">
+  <div class="modal-mask" x-show="showWorkflow" x-cloak @keydown.escape.window="showWorkflow=false">
     <div class="modal">
       <div class="modal-head">
         <h3>工作流预览</h3>
@@ -232,7 +229,7 @@
   </div>
 
   <!-- 删除二次确认弹窗 -->
-  <div class="modal-mask" x-show="delTarget" @keydown.escape.window="delTarget=null">
+  <div class="modal-mask" x-show="delTarget" x-cloak @keydown.escape.window="delTarget=null">
     <div class="modal" style="max-width:400px">
       <div class="modal-head">
         <h3>删除确认</h3>
@@ -247,6 +244,36 @@
       </div>
     </div>
   </div>
+
+  <!-- 导入无写入权限：授权引导弹窗 -->
+  <div class="modal-mask" x-show="permModal" x-cloak @keydown.escape.window="permModal=false">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head">
+        <h3>导入需要授权</h3>
+        <button class="modal-x" @click="permModal=false">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin:0 0 10px" x-text="permMsg"></p>
+        <p style="margin:0 0 6px;color:var(--text-2)">
+          当前服务（后端终端）没有写入所选「导入保存目录」的权限。macOS 会限制终端访问
+          <b>桌面 / 文稿 / 下载</b> 等受保护文件夹。
+        </p>
+        <ol style="margin:0 0 14px 18px;color:var(--text-2);line-height:1.7">
+          <li>打开 <b>系统设置 → 隐私与安全性 → 完全磁盘访问权限</b></li>
+          <li>勾选正在运行本服务的终端应用（如 Terminal / iTerm / VS Code）</li>
+          <li>重启服务后，回到这里点「重试」</li>
+        </ol>
+        <p class="muted" style="margin:0 0 14px;font-size:12px">
+          或在 <b>设置 → 导入保存目录</b> 改为一个你确定可写的绝对路径（如 <span style="word-break:break-all">~/Pictures/ArtMirror</span>）。
+        </p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn sm" @click="permModal=false">取消</button>
+          <button class="btn sm" @click="goSettingsImport()">去设置改路径</button>
+          <button class="btn sm primary" @click="retryImport()">重试</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 
@@ -254,7 +281,8 @@
   window.Gallery = {
     folders: [], images: [], groups: [], tags: [], q: "", mode: "flat", currentFolder: "",
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0, importDir: null,
+    delTarget: null, _ver: -1, _restoreScroll: 0,
+    permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
       var self = this;
@@ -291,11 +319,6 @@
       }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
-      // 读取设置页选择的导入保存目录句柄（供拖拽直写本地目录）
-      DirStore.getHandle().then(function (h) {
-        self.importDir = h || null;
-        if (h) App.toast("已选择导入目录：「" + h.name + "」，拖拽导入将保存到该文件夹");
-      }).catch(function () {});
       this.loadImages();
       setInterval(function () { self.pollSync(); }, 3000);
     },
@@ -311,6 +334,8 @@
       });
     },
     allTags() { return this.tags; },
+    // 下拉框只显示有图片的目录；无图片目录隐藏
+    foldersWithImages() { return (this.folders || []).filter(function (f) { return (f.count || 0) > 0; }); },
     fmtSize: App.fmtSize,
     loadImages() {
       this.loading = true;
@@ -387,6 +412,19 @@
       });
     },
     reqDelete(im) { this.delTarget = im; },
+    retryImport() {
+      var files = this.permFiles;
+      var self = this;
+      this.permModal = false;
+      this.permFiles = null;
+      if (files && files.length) { self._import(files); }
+    },
+    goSettingsImport() {
+      App.toast("请在「设置 → 导入保存目录」修改可写的绝对路径");
+      this.permModal = false;
+      this.permFiles = null;
+      location.href = "settings.html";
+    },
     confirmDelete() {
       var self = this;
       var im = this.delTarget;
@@ -487,16 +525,18 @@
       if (!files.length) { App.toast("未检测到图片文件"); return; }
       var self = this;
       App.toast("正在导入 " + files.length + " 张图片…");
-      // 1) 若设置了导入保存目录，浏览器直写该本地目录（弹授权，绕开服务端写权限）
-      var writeLocal = this.importDir ? writeFilesToDir(this.importDir, files) : Promise.resolve(false);
-      // 2) 上传副本给后端，写入自管入库区，实时入库展示
-      var upload = Api.uploadImages(files).then(function (r) {
+      // 上传给后端，保存到设置的「导入保存目录」并实时入库展示
+      Api.uploadImages(files).then(function (r) {
         App.toast("已导入 " + r.uploaded + " 张图片，正在扫描入库…");
       }).catch(function (e) {
+        // 无写入权限：弹出授权引导，供用户授权后重试
+        if (e && e.status === 403) {
+          self.permFiles = files;
+          self.permMsg = (e && e.message) || "无写入权限";
+          self.permModal = true;
+          return;
+        }
         App.toast("导入失败：" + ((e && e.message) || e));
-      });
-      Promise.all([writeLocal, upload]).then(function (rs) {
-        if (self.importDir && rs[0] === true) App.toast("已保存到本地目录「" + self.importDir.name + "」，并同步入库。");
       });
     },
     copy(text) { App.copyText(text); },
@@ -530,16 +570,40 @@
     },
   };
 
-  // 把图片文件写入指定目录句柄（File System Access API）；无需写权限时返回 false 表示跳过
-  function writeFilesToDir(dirHandle, files) {
-    return Promise.all(files.map(function (f) {
-      return dirHandle.getFileHandle(f.name, { create: true }).then(function (fh) {
-        return fh.createWritable().then(function (w) {
-          return w.write(f).then(function () { return w.close(); });
-        });
-      });
-    })).then(function () { return true; }, function () { return false; });
-  }
+  // 拖拽导入现由后端 /api/settings/upload 保存到「导入保存目录」并入库，此处不再直写本地目录
+  // 顶层悬浮气泡：data-tip 元素悬停 1s 后，把气泡挂在 body 顶层显示（避免被卡片裁剪）
+  (function () {
+    var state = { cur: null, bubble: null, timer: null };
+    function hide() {
+      clearTimeout(state.timer);
+      if (state.bubble && state.bubble.parentNode) state.bubble.parentNode.removeChild(state.bubble);
+      state.bubble = null; state.cur = null;
+    }
+    document.addEventListener("mouseover", function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest("[data-tip]") : null;
+      if (!el || el === state.cur) return;
+      hide();
+      state.cur = el;
+      var tip = el.getAttribute("data-tip") || "";
+      if (!tip) return;
+      var b = document.createElement("div");
+      b.className = "am-tip-bubble";
+      b.textContent = tip;
+      document.body.appendChild(b);
+      var r = el.getBoundingClientRect();
+      b.style.left = (r.left + r.width / 2) + "px";
+      b.style.top = (r.bottom + 8) + "px";
+      b.style.transform = "translateX(-50%)";
+      state.bubble = b;
+      state.timer = setTimeout(function () { b.classList.add("show"); }, 1000);
+    }, true);
+    document.addEventListener("mouseout", function (ev) {
+      var el = state.cur;
+      if (!el) return;
+      if (ev.relatedTarget && el.contains(ev.relatedTarget)) return; // 仍在按钮内
+      hide();
+    }, true);
+  })();
 </script>
 </body>
 </html>

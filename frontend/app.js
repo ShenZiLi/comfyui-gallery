@@ -2,6 +2,8 @@
 (function () {
   var ICON_SUN = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   var ICON_MOON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+  // 画镜品牌图标：圆角画框内嵌山景 + 太阳，右侧折射镜光，现代渐变风格
+  var ICON_LOGO = '<svg class="brand-icon" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="amg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs><rect x="4" y="4" width="40" height="40" rx="12" fill="url(#amg)"/><rect x="13" y="13" width="22" height="22" rx="6" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="1.6"/><path d="M18 29l7-7 4 4 3-3 4 6z" fill="#fff" fill-opacity=".95"/><circle cx="31" cy="19" r="2.3" fill="#fff" fill-opacity=".95"/><path d="M13 33l4-4.5" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
   function navHTML(active) {
     var links = [
@@ -11,7 +13,7 @@
     var items = links.map(function (l) {
       return '<a class="nav-link' + (l.key === active ? " active" : "") + '" href="' + l.href + '">' + l.text + "</a>";
     }).join("");
-    return '<nav><span class="brand"><span class="dot">🖼</span>画镜 <span class="dot" style="font-size:12px;color:var(--text-3)">ArtMirror</span></span>' +
+    return '<nav><span class="brand">' + ICON_LOGO + '画镜 <span class="dot" style="font-size:12px;color:var(--text-3)">ArtMirror</span></span>' +
       items +
       '<span class="nav-spacer"></span>' +
       '<button id="theme-toggle" class="theme-toggle" title="切换明暗模式" aria-label="切换明暗模式"></button></nav>';

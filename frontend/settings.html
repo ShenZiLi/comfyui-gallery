@@ -11,7 +11,6 @@
   <link rel="stylesheet" href="style.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
-  <script src="dirstore.js"></script>
   <script src="app.js"></script>
   <script defer src="vendor/alpine.min.js"></script>
 </head>
@@ -47,21 +46,7 @@
         </template>
       </div>
 
-      <!-- 导入保存目录（浏览器导入/拖拽图片的归宿） -->
-      <div class="mt" style="border-top:1px solid var(--border);padding-top:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
-          <b style="font-size:14px">导入保存目录</b>
-          <span class="muted" style="font-size:12px">选择本地文件夹，拖拽到图库的图片将保存进该文件夹</span>
-        </div>
-        <div class="btn-row mt">
-          <input type="text" x-model="cfg.importDir" placeholder="选择本地文件夹" style="flex:1" readonly
-                 @click="pickImportDir()" />
-          <button class="btn" @click="pickImportDir()" x-text="cfg.importDir?'更改':'浏览…'"></button>
-        </div>
-        <div class="muted mt" style="font-size:12px" x-text="importDirHint"></div>
-      </div>
-
-      <!-- 已扫描的文件夹（隐藏 0 条图片项） -->
+      <!-- 已扫描的文件夹（隐藏 0 条图片项；随图片目录增删联动重新扫描） -->
       <div class="mt" x-show="scannedFilters().length">
         <div class="muted" style="font-size:12px;font-weight:600">已扫描的文件夹</div>
         <div class="chips">
@@ -71,7 +56,19 @@
           </template>
         </div>
       </div>
-      <div class="muted mt" x-show="!cfg.scanRoots.length" style="color:var(--text-3)">尚未添加图片目录。</div>
+
+      <!-- 导入保存目录（浏览器导入/拖拽图片的归宿） -->
+      <div class="mt" style="border-top:1px solid var(--border);padding-top:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px">
+          <b style="font-size:14px">导入保存目录</b>
+          <span class="muted" style="font-size:12px">选择本地文件夹，拖拽到图库的图片将保存进该文件夹</span>
+        </div>
+        <div class="btn-row mt">
+          <input type="text" x-model="cfg.importDir" placeholder="/path/to/import" style="flex:1"
+                 @keydown.enter="saveImportDir()" @change="saveImportDir()" />
+        </div>
+        <div class="muted mt" style="font-size:12px" x-text="importDirHint"></div>
+      </div>
     </div>
 
     <!-- 大模型配置（按角色混搭厂商） -->
@@ -83,11 +80,11 @@
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
             <b x-text="r.label" style="white-space:nowrap"></b>
             <!-- 单角色连通性测试结果：紧贴角色标签（成功绿/失败红/测试中灰） -->
-            <span x-show="testing && !testState[r.key]" class="pill-testing" style="white-space:nowrap">测试中…</span>
+            <span x-show="testing && !testState[r.key]" class="status-inline" style="white-space:nowrap">测试中…</span>
             <span x-show="!testing && testState[r.key]"
-                  :class="testState[r.key] && testState[r.key].ok ? 'pill-ok' : 'pill-bad'"
+                  :class="testState[r.key] && testState[r.key].ok ? 'status-inline ok' : 'status-inline bad'"
                   x-text="testState[r.key] && testState[r.key].ok ? '连接成功' : '连接失败'"
-                  style="white-space:nowrap;font-size:13px;font-weight:600;padding:3px 10px"></span>
+                  style="white-space:nowrap"></span>
             <span style="flex:1"></span>
             <select x-model="cfg.llm[r.key].vendor" @change="onVendorChange(r.key)" style="width:auto">
               <option value="deepseek">DeepSeek</option>
@@ -135,6 +132,28 @@
       <div class="muted mt" x-show="llmMsg" style="color:var(--special)" x-text="llmMsg"></div>
     </div>
 
+    <!-- AI 提示词配置（可自定义，留空用默认） -->
+    <div class="card pad">
+      <h3 style="margin-top:0">AI 提示词配置</h3>
+      <p class="muted">自定义四个 AI 功能的提示词；留空则使用内置默认提示词，修改后自动保存。</p>
+      <template x-for="p in promptFields" :key="p.key">
+        <div style="margin-top:12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <b style="font-size:13px" x-text="p.label"></b>
+            <span style="flex:1"></span>
+            <button class="btn sm" @click="resetPrompt(p.key)" title="清空并恢复为默认提示词">恢复默认</button>
+          </div>
+          <textarea x-model="cfg.prompts[p.key]" rows="5" style="width:100%;margin-top:6px;font-size:12px;resize:vertical"
+                    placeholder="留空则使用默认提示词" @change="savePrompts()"></textarea>
+          <div class="muted" style="font-size:11px;margin-top:4px">
+            默认：<a href="javascript:void(0)" style="cursor:pointer;text-decoration:underline dotted;color:var(--text-2)"
+                   @click.prevent="copyPromptDefault(p.key)" title="点击复制完整默认提示词">
+              <span x-text="promptHint(p.key)"></span></a>
+          </div>
+        </div>
+      </template>
+    </div>
+
     <!-- 批量 AI 操作 -->
     <div class="card pad">
       <h3 style="margin-top:0">批量 AI 操作</h3>
@@ -178,9 +197,17 @@
 
   window.Settings = {
     roles: ROLES,
+    promptFields: [
+      { key: "reverse", label: "反推提示词" },
+      { key: "score", label: "AI 评分" },
+      { key: "translate", label: "中英互译" },
+      { key: "analyze", label: "AI 解析工作流" },
+    ],
+    promptDefaults: {},
     cfg: {
       scanRoots: [],
       importDir: "",
+      prompts: { reverse: "", score: "", translate: "", analyze: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
       },
@@ -192,8 +219,8 @@
     scope: ["all"],
     _lastVer: -1,
     importDirHint() {
-      if (this.cfg.importDir) return "已选择：拖拽到图库的图片将保存到「" + this.cfg.importDir + "」文件夹，并自动入库。";
-      return "未选择 —— 请点击「浏览…」选择本地文件夹；图库拖拽导入将写入该文件夹。";
+      if (this.cfg.importDir) return "已设置：导入 / 拖拽的图片将保存到「" + this.cfg.importDir + "」并自动入库。";
+      return "未设置 —— 拖拽导入将回退保存到应用数据目录下的自管导入区。";
     },
     // 已扫描文件夹：过滤掉 0 条图片的项
     scannedFilters() { return (this.scanned || []).filter(function (f) { return (f.count || 0) > 0; }); },
@@ -211,11 +238,14 @@
     init() {
       App.initNav("settings");
       var self = this;
-      DirStore.getHandle().then(function (h) {
-        if (h && h.name) self.cfg.importDir = h.name;
-      }).catch(function () {});
       Api.getSettings().then(function (s) {
         self.cfg.scanRoots = s.scanRoots || [];
+        self.cfg.importDir = s.importDir || "";
+        self.promptDefaults = s.prompt_defaults || {};
+        var p = s.prompts || {};
+        ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+          if (p[k] !== undefined) self.cfg.prompts[k] = p[k] || "";
+        });
         var llm = s.llm || {};
         ROLES.forEach(function (r) {
           var rc = llm[r.key] || {};
@@ -370,27 +400,36 @@
     },
     batch(kind) { alert("原型提示：批量「" + kind + "」将在后端 M3 AI 能力接入后执行。"); },
 
-    // ---- 导入保存目录（系统原生文件夹选择器） ----
-    pickImportDir() {
+    // ---- 导入保存目录（绝对路径，在后端保存并入库） ----
+    saveImportDir() {
       var self = this;
-      if (!DirStore.supported()) {
-        this.doneMsg = "当前浏览器不支持系统文件夹选择，请使用 Chrome / Edge。";
-        App.toast("当前浏览器不支持选择文件夹，请用 Chrome / Edge");
-        return;
-      }
-      window.showDirectoryPicker({ id: "am-import", mode: "readwrite" })
-        .then(function (handle) {
-          self.cfg.importDir = handle.name;
-          return DirStore.saveHandle(handle).then(function () {
-            // 通知同源其它标签页（图库页）刷新句柄
-            if (window.localStorage) localStorage.setItem("am_import_dir", String(Date.now()));
-            self.doneMsg = "已选择文件夹：「" + handle.name + "」，拖拽导入的图片将保存到此并自动入库。";
-          });
-        })
-        .catch(function (e) {
-          if (e && e.name === "AbortError") return;  // 用户取消
-          self.doneMsg = "选择文件夹失败：" + ((e && e.message) || e);
-        });
+      var v = (this.cfg.importDir || "").trim();
+      Api.updateSettings({ importDir: v }).catch(function (e) {
+        self.doneMsg = "保存失败：" + ((e && e.message) || e);
+      });
+    },
+
+    // ---- AI 提示词配置 ----
+    savePrompts() {
+      var self = this;
+      Api.updateSettings({ prompts: this.cfg.prompts }).catch(function (e) {
+        self.doneMsg = "提示词保存失败：" + ((e && e.message) || e);
+      });
+    },
+    resetPrompt(key) {
+      this.cfg.prompts[key] = "";
+      this.savePrompts();
+    },
+    copyPromptDefault(key) {
+      var d = (this.promptDefaults || {})[key] || "";
+      if (!d) return;
+      App.copyText(d);  // copyText 内部会提示「已复制」
+    },
+    promptHint(key) {
+      var d = (this.promptDefaults || {})[key] || "";
+      if (!d) return "";
+      var t = String(d).replace(/\s+/g, " ").trim();
+      return t.length > 120 ? (t.slice(0, 120) + "…") : t;
     },
   };
 </script>

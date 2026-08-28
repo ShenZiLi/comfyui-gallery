@@ -80,6 +80,12 @@
       });
     },
 
+    translatePrompt: function (id, kind) {
+      return req("api/images/" + id + "/translate", { method: "POST", body: { kind: kind } }).catch(function (e) {
+        throw e;
+      });
+    },
+
     deleteImage: function (id) {
       return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
         throw e;
@@ -161,7 +167,9 @@
         return fetch("api/settings/upload", { method: "POST", body: fd }).then(function (r) {
           if (!r.ok) {
             return r.json().catch(function () { return {}; }).then(function (body) {
-              throw new Error((body && body.detail) || ("HTTP " + r.status));
+              var err = new Error((body && body.detail) || ("HTTP " + r.status));
+              err.status = r.status;
+              throw err;
             });
           }
           return r.json();
@@ -170,6 +178,7 @@
       return Promise.all(list.map(up)).then(function (results) {
         return { uploaded: results.length, paths: results.map(function (r) { return r.path; }) };
       }).catch(function (e) {
+        if (!(e && e.status)) e.status = 0;
         throw (e && e.message) ? e : new Error("导入失败：后端未连接");
       });
     },

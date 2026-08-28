@@ -1,4 +1,5 @@
 """系统设置与扫描路由。"""
+import errno
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -120,7 +121,7 @@ def remove_scan_root(body: dict, session: Session = Depends(get_session)):
 
 @router.get("")
 def get_settings(session: Session = Depends(get_session)):
-    """读取设置（多个扫描路径 + 各模型角色配置 + 导入保存目录）。"""
+    """读取设置（多个扫描路径 + 各模型角色配置 + 导入目录 + AI 提示词）。"""
     roots = [str(r) for r in scanner.get_scan_roots(session)]
     llm = {}
     for role in ROLES:
@@ -131,7 +132,25 @@ def get_settings(session: Session = Depends(get_session)):
             if any(vc.get(f) for f in ("base_url", "api_key", "model")):
                 per_vendor[v] = vc
         llm[role] = {**cur, "vendors": per_vendor}
-    return {"scanRoots": roots, "llm": llm, "importDir": _get(session, "import_dir")}
+    # AI 提示词：已配置值 + 代码默认值（未配置时使用默认）
+    from ..services import llm as llm_mod
+    prompt_defaults = {
+        "reverse": llm_mod.PROMPT_REVERSE,
+        "score": llm_mod.PROMPT_SCORE,
+        "translate": llm_mod.PROMPT_TRANSLATE,
+        "analyze": llm_mod.PROMPT_ANALYZE,
+    }
+    prompts = {f: _get(session, f"prompt_{f}") for f in prompt_defaults}
+    return {
+        "scanRoots": roots,
+        "llm": llm,
+        "importDir": _get(session, "import_dir"),
+        "prompts": prompts,
+        "prompt_defaults": prompt_defaults,
+    }
+
+
+PROMPT_FEATURES = ("reverse", "score", "translate", "analyze")
 
 
 @router.post("")
@@ -141,6 +160,11 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
     if isinstance(llm, dict):
         for role in ROLES:
             _set_role_config(session, role, llm.get(role) or {})
+    if body.get("prompts") is not None:
+        prompts = body["prompts"] or {}
+        for f in PROMPT_FEATURES:
+            if f in prompts:
+                _set(session, f"prompt_{f}", str(prompts[f] or ""))
     if body.get("scanRoots") is not None:
         scanner.save_scan_roots(session, [str(r) for r in body["scanRoots"]])
     if body.get("importDir") is not None:
@@ -255,12 +279,21 @@ def upload_image(
     session: Session = Depends(get_session),
     bg: BackgroundTasks = BackgroundTasks(),
 ):
-    """浏览器/拖拽导入图片：浏览器直写本地目录后，此接口接收副本写入自管导入库并入库展示。"""
-    # 自管可写导入目录（应用数据目录下，天然存在写权限，避免受用户目录权限影响）
-    target_dir = Path(env_settings.data_dir) / "import"
+    """浏览器/拖拽导入图片：将文件保存到「导入保存目录」（绝对路径），并入库展示。
+
+    目标目录优先取设置里的 import_dir；未配置时回退到应用数据目录下的自管导入区，
+    以保证总能写入。
+    """
+    configured = _get(session, "import_dir").strip()
+    if configured:
+        target_dir = Path(configured).expanduser().resolve()
+        if not target_dir.is_dir():
+            raise HTTPException(400, f"导入保存目录不存在或不可访问：{target_dir}")
+    else:
+        target_dir = Path(env_settings.data_dir) / "import"
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    # 将自管导入目录纳入扫描根，导入图片即可实时入库展示
+    # 将导入目录纳入扫描根，导入图片即可实时入库展示
     roots = list(scanner.get_scan_roots(session))
     key = str(target_dir)
     if key not in [str(r.resolve()) for r in roots]:
@@ -279,6 +312,11 @@ def upload_image(
         with open(target_path, "wb") as f:
             f.write(file.file.read())
     except OSError as exc:
+        # 区分权限类错误，返回 403 供前端弹出授权引导
+        if exc.errno in (errno.EACCES, errno.EPERM):
+            raise HTTPException(
+                403, f"写入图片失败：无写入权限，请授权运行本服务的终端访问「{target_dir}」后重试"
+            )
         raise HTTPException(500, f"写入图片失败：{exc}")
 
     bg.add_task(_background_scan, str(target_dir))

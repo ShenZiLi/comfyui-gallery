@@ -33,10 +33,26 @@ def _set_hidden(session: Session, ids: set[int]) -> None:
 
 @router.get("")
 def list_folders(session: Session = Depends(get_session)):
-    """返回目录树（含各自图片数量与隐藏状态）。"""
+    """返回已注册图片目录下扫描到的文件夹（含图片数量与隐藏状态）。
+
+    强调关联：仅返回落在当前注册根目录前缀下的文件夹；根目录增删导致该集合变化。
+    """
+    from ..services import scanner
+
+    roots = scanner.get_scan_roots(session)
+    root_prefixes = [str(r).rstrip("/") for r in roots]
+
+    def _under_root(path: str) -> bool:
+        # 精确匹配根目录自身，或严格落在某个根目录「之下」的路径
+        return any(
+            path == rp or path.startswith(rp + "/") for rp in root_prefixes if rp
+        )
+
     folders = session.exec(
         select(Folder).where(Folder.is_deleted == 0, Folder.path.startswith("/")).order_by(Folder.path)
     ).all()
+    folders = [f for f in folders if _under_root(f.path)]
+
     counts = {}
     for row in session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all():
         counts[row.folder_id] = counts.get(row.folder_id, 0) + 1

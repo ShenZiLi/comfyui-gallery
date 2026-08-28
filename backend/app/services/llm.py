@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -43,6 +44,32 @@ def chat_text(prompt: str, session: Optional[Session] = None) -> str:
         with Session(engine) as s:
             return _chat(s, prompt)
     return _chat(session, prompt)
+
+
+def _prompt_override(session, key: str, default: str) -> str:
+    """读取设置表中用户配置的自定义提示词；未配置则用代码默认值。"""
+    if session is None:
+        return default
+    row = session.exec(select(Setting).where(Setting.key == key)).first()
+    val = (row.value or "").strip() if row else ""
+    return val or default
+
+
+PROMPT_TRANSLATE = (
+    "你是专业的 AI 绘画提示词翻译助手，请把下面这段提示词翻译成{target}。"
+    "只输出译文本身，不要前言、不要解释、不要引号。\n\n原提示词：\n{text}"
+)
+
+
+def translate_prompt(text: str, target_lang: str, session: Optional[Session] = None) -> str:
+    """调用「文本」角色模型，把提示词互译为目标语言（zh/en），只返回译文。
+
+    提示词模版可经设置自定义（支持 {target}/{text} 占位符），未配置用默认。
+    """
+    target_name = "中文" if target_lang == "zh" else "英文"
+    template = _prompt_override(session, "prompt_translate", PROMPT_TRANSLATE)
+    prompt = template.replace("{target}", target_name).replace("{text}", text)
+    return (chat_text(prompt, session) or "").strip()
 
 
 def _chat(session: Session, prompt: str) -> str:
@@ -107,8 +134,10 @@ def analyze_workflow(workflow_text: str, session: Session) -> dict:
     返回结构：{workflow_id, models: {diffusion_models, text_encoders, vaes, loras, other},
     prompts: {positive, negative}, sampling, groups}
     主模型指实际渲染使用的 checkpoint/unet 模型；同时解析提示词。
+    提示词可经设置自定义，未配置用默认。
     """
-    prompt = _ANALYZE_PROMPT + "\n\n工作流 JSON：\n" + workflow_text
+    base = _prompt_override(session, "prompt_analyze", PROMPT_ANALYZE)
+    prompt = base + "\n\n工作流 JSON：\n" + workflow_text
     content = chat_text(prompt, session)
     return _extract_json(content)
 
@@ -164,37 +193,109 @@ def _vi(session: Session, image_data_b64: str, prompt: str) -> str:
         raise LLMError("视觉模型返回格式异常")
 
 
-def reverse_prompt_image(image_path, session: Session) -> str:
-    """用视觉模型对图片反推提示词。"""
+# 图片超过该字节数（5MB）时在发送前压缩一次，避免超出厂商图片大小限制
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
+COMPRESS_MAX_DIM = 1600
+COMPRESS_QUALITY = 85
+
+
+def _encode_image(image_path) -> str:
+    """读取图片并 base64 编码；若原始文件 >5MB，先压缩一次（降尺寸 + JPEG 压缩）。
+
+    压缩后通常能显著减小体积，同时基本保留画面内容用于视觉模型理解。
+    """
     import base64
 
-    with open(image_path, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
+    path = Path(image_path)
+    if not path.exists():
+        raise LLMError("图片文件不存在")
+
+    raw = path.read_bytes()
+    if len(raw) <= MAX_IMAGE_BYTES:
+        return base64.b64encode(raw).decode()
+
+    # 大于 5MB：用 Pillow 压缩一次
+    try:
+        from io import BytesIO
+
+        import PIL.Image
+
+        img = PIL.Image.open(BytesIO(raw))
+        if img.mode not in ("RGB", "RGBA", "L"):
+            img = img.convert("RGB")
+        if max(img.size) > COMPRESS_MAX_DIM:
+            img.thumbnail((COMPRESS_MAX_DIM, COMPRESS_MAX_DIM), PIL.Image.LANCZOS)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=COMPRESS_QUALITY, optimize=True)
+        compressed = out.getvalue()
+        data = base64.b64encode(compressed).decode()
+    except Exception:  # noqa: BLE001 — 压缩失败则退回原图
+        data = base64.b64encode(raw).decode()
+    return data
+
+
+PROMPT_REVERSE = (
+    "请仔细观察这张图片，用中文详细描述它的内容作为 AI 绘画提示词。"
+    "需涵盖：主体、人物外貌与动作、服装、场景/背景、光线、影调、构图、镜头、画风、氛围、"
+    "材质质感与摄影风格等。只输出提示词本身，不要前言与解释。"
+)
+
+
+def reverse_prompt_image(image_path, session: Session) -> str:
+    """用视觉模型对图片反推提示词。提示词可经设置自定义，未配置用默认。"""
+    data = _encode_image(image_path)  # >5MB 时先压缩一次再发送反推
     text = chat_vision(
         data,
-        (
-            "请仔细观察这张图片，用中文详细描述它的内容作为 AI 绘画提示词。"
-            "需涵盖：主体、人物外貌与动作、服装、场景/背景、光线、影调、构图、镜头、画风、氛围、"
-            "材质质感与摄影风格等。只输出提示词本身，不要前言与解释。"
-        ),
+        _prompt_override(session, "prompt_reverse", PROMPT_REVERSE),
         session,
     )
     return (text or "").strip()
 
 
-def score_image(image_path, session: Session) -> dict:
-    """用视觉模型给图片打分（0-100）并给理由。返回 {"score": int, "reason": str}。"""
-    import base64
+# AI 评分用标准化评测提示词：从多个维度评价图片质量，输出结构化明细
+PROMPT_SCORE = """你是一位专业的 AI 绘画（图像生成）图片评审。请从多个维度客观评价图中画面质量，每个维度独立打分。
 
-    with open(image_path, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
+【评价维度与标准】（每维度 0-100）
+1. 构图（Composition）：画面主体安排、平衡、留白、视线引导、张力是否得当；
+2. 光影（Lighting）：光源方向与性质、明暗层次、体积感、氛围光影是否出色；
+3. 主体与主题（Subject）：主体识别清晰、主题表达明确、情绪与叙事是否到位；
+4. 细节与完成度（Detail）：五官/衣物/背景等细节是否完整、有无扭曲或缺失；
+5. 色彩与影调（Color）：配色和谐、色调统一、影调美感、整体色感；
+6. 美感与艺术性（Aesthetics）：整体视觉冲击、艺术风格、审美高级感；
+7. 技术质量（Technical）：清晰度/锐度、噪点/伪影、过度处理等画质问题。
+
+【评分规则】
+- 每个维度给 0-100 整数分与一句简短评语；
+- 总分 score = 各维度加权平均（构图/光影/主体/细节各占 15% 高权重示例可自行权衡，取值 0-100）；
+- 若某方面存在明显缺陷（如手指扭曲、过曝、噪点严重）要据实扣分并在该维度意见中说明。
+
+【输出】只输出 JSON，不要任何解释文字，格式如下：
+{
+  "score": 82,
+  "reason": "一句话总结本图整体质量与最大亮点/短板。",
+  "dimensions": {
+    "构图":       {"score": 85, "comment": "…"},
+    "光影":       {"score": 80, "comment": "…"},
+    "主体与主题": {"score": 88, "comment": "…"},
+    "细节与完成度":{"score": 75, "comment": "…"},
+    "色彩与影调": {"score": 84, "comment": "…"},
+    "美感与艺术性":{"score": 86, "comment": "…"},
+    "技术质量":   {"score": 78, "comment": "…"}
+  }
+}"""
+
+
+def score_image(image_path, session: Session) -> dict:
+    """用视觉模型按标准化维度给图片打分（0-100）并给明细理由。
+
+    返回 {"score": int, "reason": str}，reason 由各维度得分拼成的多行明细。
+    """
+    data = _encode_image(image_path)  # >5MB 时先压缩一次再发送评分
     text = chat_vision(
         data,
-        (
-            "你是一位专业的 AI 绘画图片评审。请从构图、光影、主体表现、细节完成度、整体美感与"
-            "艺术性等维度打分，分数 0-100。只输出 JSON："
-            '{"score": 82, "reason": "构图完整，光影层次丰富，主体突出，细节到位。"}'
-        ),
+        _prompt_override(session, "prompt_score", PROMPT_SCORE),
         session,
     )
     obj = _extract_json(text)
@@ -202,10 +303,27 @@ def score_image(image_path, session: Session) -> dict:
         score = int(float(obj.get("score")))
     except (TypeError, ValueError):
         score = 0
-    return {"score": max(0, min(100, score)), "reason": str(obj.get("reason") or "")}
+
+    # 把各维度得分拼成可读的多行明细作为展示理由
+    lines = []
+    dims = obj.get("dimensions")
+    if isinstance(dims, dict):
+        for name, d in dims.items():
+            if not isinstance(d, dict):
+                continue
+            s = d.get("score")
+            c = str(d.get("comment") or "").strip()
+            if s is not None and (c or True):
+                label = f"{name} {s}分" + (f"：{c}" if c else "")
+                lines.append(label)
+    reason = "\n".join(lines) or str(obj.get("reason") or "")
+    summary = str(obj.get("reason") or "").strip()
+    if summary and lines:
+        reason = summary + "\n\n" + reason
+    return {"score": max(0, min(100, score)), "reason": reason}
 
 
-_ANALYZE_PROMPT = """【角色】你是 ComfyUI 工作流解析器。用户会提供 ComfyUI 前端导出的 workflow JSON（含 nodes/links 数组），你的任务是从中提取全部模型资源、采样参数与提示词，**只输出 JSON，不输出任何解释文字**。
+PROMPT_ANALYZE = """【角色】你是 ComfyUI 工作流解析器。用户会提供 ComfyUI 前端导出的 workflow JSON（含 nodes/links 数组），你的任务是从中提取全部模型资源、采样参数与提示词，**只输出 JSON，不输出任何解释文字**。
 
 【模型节点识别规则】遍历 nodes，按 type 匹配：
 

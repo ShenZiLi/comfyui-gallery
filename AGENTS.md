@@ -36,6 +36,7 @@ ArtMirror/
 - **数据库**：SQLite `data/artmirror.db`；每图**只存引用**(`abs_path`/`sha256`)与 meta，不存图片字节；缩略图在 `data/thumbs/<sha>.webp`。
 - **图片目录**：入库存**对本地路径的链接**，不拷贝导入。实时同步由 `watcher.py` 后台 20s 增量扫描 + 递增版本号 + 前端 3s 轮询 `/api/sync/version` 实现。
 - **Folder.path 一律绝对路径**；`is_deleted=1` 用于软删。
+- **图片不可被遮盖**：图片上方不允许叠加图标或文字（如角标、徽章）进行遮盖；相关提示信息放在图片之外展示。
 - 静态资源已启用 `Cache-Control: no-cache`，前端改动刷新即生效。
 
 ## 常用命令

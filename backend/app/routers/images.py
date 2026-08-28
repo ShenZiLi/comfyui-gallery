@@ -1,4 +1,7 @@
 """图片查询与文件服务路由。"""
+import re
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
@@ -132,7 +135,72 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
     card["promptGraph"] = meta.prompt_graph_json if meta else ""
     card["workflow"] = meta.workflow_json if meta else ""
     card["path"] = im.file_path
+    # 各提示词源已持久化的中英译文：{kind: {lang: text}}
+    translations: dict[str, dict[str, str]] = {}
+    for t in session.exec(
+        select(PromptTranslation).where(PromptTranslation.image_id == im.id)
+    ).all():
+        translations.setdefault(t.prompt_kind, {})[t.lang] = t.text
+    card["translations"] = translations
     return card
+
+
+def _kind_prompt(session: Session, im: ImageAsset, kind: str) -> str:
+    """取某个提示词源的主文本（用于互译）。"""
+    if kind == "reverse":
+        rev = _latest(session, ReversePrompt, im.id)
+        return rev.text if rev else ""
+    meta = session.exec(
+        select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
+    ).first()
+    if kind == "ai":
+        items = _load_str_list(meta.ai_prompts_json if meta else "") or (
+            [meta.ai_prompt] if meta and meta.ai_prompt else []
+        )
+    else:  # origin
+        items = _load_str_list(meta.origin_prompts_json if meta else "") or (
+            [meta.prompt] if meta and meta.prompt else []
+        )
+    return "\n".join(items).strip()
+
+
+def _detect_target_lang(text: str) -> str:
+    """含中文则互译为英文，否则译为中文。"""
+    return "en" if re.search(r"[\u4e00-\u9fff]", text) else "zh"
+
+
+@router.post("/{image_id}/translate")
+def translate_prompt_image(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """对某提示词源做中英互译并持久化；已有译文直接返回而不请求 AI。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    kind = str((body.get("kind") or "origin")).strip()
+    if kind not in ("origin", "reverse", "ai"):
+        raise HTTPException(400, "kind 仅支持 origin / reverse / ai")
+    src = _kind_prompt(session, im, kind)
+    if not src:
+        raise HTTPException(400, "该提示词源暂无内容，无法翻译")
+
+    target = _detect_target_lang(src)
+    exists = session.exec(
+        select(PromptTranslation).where(
+            PromptTranslation.image_id == im.id,
+            PromptTranslation.prompt_kind == kind,
+            PromptTranslation.lang == target,
+        )
+    ).first()
+    if exists is not None:
+        return {"text": exists.text, "lang": target, "cached": True}
+
+    try:
+        translated = llm.translate_prompt(src, target, session)
+    except llm.LLMError as exc:
+        raise HTTPException(502, str(exc))
+    row = PromptTranslation(image_id=im.id, prompt_kind=kind, lang=target, text=translated)
+    session.add(row)
+    session.commit()
+    return {"text": translated, "lang": target, "cached": False}
 
 
 def _query_images(session: Session, folder_id, tag, q, sort):
@@ -214,16 +282,9 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
     if im is None or im.is_deleted:
         raise HTTPException(404, "image not found")
 
-    # 物理删除：把原始文件移入系统废纸篓（可恢复）
-    physical_deleted = False
-    try:
-        import send2trash
-        path = Path(im.abs_path)
-        if path.exists():
-            send2trash.send2trash(str(path))
-            physical_deleted = True
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(500, f"移入废纸篓失败：{exc}")
+    path = Path(im.abs_path)
+    if path.exists():
+        _move_to_trash(path)  # 失败会抛出，从而中断删除
 
     # 软删入库记录并回收标签计数
     im.is_deleted = 1
@@ -236,7 +297,38 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
             tag.count = max(0, (tag.count or 0) - 1)
     session.commit()
     watcher.bump()
-    return {"ok": True, "id": image_id, "moved_to_trash": physical_deleted}
+    return {"ok": True, "id": image_id, "moved_to_trash": True}
+
+
+def _move_to_trash(path: Path) -> None:
+    """把文件移入系统废纸篓。
+
+    优先 send2trash（处理交叉卷/权限正确性）；若因 macOS Automation 权限等失败，
+    回退为直接把文件移入用户主目录废纸篓 ~/.Trash，避免删除被中断。
+    """
+    try:
+        import send2trash
+        send2trash.send2trash(str(path))
+        return
+    except Exception:  # noqa: BLE001
+        pass
+
+    import shutil
+
+    trash_dir = Path.home() / ".Trash"
+    trash_dir.mkdir(exist_ok=True)
+    target = trash_dir / path.name
+    # 处理同名冲突：macOS 惯例追加序号
+    if target.exists():
+        stem, suffix = path.stem, path.suffix
+        i = 1
+        while target.exists():
+            target = trash_dir / f"{stem} - {i}{suffix}"
+            i += 1
+    try:
+        shutil.move(str(path), str(target))
+    except OSError as exc:
+        raise HTTPException(500, f"移入废纸篓失败：{exc}")
 
 
 @router.post("/{image_id}/reparse-models")

@@ -18,19 +18,20 @@
 <div id="topnav"></div>
 
 <div class="page" x-data="Detail" x-init="init()" x-show="im">
-  <div class="detail-layout">
-    <!-- 大图 -->
+  <div class="detail-layout" :class="ratioClass()">
+    <!-- 大图：用原图展示以保证清晰度 -->
     <div class="detail-image card">
       <div style="position:relative">
-        <img :src="im.thumb" :alt="im.name" />
-        <span class="badge reverse" x-show="im.reversePrompt">反推提示词</span>
+        <img :src="'/api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
       <div class="pad">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span x-text="im.name" style="font-weight:600"></span>
           <span class="muted" x-text="fmt(im)"></span>
           <div style="margin-left:auto;display:flex;gap:8px">
-            <a class="btn" :href="'gallery.html'">← 返回图库</a>
+            <button class="btn" @click="copyImage()">复制</button>
+            <button class="btn" @click="download()">下载</button>
+            <a class="btn" @click="goGallery()">← 返回图库</a>
           </div>
         </div>
       </div>
@@ -42,18 +43,22 @@
       <div class="card section pad">
         <h3>提示词
           <span class="src-tabs" style="margin-left:8px">
-            <button class="src-tab origin" :class="{active: im._src==='origin', dim: promptGrey('origin')}"
+            <button class="src-tab origin" :class="{active: im._src==='origin', has: !promptGrey('origin')}"
                     @click="selectPrompt('origin')">原生</button>
-            <button class="src-tab reverse" :class="{active: im._src==='reverse', dim: promptGrey('reverse')&&!pState}"
+            <button class="src-tab reverse" :class="{active: im._src==='reverse', has: !!im.reversePrompt || pState==='rev'}"
                     @click="selectPrompt('reverse')">
               <span x-text="pState==='rev' ? '反推中' : '反推'"></span>
             </button>
-            <button class="src-tab ai" :class="{active: im._src==='ai', 'ai-has': !!im.aiPrompt, dim: !im.aiPrompt && pState!=='parse'}"
+            <button class="src-tab ai" :class="{active: im._src==='ai', has: !!im.aiPrompt || pState==='parse'}"
                     @click="selectPrompt('ai')">
               <span x-text="pState==='parse' ? '解析中' : 'AI'"></span>
             </button>
           </span>
           <span style="margin-left:auto;display:flex;gap:6px">
+            <button class="btn sm" @click="translatePrompt()" x-show="activePrompt()" :disabled="trIng">
+              <span x-show="trIng">翻译中…</span>
+              <span x-show="!trIng" x-text="trLabel()"></span>
+            </button>
             <button class="btn sm" @click="copy(activePrompt())" x-show="activePrompt()">复制</button>
           </span>
         </h3>
@@ -71,17 +76,20 @@
         </div>
       </div>
 
-      <!-- 反推原文（另开卡片供对照 + 中译） -->
+      <!-- 反推提示词（另开卡片供对照 + 中英译） -->
       <div class="card section pad" x-show="im.reversePrompt">
-        <h3>反推原文
+        <h3>反推提示词
           <span style="margin-left:auto;display:flex;gap:6px">
-            <button class="btn sm" @click="translate()" x-text="tState==='ing'?'翻译中…':'中译'"></button>
-            <button class="btn sm" @click="copy(im.reversePrompt)">复制</button>
+            <button class="btn sm" @click="translateReverse()">
+              <span x-show="revIng">翻译中…</span>
+              <span x-show="!revIng" x-text="revOn?'原文':'中英译'"></span>
+            </button>
+            <button class="btn sm" @click="copy(revText || im.reversePrompt)">复制</button>
           </span>
         </h3>
-        <div style="color:var(--text-2)"><span x-text="im.reversePrompt"></span></div>
-        <div class="card mt" style="background:var(--bg);padding:8px 10px" x-show="im.translationZH">
-          <div class="muted" style="font-size:12px"><b>中文释义：</b><span x-text="im.translationZH"></span></div>
+        <div style="color:var(--text-2)">
+          <span x-show="!revOn" x-text="im.reversePrompt"></span>
+          <span x-show="revOn" x-text="revText"></span>
         </div>
       </div>
 
@@ -90,8 +98,8 @@
         <h3>工作流</h3>
         <div class="btn-row">
           <button class="btn" @click="preview()">预览工作流</button>
-          <button class="btn" @click="exportWorkflow()">导出</button>
           <button class="btn" @click="copy(workflowJSON())">复制</button>
+          <button class="btn" @click="exportWorkflow()">导出</button>
         </div>
         <div class="muted" style="font-size:12px;margin-top:8px">提示：可将导出的 JSON 拖回 ComfyUI 画布复现。</div>
       </div>
@@ -143,7 +151,7 @@
           </div>
         </div>
         <div class="card mt" style="background:var(--bg);padding:8px 10px" x-show="im.aiReason">
-          <div class="muted" style="font-size:12px"><b>AI 依据：</b><span x-text="im.aiReason"></span></div>
+          <div class="muted" style="font-size:12px;white-space:pre-wrap"><b>AI 依据：</b><span x-text="im.aiReason"></span></div>
         </div>
       </div>
     </div>
@@ -169,8 +177,9 @@
 
 <script>
   window.Detail = {
-    im: null, showModal: false, tState: "", aState: "", mState: "", mErr: "", hoverRating: 0,
-    pState: "", pErr: "",
+    im: null, showModal: false, aState: "", mState: "", mErr: "", hoverRating: 0,
+    pState: "", pErr: "", trOn: false, trSrc: "", trText: "",
+    trIng: false, revIng: false, revOn: false, revText: "",
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
@@ -181,7 +190,37 @@
       });
     },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3) + " · " + (im.params && im.params.seed || ""); },
+    // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
+    ratioClass() {
+      var im = this.im; if (!im) return "portrait";
+      var w = Number(im.width) || 1, h = Number(im.height) || 1;
+      return (w / h) > 1 ? "landscape" : "portrait";
+    },
     copy(text, label) { App.copyText(text); },
+    copyImage() {
+      var im = this.im; if (!im) return;
+      fetch("api/images/" + im.id + "/file").then(function (r) { return r.blob(); }).then(function (b) {
+        if (!navigator.clipboard || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
+          throw new Error("unsupported");
+        }
+        return navigator.clipboard.write([new ClipboardItem({ "image/png": b })]);
+      }).then(function () {
+        App.toast("已复制");
+      }).catch(function () {
+        App.toast("复制失败（当前环境不支持复制图片）");
+      });
+    },
+    download() {
+      var im = this.im; if (!im) return;
+      var a = document.createElement("a");
+      a.href = "api/images/" + im.id + "/file";
+      a.download = im.name || "image.png"; a.click();
+    },
+    goGallery() {
+      // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则回退全量导航
+      if (document.referrer && document.referrer.indexOf("gallery.html") >= 0) { history.back(); }
+      else { location.href = "gallery.html"; }
+    },
     setRating(n) {
       var self = this;
       this.hoverRating = 0;
@@ -193,6 +232,8 @@
     // 提示词三源（原生/反推/AI）
     activePrompts() {
       var im = this.im; if (!im) return [];
+      // 当前源已翻译：直接显示译文（切换显示，不再请求 AI）
+      if (this.trOn && this.trSrc === im._src && this.trText) return [this.trText];
       var raw;
       if (im._src === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
       else if (im._src === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
@@ -202,6 +243,33 @@
       return raw;
     },
     activePrompt() { return (this.activePrompts()[0] || ""); },
+    trLabel() { return (this.trOn && this.trSrc === this.im._src) ? "原文" : "中英译"; },
+    translatePrompt() {
+      var self = this;
+      var im = this.im;
+      if (!im || this.trIng) return;
+      var kind = im._src;
+      // 已有持久化译文：直接切换显示，不再请求 AI
+      var stored = (im.translations && im.translations[kind]) || {};
+      var langs = Object.keys(stored);
+      if (langs.length) {
+        self.trText = stored[langs[0]];
+        self.trSrc = kind;
+        self.trOn = !(self.trOn && self.trSrc === kind);
+        return;
+      }
+      this.trIng = true; this.pErr = "";
+      Api.translatePrompt(im.id, kind).then(function (d) {
+        im.translations = im.translations || {};
+        im.translations[kind] = im.translations[kind] || {};
+        im.translations[kind][d.lang] = d.text;
+        self.trText = d.text; self.trSrc = kind; self.trOn = true;
+        self.trIng = false;
+      }).catch(function (e) {
+        self.trIng = false;
+        self.pErr = (e && e.message) || "翻译失败";
+      });
+    },
     activeNegative() {
       if (!this.im) return "";
       if (this.im._src === "ai") return (this.im.aiNegative || "");
@@ -217,6 +285,8 @@
     },
     selectPrompt(kind) {
       var im = this.im; if (!im) return;
+      // 切换提示词源时，重置译文显示（回到原文）
+      this.trOn = false; this.trSrc = ""; this.trText = "";
       if (!this.promptGrey(kind)) { im._src = kind; return; }
       if (kind === "reverse") this.reverseGen();
       else if (kind === "ai") this.reparseModels(true);
@@ -251,10 +321,29 @@
         model: im.tags && im.tags[0].name, sample: true,
       }, null, 2);
     },
-    translate() {
-      this.tState = "ing";
+    translateReverse() {
       var self = this;
-      setTimeout(function () { self.im.translationZH = "（原型）处理器渲染中译：赛博朋克 / 宇航员光影。"; self.tState = ""; }, 900);
+      var im = this.im;
+      if (!im || this.revIng) return;
+      var kind = "reverse";
+      // 已有持久化译文：直接切换原文/译文，不再请求 AI
+      var stored = (im.translations && im.translations[kind]) || {};
+      var langs = Object.keys(stored);
+      if (langs.length) {
+        self.revText = stored[langs[0]];
+        self.revOn = !self.revOn;
+        return;
+      }
+      this.revIng = true;
+      Api.translatePrompt(im.id, kind).then(function (d) {
+        im.translations = im.translations || {};
+        im.translations[kind] = im.translations[kind] || {};
+        im.translations[kind][d.lang] = d.text;
+        self.revText = d.text; self.revOn = true; self.revIng = false;
+      }).catch(function (e) {
+        self.revIng = false;
+        App.toast("翻译失败：" + ((e && e.message) || e));
+      });
     },
     aiScore() {
       var self = this;
