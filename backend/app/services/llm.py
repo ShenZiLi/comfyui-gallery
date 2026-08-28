@@ -68,7 +68,8 @@ def _chat(session: Session, prompt: str) -> str:
         "temperature": 0.2,
     }
     try:
-        resp = httpx.post(url, headers=headers, json=payload, timeout=120)
+        # 直连不信任系统代理，避免代理出口 IP 被厂商限流导致误报
+        resp = httpx.post(url, headers=headers, json=payload, timeout=120, trust_env=False)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise LLMError(f"大模型接口返回 {exc.response.status_code}: {exc.response.text[:200]}")
@@ -149,7 +150,7 @@ def _vi(session: Session, image_data_b64: str, prompt: str) -> str:
         "temperature": 0.6,
     }
     try:
-        resp = httpx.post(url, headers=headers, json=payload, timeout=180)
+        resp = httpx.post(url, headers=headers, json=payload, timeout=180, trust_env=False)
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise LLMError(f"视觉模型接口返回 {exc.response.status_code}: {exc.response.text[:200]}")

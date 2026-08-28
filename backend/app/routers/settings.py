@@ -198,7 +198,8 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                     import httpx
                     url = base.rstrip("/") + "/models"
                     headers = {"Authorization": f"Bearer {key}"}
-                    r = httpx.get(url, timeout=30)
+                    # 直连不信任系统代理：代理出口 IP 可能被厂商限流导致误报 401
+                    r = httpx.get(url, headers=headers, timeout=30, trust_env=False)
                     r.raise_for_status()
                     results[role] = {"ok": True, "message": "连接成功"}
                 elif role == "vision":
@@ -214,7 +215,7 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                     import httpx
                     url = base.rstrip("/") + "/models"
                     headers = {"Authorization": f"Bearer {key}"}
-                    r = httpx.get(url, timeout=30)
+                    r = httpx.get(url, headers=headers, timeout=30, trust_env=False)
                     r.raise_for_status()
                     results[role] = {"ok": True, "message": "连接成功"}
                 elif role == "embed":
@@ -233,7 +234,7 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                     )
                     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                     payload = {"model": model, "input": "你好"}
-                    r = httpx.post(url, headers=headers, json=payload, timeout=60)
+                    r = httpx.post(url, headers=headers, json=payload, timeout=60, trust_env=False)
                     r.raise_for_status()
                     data = r.json()
                     if "data" not in data or not isinstance(data["data"], list) or not len(data["data"]):
