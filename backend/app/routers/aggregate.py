@@ -14,12 +14,8 @@ def _normalize(p: str) -> str:
     return " ".join((p or "").lower().split())
 
 
-def _first_prompt(meta) -> str:
-    """取提示词列表中的第一条作为聚合主维度（旧的未带列表则回退 prompt）。"""
-    return _first_prompt_of(meta.prompt if meta else "", meta.origin_prompts_json if meta else "")
-
-
 def _first_prompt_of(prompt: str, origin_json: str) -> str:
+    """取提示词列表中的第一条作为聚合主维度（旧的未带列表则回退 prompt）。"""
     if origin_json:
         try:
             import json
