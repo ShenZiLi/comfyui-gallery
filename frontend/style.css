@@ -425,3 +425,16 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 
 /* 无限滚动哨兵 */
 .loading-more { padding: 16px; text-align: center; }
+
+/* 同步提示条：后台扫描有更新时显示，点击刷新（不遮盖图片，占位在列表上方） */
+.sync-banner {
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  color: var(--brand);
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}

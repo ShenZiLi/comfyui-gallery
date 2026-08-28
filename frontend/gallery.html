@@ -83,6 +83,7 @@
   </div>
 
   <div class="page" @dragover.prevent @drop.prevent="drop($event)">
+    <div class="sync-banner" x-show="syncDirty" x-cloak @click="applySync()">后台有更新 · 点击查看</div>
     <div style="margin-top:12px">
     <div x-show="!loading && !images.length && (mode==='flat'||mode==='immersive')" class="empty">
       暂无图片 —— 点击左上角「导入」或前往「设置」配置图片目录。
@@ -315,6 +316,7 @@
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
+    syncDirty: false,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -379,13 +381,20 @@
     pollSync() {
       var self = this;
       Api.getSyncVersion().then(function (v) {
-        if (v !== self._ver) {
-          self._ver = v;
-          self.loadImages();
-          if (self.mode === "aggregate") self.reloadGroups();
-          Api.listFolders().then(function (f) { self.folders = f; });
-        }
+        if (v === self._ver) return;
+        var first = self._ver === -1;
+        self._ver = v;
+        if (first) return; // 首次仅建立基线，不打扰
+        self.syncDirty = true; // 不自动重拉列表：顶部提示条由用户点击触发
+        Api.listFolders().then(function (f) { self.folders = f; });
+        Api.listTags().then(function (t) { self.tags = t; });
       });
+    },
+    applySync() {
+      this.syncDirty = false;
+      if (this.mode === "aggregate") this.reloadGroups();
+      else this.loadImages();
+      window.scrollTo(0, 0);
     },
     allTags() { return this.tags; },
     // 下拉框只显示有图片的目录；无图片目录隐藏
