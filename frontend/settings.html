@@ -56,7 +56,7 @@
         <div class="btn-row mt">
           <input type="text" x-model="cfg.importDir" placeholder="选择本地文件夹" style="flex:1" readonly
                  @click="pickImportDir()" />
-          <button class="btn" @click="pickImportDir()" x-text="importDir?'更改':'浏览…'"></button>
+          <button class="btn" @click="pickImportDir()" x-text="cfg.importDir?'更改':'浏览…'"></button>
         </div>
         <div class="muted mt" style="font-size:12px" x-text="importDirHint"></div>
       </div>
@@ -358,8 +358,8 @@
         clearTimeout(timer);
         var res = (r.test && r.test.results) || {};
         ROLES.forEach(function (role) {
-          var v = res[role] || {};
-          self.testState[role] = { ok: !!v.ok, msg: v.message || "无返回结果" };
+          var v = res[role.key] || {};
+          self.testState[role.key] = { ok: !!v.ok, msg: v.message || "无返回结果" };
         });
         self.testing = false;
       }).catch(function (e) {
