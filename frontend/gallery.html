@@ -351,6 +351,10 @@
             document.documentElement.classList.remove("am-restore");
           }
         });
+        if (self.mode === "aggregate") {
+          self._restoreScroll = 0;
+          document.documentElement.classList.remove("am-restore");
+        }
       }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
@@ -432,19 +436,9 @@
           self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
           self.loading = false;
           self._afterRender(function () { self._rearm("list"); });
-          // 从详情页返回：先不可见，等 Alpine 渲染出完整布局（双 rAF）再定位并一次性显示
+          // 从详情页返回：先不可见，补页到目标位置后一次性显示
           if (self._restoreScroll) {
-            var y = self._restoreScroll;
-            self._restoreScroll = 0;
-            (function pin() {
-              requestAnimationFrame(function () {
-                requestAnimationFrame(function () {
-                  window.scrollTo(0, y);
-                  window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - window.innerHeight));
-                  document.documentElement.classList.remove("am-restore");
-                });
-              });
-            })();
+            self._afterRender(function () { self._resumeScroll(); });
           }
         });
     },
@@ -463,9 +457,28 @@
           self.total = page.total;
           self.hasMore = page.hasMore;
           self.summary = "已显示 " + self.images.length + " / 共 " + page.total + " 张";
-          self._afterRender(function () { self._rearm("list"); });
+          self._afterRender(function () {
+            self._rearm("list");
+            if (self._restoreScroll) self._resumeScroll();
+          });
         })
         .catch(function () { self.loadingMore = false; });
+    },
+    // 无限滚动下的滚动恢复：循环补页直到页面高度够到目标位置（上限 50 页）
+    _resumeScroll() {
+      var y = this._restoreScroll;
+      var enough = document.documentElement.scrollHeight - window.innerHeight >= y - 50;
+      if (enough || !this.hasMore) {
+        this._restoreScroll = 0; this._resumePages = 0;
+        window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - window.innerHeight));
+        document.documentElement.classList.remove("am-restore");
+      } else if (this._resumePages < 50) {
+        this._resumePages += 1;
+        this.loadMore();
+      } else {
+        this._restoreScroll = 0; this._resumePages = 0;
+        document.documentElement.classList.remove("am-restore");
+      }
     },
     loadMoreGroups() {
       if (this.mode !== "aggregate") return;
