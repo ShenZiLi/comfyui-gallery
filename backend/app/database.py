@@ -6,10 +6,10 @@ from sqlmodel import SQLModel, Session, create_engine
 
 from .config import settings
 
-# SQLite 需 check_same_thread=False，便于未来后台线程访问。
+# SQLite 需 check_same_thread=False，便于后台线程访问；timeout 让并发写入等待而非报“database is locked”。
 engine = create_engine(
     f"sqlite:///{settings.db_path}",
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30},
 )
 
 # 引入所有模型以注册到 SQLModel.metadata（models 顶部统一导出）。

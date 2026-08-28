@@ -11,11 +11,12 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body>
-<div class="page" x-data="Gallery" x-init="init()" @dragover.prevent @drop.prevent="drop($event)">
-  <!-- 顶部整体固定：导航 + 工具栏紧贴浏览器顶部 -->
+<div x-data="Gallery" x-init="init()">
+  <!-- 顶部整体固定（满宽紧贴顶） -->
   <div class="sticky-head">
     <div id="topnav"></div>
-    <div class="toolbar">
+    <div class="sticky-inner">
+      <div class="toolbar">
       <button class="btn primary" @click="$refs.fileInput.click()">导入</button>
       <input type="file" webkitdirectory multiple style="display:none" x-ref="fileInput" @change="imported($event)" />
 
@@ -57,9 +58,11 @@
       </template>
       <span class="chip" :class="{active: selectedTag===null}" @click="selectedTag=null;loadImages()">全部</span>
     </div>
+    </div>
   </div>
 
-  <div style="margin-top:12px">
+  <div class="page" @dragover.prevent @drop.prevent="drop($event)">
+    <div style="margin-top:12px">
     <div x-show="!loading && !images.length && (mode==='flat'||mode==='immersive')" class="empty">
       暂无图片 —— 点击左上角「导入」或前往「设置」配置图片目录。
     </div>
@@ -179,17 +182,31 @@
     </div>
   </div>
 </div>
+</div>
 
 <script>
   window.Gallery = {
     folders: [], images: [], groups: [], tags: [], q: "", mode: "flat", currentFolder: "",
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
+    _ver: -1,
     init() {
       App.initNav("gallery");
       var self = this;
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
       this.loadImages();
+      setInterval(function () { self.pollSync(); }, 3000);
+    },
+    pollSync() {
+      var self = this;
+      Api.getSyncVersion().then(function (v) {
+        if (v !== self._ver) {
+          self._ver = v;
+          self.loadImages();
+          if (self.mode === "aggregate") self.reloadGroups();
+          Api.listFolders().then(function (f) { self.folders = f; });
+        }
+      });
     },
     allTags() { return this.tags; },
     fmtSize: App.fmtSize,

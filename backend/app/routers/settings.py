@@ -1,13 +1,13 @@
 """系统设置与扫描路由。"""
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..config import settings as env_settings
-from ..database import get_session
+from ..database import engine, get_session
 from ..models import Setting
-from ..services import scanner
+from ..services import scanner, watcher
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -42,6 +42,64 @@ def _set_role_config(session: Session, role: str, cfg: dict) -> None:
         v = cfg.get(f)
         if v is not None:
             _set(session, f"llm_{role}_{f}", str(v).strip())
+
+
+def _background_scan(root: str) -> None:
+    """后台扫描单个根目录（独立会话），有变动则递增同步版本号。"""
+    try:
+        with Session(engine) as session:
+            stats = scanner.scan(session, Path(root))
+            if stats.new or stats.updated or stats.removed:
+                watcher.bump()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+@router.post("/roots")
+def add_scan_root(
+    body: dict,
+    session: Session = Depends(get_session),
+    bg: BackgroundTasks = BackgroundTasks(),
+):
+    """注册一个图片目录（仅登记引用路径），随后后台扫描入库，接口立即返回。"""
+    path = (body.get("path") or "").strip()
+    if not path:
+        raise HTTPException(400, "缺少目录路径")
+    root = Path(path).resolve()
+    if not root.is_dir():
+        raise HTTPException(400, "目录不存在或不可访问")
+
+    roots = list(scanner.get_scan_roots(session))
+    key = str(root)
+    if key not in [str(r.resolve()) for r in roots]:
+        roots.append(root)
+        scanner.save_scan_roots(session, [str(r) for r in roots])
+
+    bg.add_task(_background_scan, str(root))
+    watcher.bump()
+    return {
+        "saved": True,
+        "roots": [str(r) for r in scanner.get_scan_roots(session)],
+        "scan": {"pending": True},
+    }
+
+
+@router.delete("/roots")
+def remove_scan_root(body: dict, session: Session = Depends(get_session)):
+    """移除已注册图片目录：软删其下图片并清理目录节点。"""
+    path = (body.get("path") or "").strip()
+    if not path:
+        raise HTTPException(400, "缺少目录路径")
+    root = Path(path).resolve()
+    roots = [r for r in scanner.get_scan_roots(session) if str(r.resolve()) != str(root)]
+    removed = scanner.unlink_root(session, root)
+    scanner.save_scan_roots(session, [str(r) for r in roots])
+    watcher.bump()
+    return {
+        "saved": True,
+        "roots": [str(r) for r in scanner.get_scan_roots(session)],
+        "removed": removed,
+    }
 
 
 @router.get("")

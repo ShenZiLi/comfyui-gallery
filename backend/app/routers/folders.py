@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/folders", tags=["folders"])
 def list_folders(session: Session = Depends(get_session)):
     """返回目录树（含各自图片数量）。"""
     folders = session.exec(
-        select(Folder).where(Folder.is_deleted == 0).order_by(Folder.path)
+        select(Folder).where(Folder.is_deleted == 0, Folder.path.startswith("/")).order_by(Folder.path)
     ).all()
     counts = {}
     for row in session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all():

@@ -6,10 +6,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """静态资源禁用浏览器缓存，保证前端改动即时生效。"""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
 
 from .config import settings
 from .database import init_db
-from .routers import aggregate, folders, images, settings as settings_router, tags
+from .routers import aggregate, folders, fs, images, settings as settings_router, sync, tags
+from .services import watcher
 
 app = FastAPI(title="画镜 ArtMirror", version="0.1.0")
 
@@ -21,7 +32,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in (images.router, folders.router, tags.router, aggregate.router, settings_router.router):
+for r in (
+    images.router,
+    folders.router,
+    tags.router,
+    aggregate.router,
+    settings_router.router,
+    fs.router,
+    sync.router,
+):
     app.include_router(r)
 
 
@@ -38,13 +57,20 @@ def health() -> dict:
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """启动初始化：建表与目录。"""
+    """启动初始化：建表、创建目录并启动后台实时同步。"""
     init_db()
+    watcher.start()
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    """关闭后台实时同步线程。"""
+    watcher.stop()
 
 
 # 前端静态托管（优先级低于 API 路由）。
 app.mount(
     "/",
-    StaticFiles(directory=settings.frontend_dir, html=True),
+    NoCacheStaticFiles(directory=settings.frontend_dir, html=True),
     name="frontend",
 )

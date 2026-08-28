@@ -82,6 +82,34 @@ def scan_all(session: Session, roots: list[Path]) -> ScanStats:
     return total
 
 
+def add_root(session: Session, root: Path) -> ScanStats:
+    """注册并扫描单个根目录（已去重）。"""
+    return scan(session, root)
+
+
+def unlink_root(session: Session, root: Path) -> int:
+    """移除根目录：软删其下图片并删除其目录节点，返回移除的图片数。"""
+    root = Path(root).resolve()
+    prefix = str(root)
+    images = session.exec(
+        select(ImageAsset).where(
+            ImageAsset.is_deleted == 0,
+            (ImageAsset.abs_path == prefix) | ImageAsset.abs_path.like(f"{prefix}/%"),
+        )
+    ).all()
+    for im in images:
+        im.is_deleted = 1
+    folders = session.exec(
+        select(Folder).where(
+            (Folder.path == prefix) | Folder.path.like(f"{prefix}/%")
+        )
+    ).all()
+    for f in folders:
+        session.delete(f)
+    session.commit()
+    return len(images)
+
+
 def _hash_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -96,21 +124,21 @@ def _make_thumb(data: bytes) -> bytes:
 
 
 def _ensure_folders(session: Session, root: Path) -> dict[str, int]:
-    """扫描目录并建立 Folder 树，返回 {相对路径: folder_id}。"""
-    mapping: dict[str, int] = {"": None}
+    """扫描目录并建立 Folder 树，返回 {绝对目录路径: folder_id}。"""
+    root = Path(root).resolve()
+    mapping: dict[str, int] = {}
     for f in session.exec(select(Folder)).all():
         mapping[f.path] = f.id
     for dirpath, dirnames, _ in os.walk(root):
-        rel = os.path.relpath(dirpath, root)
-        rel_norm = "" if rel == "." else rel.replace(os.sep, "/")
-        if rel_norm in mapping:
+        abs_dir = str(Path(dirpath).resolve())
+        if abs_dir in mapping:
             continue
-        parent = os.path.dirname(rel_norm)
-        parent_id = mapping.get(parent)
-        f = Folder(name=os.path.basename(dirpath) or root.name, path=rel_norm, parent_id=parent_id)
+        parent_dir = str(Path(dirpath).parent.resolve())
+        parent_id = mapping.get(parent_dir)
+        f = Folder(name=Path(dirpath).name or root.name, path=abs_dir, parent_id=parent_id)
         session.add(f)
         session.flush()
-        mapping[rel_norm] = f.id
+        mapping[abs_dir] = f.id
     session.commit()
     return mapping
 
@@ -177,7 +205,7 @@ def scan(session: Session, root: Path) -> ScanStats:
 
             if existing is None and dup is None:
                 image = ImageAsset(
-                    folder_id=folder_ids.get(os.path.dirname(rel_norm)),
+                    folder_id=folder_ids.get(str(Path(full).parent)),
                     file_name=full.name,
                     file_path=rel_norm,
                     abs_path=str(full),

@@ -84,6 +84,33 @@
         throw new Error("后端未连接");
       });
     },
+
+    // ---- 图片目录管理与目录浏览器 ----
+    listFsRoots: function () {
+      return req("api/fs/roots").catch(function () {
+        Api._fallback = true;
+        return ok([{ name: "~", path: "/", isDir: true }]);
+      });
+    },
+    listFsDir: function (path) {
+      return req("api/fs/list?path=" + encodeURIComponent(path || "")).catch(function () {
+        Api._fallback = true;
+        return ok({ path: path || "/", parent: "", items: [] });
+      });
+    },
+    addRoot: function (path) {
+      return req("api/settings/roots", { method: "POST", body: { path: path } }).catch(function () {
+        throw new Error("后端未连接");
+      });
+    },
+    removeRoot: function (path) {
+      return req("api/settings/roots", { method: "DELETE", body: { path: path } }).catch(function () {
+        throw new Error("后端未连接");
+      });
+    },
+    getSyncVersion: function () {
+      return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
+    },
   };
 
   // ---- mock 分组回退 ----
