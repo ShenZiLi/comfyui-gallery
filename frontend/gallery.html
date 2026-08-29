@@ -328,6 +328,7 @@
     syncDirty: false,
     // 每种预览模式独立的列数：平铺/沉浸默认 5 列，聚合默认 3 列；放大减列（最小 1）、缩小加列（最大 10）
     cols: { flat: 5, immersive: 5, aggregate: 3 },
+    zooming: false,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -438,9 +439,28 @@
     // 当前模式的列数（平铺/沉浸/聚合独立记录）
     currentCols() { return (this.cols[this.mode] || 5); },
     // 列数控制：放大=减列（更宽），缩小=加列（更窄），1-10 列并持久化；只影响当前模式
-    zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._setCols(m, this.cols[m] - 1); },
-    zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._setCols(m, this.cols[m] + 1); },
+    zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
+    zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
     _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} },
+    // 缩放转场：先微缩淡出，切换列数（重排被遮罩），再平滑回位淡入，避免瞬时重排闪烁
+    _animateZoom(m, next) {
+      var self = this;
+      if (this.zooming) return; // 动画进行中忽略连点
+      this.zooming = true;
+      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var page = document.querySelector(".page");
+      if (reduced || !page) { this._setCols(m, next); this.zooming = false; return; }
+      page.classList.add("am-zooming");
+      setTimeout(function () {
+        self._setCols(m, next);
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            page.classList.remove("am-zooming");
+            setTimeout(function () { self.zooming = false; }, 240);
+          });
+        });
+      }, 130);
+    },
     // 切换展示模式：仅切换视图，不重新拉取/排序数据（避免闪屏）
     switchMode(m) {
       if (this.mode === m) return;

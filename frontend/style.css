@@ -259,10 +259,30 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .masonry .thumb-wrap img { width: 100%; height: auto; display: block; object-fit: contain; }
 .immersive-cell { cursor: zoom-in; }
 
-.img-card { overflow: hidden; }
+/* 缩放切换动效：快速微缩淡出（遮住列数重排）→ 平滑回位淡入 */
+.masonry, .group-grid { transition: opacity .22s ease-out, transform .22s ease-out; }
+.am-zooming .masonry,
+.am-zooming .group-grid { transition: opacity .12s ease-in, transform .12s ease-in; opacity: .4; transform: scale(.965); }
+@media (prefers-reduced-motion: reduce) {
+  .masonry, .group-grid { transition: none !important; }
+  .am-zooming .masonry,
+  .am-zooming .group-grid { opacity: 1; transform: none; }
+}
+
+.img-card { overflow: hidden; container-type: inline-size; }
 .img-card .thumb-wrap { overflow: hidden; background: #eceef2; }
 .img-card img { display: block; }
+/* 超窄卡片（约 ≥10 列）：压缩内边距与图标尺寸，防止 meta 区图标溢出 */
+@container (max-width: 140px) {
+  .img-card .info { padding: 8px 8px 10px; }
+  .meta-row { gap: 4px; }
+  .meta-row .icon-btn { width: 20px; height: 20px; }
+  .meta-row .icon-btn svg { width: 12px; height: 12px; }
+}
 .meta-row { display: flex; align-items: center; gap: 8px; }
+/* 尺寸文字窄卡片下省略而非换行/溢出，图标保持右侧不挤出 */
+.meta-row .muted { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta-row .icon-btn { flex: none; }
 .badge {
   position: absolute; top: 8px; left: 8px; font-size: 11px; color: #fff;
   padding: 2px 8px; border-radius: 999px; }
@@ -284,14 +304,14 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .prompt-box.expanded .prompt-item { -webkit-line-clamp: unset; display: block; }
 .prompt-item + .prompt-item { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
 .prompt-box mark { background: #fff3bf; color: var(--text); border-radius: 3px; padding: 0 2px; }
-.prompt-header { display: flex; align-items: center; justify-content: space-between; }
+.prompt-header { display: flex; align-items: center; justify-content: space-between; gap: 4px 8px; flex-wrap: wrap; }
 .toggle-prompt { color: var(--brand); font-size: 12px; cursor: pointer; background: none; border: none; padding: 0; }
 
 /* 提示词来源标签（原生/反推/AI）：字体颜色=有没有数据，背景色=当前是否选中 */
-.src-tabs { display: inline-flex; align-items: center; gap: 3px; }
+.src-tabs { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; row-gap: 2px; }
 .src-tab {
   font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 999px;
-  border: none; background: transparent; cursor: pointer;
+  border: none; background: transparent; cursor: pointer; white-space: nowrap;
   color: var(--text-3); opacity: .38; transition: .15s;
 }
 .src-tab:hover { opacity: .8; }
@@ -300,10 +320,10 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .src-tab.has.origin { color: var(--brand); }
 .src-tab.has.reverse { color: #833ab4; }
 .src-tab.has.ai { color: #92600a; }
-/* 当前选中：只给背景色，与字体无关 */
-.src-tab.active.origin { background: color-mix(in srgb,var(--brand) 14%,transparent); }
-.src-tab.active.reverse { background: color-mix(in srgb,#833ab4 14%,transparent); }
-.src-tab.active.ai { background: color-mix(in srgb,#eab308 18%,transparent); }
+/* 当前选中且有数据（或加载中）：才给背景色，与字体无关；选中但无数据不显示底色 */
+.src-tab.active.has.origin { background: color-mix(in srgb,var(--brand) 14%,transparent); }
+.src-tab.active.has.reverse { background: color-mix(in srgb,#833ab4 14%,transparent); }
+.src-tab.active.has.ai { background: color-mix(in srgb,#eab308 18%,transparent); }
 /* 模型块「AI 重解析」进行中：品牌色提示 */
 .src-tab.ai-ing { color: var(--brand); opacity: 1; }
 /* AI 按钮悬浮气泡：JS 定位到 body 顶层，停留 1s 后出现（避免被卡片 overflow 裁剪） */
