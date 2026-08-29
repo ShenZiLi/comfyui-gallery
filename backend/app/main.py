@@ -19,7 +19,7 @@ class NoCacheStaticFiles(StaticFiles):
 
 from .config import settings
 from .database import init_db, get_session
-from .routers import aggregate, folders, fs, images, settings as settings_router, sync, tags
+from .routers import aggregate, folders, fs, images, settings as settings_router, sync, system, tags
 from .services import watcher, meta_service
 
 app = FastAPI(title="画镜 ArtMirror", version="0.1.0")
@@ -40,6 +40,7 @@ for r in (
     settings_router.router,
     fs.router,
     sync.router,
+    system.router,
 ):
     app.include_router(r)
 
