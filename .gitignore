@@ -16,10 +16,6 @@ __pycache__/
 # ---- 运行数据（SQLite 库、缩略图，不入库）----
 data/
 
-# ---- PyInstaller 构建产物（不入库；icon.ico 为已跟踪的构建资产）----
-dist/
-build/build/
-
 # ---- 测试验收数据 ----
 test_data/
 

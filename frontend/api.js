@@ -201,12 +201,6 @@
         throw new Error("后端未连接");
       });
     },
-    shutdown: function () {
-      return req("api/shutdown", { method: "POST" }).catch(function (e) {
-        throw (e && e.message) ? e : new Error("后端未连接");
-      });
-    },
-
     getSyncVersion: function () {
       return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
     },
