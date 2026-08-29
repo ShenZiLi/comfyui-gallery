@@ -179,6 +179,15 @@
         </div>
       </div>
     </div>
+
+    <!-- 系统 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">系统</h3>
+      <p class="muted">打包版（单文件 exe）下点击「关闭服务」会停止画镜；开发模式下请用终端停止。</p>
+      <div class="btn-row mt">
+        <button class="btn danger" @click="shutdownService()">关闭服务</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -275,6 +284,14 @@
       });
       // 轮询同步版本，本地增删后刷新已扫描文件夹
       setInterval(function () { self.pollSync(); }, 3000);
+    },
+    shutdownService() {
+      if (window.Api._fallback) { App.toast("离线模式，无需关闭"); return; }
+      window.Api.shutdown().then(function (d) {
+        App.toast((d && d.message) || "服务已关闭，可关闭此页面");
+      }).catch(function () {
+        App.toast("后端未连接，无需关闭");
+      });
     },
     pollSync() {
       var self = this;
