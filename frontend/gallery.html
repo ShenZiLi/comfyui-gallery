@@ -560,16 +560,23 @@
       var dir = targetIdx > curIdx ? "down" : (targetIdx < curIdx ? "up" : "");
       var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       var page = document.querySelector(".page");
+      var reload = function () { self._reloadForMode(); };
+      if (id === this.currentFolder) { this.folderOpen = false; return; }
       if (!dir || reduced || !page || this.modeSwitching) {
-        this.currentFolder = id; this.loadImages(); return;
+        this.currentFolder = id; reload(); return;
       }
       this.modeSwitching = true;
       this._flipDir = dir;
       page.classList.add(dir === "down" ? "am-flip-down" : "am-flip-up");
       setTimeout(function () {
         self.currentFolder = id;
-        self.loadImages();
+        self._flipDir = dir;
+        reload();
       }, 150);
+    },
+    _reloadForMode() {
+      if (this.mode === "aggregate") this.reloadGroups();
+      else this.loadImages();
     },
     _doSwitch(m) {
       this.mode = m;
@@ -687,7 +694,7 @@
       if (this.groupLoading || !this.groupHasMore) return;
       var self = this, seq = this._gSeq;
       this.groupLoading = true;
-      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: this.groups.length }).then(function (page) {
+      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: this.groups.length, folderId: this.currentFolder }).then(function (page) {
         self.groupLoading = false;
         if (seq !== self._gSeq) return;
         self._initGroups(page.items);
@@ -702,9 +709,9 @@
       }).catch(function () { self.groupLoading = false; });
     },
     reloadGroups() {
-      var self = this, seq = ++this._gSeq;
+      var self = this, seq = ++this._gSeq, flip = this._flipDir;
       this.groupLoading = true;
-      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: 0 }).then(function (page) {
+      Api.aggregateByPrompt({ kind: "exact", limit: 20, offset: 0, folderId: this.currentFolder }).then(function (page) {
         if (seq !== self._gSeq) return; // 过期响应丢弃
         self._initGroups(page.items);
         self.groups = page.items;
@@ -734,6 +741,17 @@
               gg2.classList.remove("am-turn-in");
             }
           }
+          // 目录垂直翻页：数据渲染完成后移除翻转类并播进入动画
+          if (flip) {
+            self._flipDir = "";
+            var pg3 = document.querySelector(".page"), gg3 = document.querySelector(".group-grid");
+            if (pg3) pg3.classList.remove("am-flip-down", "am-flip-up");
+            if (gg3) gg3.classList.add("am-flip-in");
+            setTimeout(function () {
+              if (gg3) gg3.classList.remove("am-flip-in");
+              self.modeSwitching = false;
+            }, 240);
+          }
         });
       });
     },
@@ -751,7 +769,7 @@
       var self = this;
       g._mLoading = true;
       var offset = g._members === null ? 0 : g._members.length;
-      Api.aggregateMembers(g.id, { limit: 24, offset: offset }).then(function (page) {
+      Api.aggregateMembers(g.id, { limit: 24, offset: offset, folderId: this.currentFolder }).then(function (page) {
         self._initCards(page.items);
         g._members = (g._members || []).concat(page.items);
         g._mHasMore = page.hasMore;

@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from ..database import get_session
 from ..models import ImageAsset, Tag, ImageTag, WorkflowMeta
-from .images import to_cards
+from .images import to_cards, _hidden_folders
 
 router = APIRouter(prefix="/api/aggregate", tags=["aggregate"])
 
@@ -45,7 +45,18 @@ _FP_SQL = case(
 )
 
 
-def _group_all(session: Session) -> list[dict]:
+def _folder_where(session: Session, folder_id: int | None):
+    """目录过滤条件：排除隐藏目录；指定目录时限定该目录。"""
+    conds = [ImageAsset.is_deleted == 0]
+    hidden = _hidden_folders(session)
+    if hidden:
+        conds.append(ImageAsset.folder_id.is_(None) | (~ImageAsset.folder_id.in_(list(hidden))))
+    if folder_id:
+        conds.append(ImageAsset.folder_id == folder_id)
+    return conds
+
+
+def _group_all(session: Session, folder_id: int | None = None) -> list[dict]:
     """按提示词首条分组（内存 O(n)），按 maxScore 降序返回组列表。
 
     只取轻量列（避免整表 ORM 实体化开销）；成员按 ai_rating 降序、id 降序确定排序。
@@ -59,7 +70,7 @@ def _group_all(session: Session) -> list[dict]:
         )
         .join(WorkflowMeta, WorkflowMeta.image_id == ImageAsset.id)
         .where(
-            ImageAsset.is_deleted == 0,
+            *_folder_where(session, folder_id),
             WorkflowMeta.prompt != "",
         )
     ).all()
@@ -105,12 +116,13 @@ def aggregate_by_prompt(
     kind: str = "exact",
     limit: int = 20,
     offset: int = 0,
+    folder_id: int | None = None,
     session: Session = Depends(get_session),
 ):
     """按提示词分组（分页返回组列表；exact=相同，similar=页内相似聚类）。"""
     limit = max(1, min(100, limit))
     offset = max(0, offset)
-    all_groups = _group_all(session)
+    all_groups = _group_all(session, folder_id)
     total = len(all_groups)
     page = all_groups[offset:offset + limit]
     items = [_group_payload(g) for g in page]
@@ -130,12 +142,13 @@ def group_members(
     group: str,
     limit: int = 24,
     offset: int = 0,
+    folder_id: int | None = None,
     session: Session = Depends(get_session),
 ):
     """某提示词组的成员（展开组时懒加载、分页）。"""
     limit = max(1, min(200, limit))
     offset = max(0, offset)
-    for g in _group_all(session):
+    for g in _group_all(session, folder_id):
         if g["key"] != group:
             continue
         members = g["members"]

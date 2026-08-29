@@ -121,6 +121,7 @@
         "limit=" + (opts.limit || 20),
         "offset=" + (opts.offset || 0)
       ];
+      if (opts.folderId) qs.push("folder_id=" + encodeURIComponent(opts.folderId));
       return req("api/aggregate/by-prompt?" + qs.join("&")).catch(function () {
         Api._fallback = true;
         var g = buildMockGroups(opts.kind === "similar");
@@ -142,6 +143,7 @@
         "limit=" + (opts.limit || 24),
         "offset=" + (opts.offset || 0)
       ];
+      if (opts.folderId) qs.push("folder_id=" + encodeURIComponent(opts.folderId));
       return req("api/aggregate/by-prompt/members?" + qs.join("&")).catch(function () {
         Api._fallback = true;
         var g = buildMockGroups(false).filter(function (x) { return x.id === group; })[0] || { members: [] };
