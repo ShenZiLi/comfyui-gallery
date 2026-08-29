@@ -380,6 +380,16 @@
         if (self.mode === "aggregate") {
           self._restoreScroll = 0;
           document.documentElement.classList.remove("am-restore");
+          if (saved.groups && saved.groups.length) {
+            // 聚合快照恢复：直接复用已加载分组，免重新请求
+            self._initGroups(saved.groups);
+            self.groups = saved.groups;
+            self.groupTotal = saved.groupTotal || saved.groups.length;
+            self.groupHasMore = !!saved.groupHasMore;
+            self.groupCount = saved.groupTotal || saved.groups.length;
+            self.summary = "已显示 " + saved.groups.length + " / 共 " + (saved.groupTotal || saved.groups.length) + " 组";
+            self._snapshotRestored = true;
+          }
         } else if (saved.images && saved.images.length) {
           // 快照恢复：直接复用已加载图片，免重新分页请求（返回秒开）
           self._initCards(saved.images);
@@ -395,11 +405,13 @@
       if (this._snapshotRestored) {
         this._snapshotRestored = false;
         this.loading = false;
-        // 等 Alpine 渲染出恢复的图片后定位并显示，同时重新武装无限滚动哨兵
+        // 等 Alpine 渲染出恢复的数据后定位并显示，同时重新武装对应无限滚动哨兵
         this._afterRender(function () {
-          self._resumeScroll();
-          self._rearm("list");
+          if (self.mode === "aggregate") self._rearm("groups");
+          else { self._resumeScroll(); self._rearm("list"); }
         });
+      } else if (this.mode === "aggregate") {
+        this.reloadGroups();
       } else {
         this.loadImages();
       }
@@ -792,12 +804,13 @@
       a.href = URL.createObjectURL(blob); a.download = "workflow.json"; a.click();
     },
     open(id) {
-      // 记录视图状态、滚动位置与已加载图片快照，返回时免重新请求直接恢复
+      // 记录视图状态、滚动位置与已加载数据快照（图片/聚合分组），返回时免重新请求直接恢复
       try {
         sessionStorage.setItem("am_gallery_state", JSON.stringify({
           scroll: window.scrollY, mode: this.mode, folder: this.currentFolder,
           sort: this.sort, q: this.q, tag: this.selectedTag,
-          images: this.images, total: this.total, hasMore: this.hasMore
+          images: this.images, total: this.total, hasMore: this.hasMore,
+          groups: this.groups, groupTotal: this.groupTotal, groupHasMore: this.groupHasMore
         }));
       } catch (e) {}
       location.href = "image.html?id=" + id;
