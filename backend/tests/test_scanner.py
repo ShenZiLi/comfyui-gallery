@@ -63,7 +63,8 @@ def test_scan_and_ingest():
             tags = session.exec(select(Tag)).all()
             assert [t.name for t in tags if t.category == "model"] == ["m.safetensors"]
             folders = session.exec(select(Folder)).all()
-            assert any(f.path == "a" for f in folders)
+            assert any(f.name == "a" for f in folders)
+            assert any(f.path == str((root / "a").resolve()) for f in folders)
 
             # 增量：再扫一次应全部跳过
             stats2 = scanner.scan(session, root)
@@ -87,4 +88,23 @@ def test_track_removal():
             assert stats2.removed == 1
             im = session.exec(select(ImageAsset)).one()
             assert im.is_deleted == 1
+    settings.data_dir = "/Users/shen/Studio/Code/ArtMirror/data"
+
+
+def test_unlink_root():
+    """移除根目录：软删其下图片并清理目录节点。"""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        root = td / "outputs"; root.mkdir()
+        _png(root / "x.png")
+        engine = _engine(td / "data")
+        with Session(engine) as session:
+            scanner.scan(session, root)
+            imgs = session.exec(select(ImageAsset)).all()
+            assert len(imgs) == 1 and imgs[0].is_deleted == 0
+            removed = scanner.unlink_root(session, root)
+            assert removed == 1
+            im = session.exec(select(ImageAsset)).one()
+            assert im.is_deleted == 1
+            assert len(session.exec(select(Folder)).all()) == 0
     settings.data_dir = "/Users/shen/Studio/Code/ArtMirror/data"

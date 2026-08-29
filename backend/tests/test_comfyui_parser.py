@@ -9,6 +9,7 @@ from app.parsers.comfyui_parser import (
     parse_prompt_graph,
     extract_assets,
     extract_sampler_params,
+    extract_prompt_lists,
 )
 
 WORKFLOW_GRAPH = {
@@ -92,6 +93,109 @@ def test_sampler_params():
     assert params["steps"] == 28
     assert params["cfg"] == 7.0
     assert params["scheduler"] == "normal"
+
+
+def test_gguf_main_model_and_loras():
+    """GGUF 主模型 + LoRA 链，主模型应回溯采样器链路命中 Unet 加载器。"""
+    graph = {
+        "331": {
+            "class_type": "UnetLoaderGGUF",
+            "inputs": {"unet_name": "z_image_turbo-Q4_K_M.gguf"},
+        },
+        "322": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {"model": ["331", 0], "lora_name": "z-image/blur.safetensors"},
+        },
+        "323": {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {"model": ["322", 0], "lora_name": "faces.safetensors"},
+        },
+        "3": {
+            "class_type": "KSampler",
+            "inputs": {"model": ["323", 0], "positive": ["1", 0], "negative": ["2", 0]},
+        },
+    }
+    assets = extract_assets(graph)
+    assert assets["model_name"] == "z_image_turbo-Q4_K_M.gguf"
+    assert assets["loras"] == ["z-image/blur.safetensors", "faces.safetensors"]
+
+
+def test_extract_assets_ui_workflow_format():
+    """UI workflow 图（nodes/links）也应能提取主模型与 LoRA。"""
+    ui = {
+        "nodes": [
+            {
+                "id": 331,
+                "type": "UnetLoaderGGUF",
+                "inputs": [],
+                "widgets_values": ["z_image_turbo-Q4_K_M.gguf"],
+            },
+            {
+                "id": 322,
+                "type": "LoraLoaderModelOnly",
+                "inputs": [
+                    {"name": "model", "link": 1},
+                ],
+                "widgets_values": ["z-image/blur.safetensors", 1.0],
+            },
+            {
+                "id": 3,
+                "type": "KSampler",
+                "inputs": [
+                    {"name": "model", "link": 2},
+                    {"name": "positive", "link": 3},
+                    {"name": "negative", "link": 4},
+                ],
+            },
+            {
+                "id": 99,
+                "type": "VAELoader",
+                "inputs": [],
+                "widgets_values": ["ae.safetensors"],
+            },
+        ],
+        # [id, from_node, from_slot, to_node, to_slot, type]
+        "links": [
+            [1, 331, 0, 322, 0, "MODEL"],
+            [2, 322, 0, 3, 0, "MODEL"],
+        ],
+    }
+    assets = extract_assets(ui)
+    assert assets["model_name"] == "z_image_turbo-Q4_K_M.gguf"
+    assert assets["loras"] == ["z-image/blur.safetensors"]
+    assert assets["vae"] == "ae.safetensors"
+
+
+def test_extract_prompt_lists_api_multiple():
+    """多个采样器/引导器应产出多条正负提示词。"""
+    graph = {
+        "3": {"class_type": "KSampler", "inputs": {"positive": ["5", 0], "negative": ["6", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "a cat on the beach"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, worst quality, extra fingers"}},
+        "103": {"class_type": "CFGGuider", "inputs": {"positive": ["105", 0], "negative": ["106", 0]}},
+        "105": {"class_type": "CLIPTextEncode", "inputs": {"text": "cinematic lighting, detail"}},
+        "106": {"class_type": "CLIPTextEncode", "inputs": {"text": "watermark, jpeg artifacts"}},
+    }
+    lists = extract_prompt_lists(graph)
+    assert lists["positive"] == ["a cat on the beach", "cinematic lighting, detail"]
+    assert lists["negative"] == ["blurry, worst quality, extra fingers", "watermark, jpeg artifacts"]
+
+
+def test_extract_prompt_lists_ui_ignores_placeholders():
+    """UI 图应只收集真实提示词，忽略 easy getNode 等占位节点标签。"""
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "CLIPTextEncode", "widgets_values": ["a serene lake, golden hour"]},
+            {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["blurry, worst quality"]},
+            {"id": 3, "type": "easy getNode", "widgets_values": ["提示词"]},
+            {"id": 4, "type": "CR Text", "widgets_values": ["a portrait of a girl"]},
+        ],
+        "links": [],
+    }
+    lists = extract_prompt_lists(ui)
+    assert "提示词" not in lists["positive"]
+    assert lists["positive"] == ["a serene lake, golden hour", "a portrait of a girl"]
+    assert lists["negative"] == ["blurry, worst quality"]
 
 
 def test_no_meta():

@@ -80,6 +80,11 @@ class WorkflowMeta(BaseModel, table=True):
     seed: Optional[int] = None
     denoise: Optional[float] = None
     model_name: str = Field(default="", max_length=512)
+    ai_prompt: str = Field(default="", sa_column=Column(Text))          # AI 从工作流解析出的提示词
+    ai_negative_prompt: str = Field(default="", sa_column=Column(Text)) # AI 解析出的负向提示词
+    origin_prompts_json: str = Field(default="", sa_column=Column(Text))  # 原生多提示词（正）JSON 列表
+    negative_prompts_json: str = Field(default="", sa_column=Column(Text))  # 原生多提示词（负）JSON 列表
+    ai_prompts_json: str = Field(default="", sa_column=Column(Text))      # AI 多提示词（正）JSON 列表
 
     image: Optional[ImageAsset] = Relationship(back_populates="workflow_meta")
 
