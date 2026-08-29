@@ -8,7 +8,7 @@
 ## 零基础快速启动（Windows）
 ### 方法一（推荐）
 在WorkBuddy或其它Agent助手中输入：
-> 帮我下载并运行该程序，https://github.com/ShenZiLi/ArtMirror
+> 安装运行该程序  https://github.com/ShenZiLi/ArtMirror
 
 ### 方法二
 1. 安装 **Python 3.11 或更高**（[python.org 下载](https://www.python.org/downloads/)，安装时勾选 **Add Python to PATH**）
