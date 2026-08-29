@@ -219,9 +219,9 @@
       a.download = im.name || "image.png"; a.click();
     },
     goGallery() {
-      // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则回退全量导航
+      // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航
       if (document.referrer && document.referrer.indexOf("gallery.html") >= 0) { history.back(); }
-      else { location.href = "gallery.html"; }
+      else { App.go("gallery.html"); }
     },
     reqDelete() { if (this.im) this.delTarget = this.im; },
     confirmDelete() {
@@ -230,7 +230,7 @@
       this.delTarget = null;
       Api.deleteImage(im.id).then(function () {
         App.toast("已删除");
-        location.href = "gallery.html";
+        App.go("gallery.html");
       }).catch(function (e) {
         alert((e && e.message) || "删除失败");
       });

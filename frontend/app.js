@@ -48,6 +48,26 @@
     applyTheme(currentTheme());
     var t = document.getElementById("theme-toggle");
     if (t) t.addEventListener("click", toggleTheme);
+    // 导航链接：非当前页点击走淡出跳转（页面间跳转淡入淡出）
+    if (host) {
+      var cur = location.pathname.split("/").pop() || "index.html";
+      host.querySelectorAll("a.nav-link").forEach(function (a) {
+        a.addEventListener("click", function (e) {
+          var href = a.getAttribute("href");
+          if (href === cur) { e.preventDefault(); return; }
+          e.preventDefault();
+          go(href);
+        });
+      });
+    }
+  }
+
+  // 页面间跳转：先淡出当前页再跳转（目标页加载时自动淡入）
+  function go(url) {
+    var body = document.body;
+    if (!body) { location.href = url; return; }
+    body.classList.add("am-page-out");
+    setTimeout(function () { location.href = url; }, 180);
   }
 
   // 星级（人工评分）
@@ -134,5 +154,5 @@
     }
   }
 
-  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast };
+  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast, go: go };
 })();

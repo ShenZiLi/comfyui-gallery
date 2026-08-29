@@ -24,6 +24,12 @@
 * { box-sizing: border-box; }
 [x-cloak] { display: none !important; }
 
+/* 页面间跳转淡入淡出：加载时淡入；离开前加 am-page-out 淡出 */
+body { animation: am-page-in .28s ease-out; }
+@keyframes am-page-in { from { opacity: 0 } to { opacity: 1 } }
+body.am-page-out { animation: none; opacity: 0; transition: opacity .18s ease-in; }
+@media (prefers-reduced-motion: reduce) { body { animation: none; } }
+
 /* 暗色模式变量覆盖 */
 html[data-theme="dark"] {
   --bg: #0f1218;
@@ -269,23 +275,53 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .tree-item .icon { width: 16px; text-align: center; }
 .tree-item .count { margin-left: auto; font-size: 12px; color: var(--text-3); }
 
-/* ===== 图片网格：瀑布流，保持图片原始宽高比（列数由 --cols 控制，默认 5） ===== */
-.masonry { columns: var(--cols, 5); column-gap: 14px; width: 100%; }
-.masonry .card { break-inside: avoid; margin-bottom: 14px; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 300px; }
-.masonry.immersive { columns: var(--cols, 5); column-gap: 10px; }
-.masonry.immersive .card { margin-bottom: 10px; content-visibility: auto; contain-intrinsic-size: auto 200px; }
+/* ===== 图片网格：先横后纵（行优先），按排序顺序左上→右下（最近在左上角） ===== */
+.masonry { display: grid; grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); column-gap: 14px; row-gap: 14px; width: 100%; align-items: start; }
+.masonry .card { min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 300px; }
+.masonry.immersive { grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr)); column-gap: 10px; row-gap: 10px; }
+.masonry.immersive .card { content-visibility: auto; contain-intrinsic-size: auto 200px; }
 .masonry .thumb-wrap { position: relative; background: #eceef2; overflow: hidden; }
 .masonry .thumb-wrap img { width: 100%; height: auto; display: block; object-fit: contain; }
 .immersive-cell { cursor: zoom-in; }
 
-/* 缩放切换动效：快速微缩淡出（遮住列数重排）→ 平滑回位淡入 */
+/* 缩放/翻页切换动效：缩放=微缩淡出；翻页=旧视图横向滑出、新视图从对侧滑入 */
 .masonry, .group-grid { transition: opacity .22s ease-out, transform .22s ease-out; }
 .am-zooming .masonry,
 .am-zooming .group-grid { transition: opacity .12s ease-in, transform .12s ease-in; opacity: .4; transform: scale(.965); }
+/* 翻页滑出阶段：当前视图快速横向滑出并淡出 */
+.am-turn-right .masonry,
+.am-turn-right .group-grid,
+.am-turn-left .masonry,
+.am-turn-left .group-grid { transition: transform .15s ease-in, opacity .15s ease-in; opacity: 0; }
+.am-turn-right .masonry,
+.am-turn-right .group-grid { transform: translateX(-42px); }
+.am-turn-left .masonry,
+.am-turn-left .group-grid { transform: translateX(42px); }
+/* 翻页进入起始位：新视图从滑出方向的对侧进入（置于滑出规则之后保证覆盖） */
+.am-turn-right .am-turn-in { transform: translateX(42px); }
+.am-turn-left .am-turn-in { transform: translateX(-42px); }
+/* 目录切换垂直翻页：选下方目录向下翻、选上方目录向上翻 */
+.am-flip-down .masonry,
+.am-flip-down .group-grid,
+.am-flip-up .masonry,
+.am-flip-up .group-grid { transition: transform .15s ease-in, opacity .15s ease-in; opacity: 0; }
+.am-flip-down .masonry, .am-flip-down .group-grid { transform: translateY(-46px); }
+.am-flip-up .masonry, .am-flip-up .group-grid { transform: translateY(46px); }
+/* 目录翻页进入：animation 从明确起点播放，不受 Alpine 渲染阻塞绘制时机影响；forwards 保持终点态避免结束后回落跳变 */
+.am-flip-down .am-flip-in { animation: am-flip-in-down .22s ease-out forwards; }
+@keyframes am-flip-in-down { from { transform: translateY(46px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+.am-flip-up .am-flip-in { animation: am-flip-in-up .22s ease-out forwards; }
+@keyframes am-flip-in-up { from { transform: translateY(-46px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 @media (prefers-reduced-motion: reduce) {
   .masonry, .group-grid { transition: none !important; }
   .am-zooming .masonry,
   .am-zooming .group-grid { opacity: 1; transform: none; }
+  .am-turn-right .masonry, .am-turn-right .group-grid,
+  .am-turn-left .masonry, .am-turn-left .group-grid,
+  .am-turn-right .am-turn-in, .am-turn-left .am-turn-in { opacity: 1; transform: none; }
+  .am-flip-down .masonry, .am-flip-down .group-grid,
+  .am-flip-up .masonry, .am-flip-up .group-grid,
+  .am-flip-down .am-flip-in, .am-flip-up .am-flip-in { opacity: 1; transform: none; animation: none !important; }
 }
 
 .img-card { overflow: hidden; container-type: inline-size; }

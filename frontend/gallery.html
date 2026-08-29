@@ -35,9 +35,9 @@
           <svg class="chev" :class="{up:folderOpen}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="dropdown-menu" x-show="folderOpen" x-cloak>
-          <button class="dropdown-item" :class="{active: currentFolder===''}" @click="currentFolder='';folderOpen=false;loadImages()">全部目录</button>
+          <button class="dropdown-item" :class="{active: currentFolder===''}" @click="selectFolder('')">全部目录</button>
           <template x-for="f in foldersWithImages" :key="f.id">
-            <button class="dropdown-item" :class="{active: String(currentFolder)===String(f.id)}" @click="currentFolder=f.id;folderOpen=false;loadImages()">
+            <button class="dropdown-item" :class="{active: String(currentFolder)===String(f.id)}" @click="selectFolder(f.id)">
               <span x-text="f.path||'根目录'"></span>
               <span class="count" x-text="f.count"></span>
             </button>
@@ -337,6 +337,9 @@
     // 每种预览模式独立的列数：平铺/沉浸默认 5 列，聚合默认 3 列；放大减列（最小 1）、缩小加列（最大 10）
     cols: { flat: 5, immersive: 5, aggregate: 3 },
     zooming: false,
+    modeSwitching: false,
+    _pendingEnter: 0,
+    _flipDir: "",
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -497,9 +500,78 @@
         });
       }, 130);
     },
-    // 切换展示模式：仅切换视图，不重新拉取/排序数据（避免闪屏）
+    // 切换展示模式：翻页特效——旧视图横向滑出，新视图从对侧滑入
+    // 向右切（点右侧按钮）触发右翻页、向左切触发左翻页；仅切视图，不重新拉取/排序数据
     switchMode(m) {
       if (this.mode === m) return;
+      var self = this;
+      if (this.modeSwitching) return; // 动画进行中忽略连点
+      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var page = document.querySelector(".page");
+      if (reduced || !page) { this._doSwitch(m); return; }
+      var order = { flat: 0, immersive: 1, aggregate: 2 };
+      var dir = (order[m] - order[this.mode]) > 0 ? 1 : -1; // 1=右翻页，-1=左翻页
+      this.modeSwitching = true;
+      page.classList.add(dir > 0 ? "am-turn-right" : "am-turn-left");
+      setTimeout(function () {
+        self._doSwitch(m);
+        // 聚合首次进入：groups 为空触发异步加载，等数据渲染完成后补播进入动画
+        if (m === "aggregate" && !self.groups.length) {
+          self._pendingEnter = dir;
+          page.classList.remove("am-turn-right", "am-turn-left");
+          setTimeout(function () { self.modeSwitching = false; }, 260);
+          return;
+        }
+        self._playEnter(m, dir, page);
+      }, 150);
+    },
+    // 播放新视图进入动画：设起始位（对侧）→ 移除类触发滑入原位
+    _playEnter(m, dir, page) {
+      var enter = this._containerEl(m);
+      if (enter) enter.classList.add("am-turn-in");
+      var self = this;
+      this._afterRender(function () {
+        page.classList.remove("am-turn-right", "am-turn-left");
+        if (enter) enter.classList.remove("am-turn-in");
+        setTimeout(function () { self.modeSwitching = false; }, 260);
+      });
+    },
+    // 当前模式对应的视图容器（用于翻页进入动画）
+    _containerEl(m) {
+      if (m === "aggregate") return document.querySelector(".group-grid");
+      if (m === "immersive") return document.querySelector(".masonry.immersive");
+      return document.querySelector(".masonry");
+    },
+    // 目录顺序索引：全部目录在最上方(0)，其后按 foldersWithImages 显示顺序
+    _folderIndex(id) {
+      var list = this.foldersWithImages() || [];
+      if (id === "" || id === null || id === undefined) return 0;
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].id) === String(id)) return i + 1;
+      }
+      return list.length; // 未知目录视为最后
+    },
+    // 切换目录：选下方目录向下翻页、选上方目录向上翻页（仅换目录数据，动效遮罩异步加载）
+    selectFolder(id) {
+      var self = this;
+      this.folderOpen = false;
+      var curIdx = this._folderIndex(this.currentFolder);
+      var targetIdx = this._folderIndex(id);
+      var dir = targetIdx > curIdx ? "down" : (targetIdx < curIdx ? "up" : "");
+      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var page = document.querySelector(".page");
+      if (!dir || reduced || !page || this.modeSwitching) {
+        this.currentFolder = id; this.loadImages(); return;
+      }
+      this.modeSwitching = true;
+      this._flipDir = dir;
+      page.classList.add(dir === "down" ? "am-flip-down" : "am-flip-up");
+      setTimeout(function () {
+        self.currentFolder = id;
+        self.loadImages();
+      }, 150);
+    },
+    _doSwitch(m) {
       this.mode = m;
       var self = this;
       if (m === "aggregate") {
@@ -534,7 +606,22 @@
           self.hasMore = page.hasMore;
           self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
           self.loading = false;
-          self._afterRender(function () { self._rearm("list"); });
+          // 目录垂直翻页：数据渲染完成后播放进入动画（animation 从对侧起点播放）
+          var flip = self._flipDir;
+          self._afterRender(function () {
+            self._rearm("list");
+            if (flip) {
+              self._flipDir = "";
+              var pg = document.querySelector(".page");
+              var listEl = self._containerEl(self.mode);
+              if (listEl) listEl.classList.add("am-flip-in");
+              setTimeout(function () {
+                if (pg) pg.classList.remove("am-flip-down", "am-flip-up");
+                if (listEl) listEl.classList.remove("am-flip-in");
+                self.modeSwitching = false;
+              }, 240);
+            }
+          });
           // 从详情页返回：先不可见，补页到目标位置后一次性显示
           if (self._restoreScroll) {
             self._afterRender(function () { self._resumeScroll(); });
@@ -626,9 +713,27 @@
         self.groupLoading = false;
         self.groupCount = page.total;
         self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 组";
+        // 首次从平铺/沉浸切到聚合：数据赋值后、Alpine 渲染 group-grid 可见前同步加进入起始位，
+        // 使其首帧即从对侧位置呈现，渲染完成后移除类平滑滑入
+        if (self._pendingEnter) {
+          var dir = self._pendingEnter;
+          var pg = document.querySelector(".page"), gg = document.querySelector(".group-grid");
+          if (pg && gg) {
+            pg.classList.add(dir > 0 ? "am-turn-right" : "am-turn-left");
+            gg.classList.add("am-turn-in");
+          }
+        }
         self._afterRender(function () {
           self._rearm("groups");
           if (self._restoreScroll) self._resumeGroupScroll();
+          if (self._pendingEnter) {
+            self._pendingEnter = 0;
+            var pg2 = document.querySelector(".page"), gg2 = document.querySelector(".group-grid");
+            if (pg2 && gg2) {
+              pg2.classList.remove("am-turn-right", "am-turn-left");
+              gg2.classList.remove("am-turn-in");
+            }
+          }
         });
       });
     },
@@ -688,7 +793,7 @@
       App.toast("请在「设置 → 导入保存目录」修改可写的绝对路径");
       this.permModal = false;
       this.permFiles = null;
-      location.href = "settings.html";
+      App.go("settings.html");
     },
     confirmDelete() {
       var self = this;
@@ -833,7 +938,7 @@
           groups: this.groups, groupTotal: this.groupTotal, groupHasMore: this.groupHasMore
         }));
       } catch (e) {}
-      location.href = "image.html?id=" + id;
+      App.go("image.html?id=" + id);
     },
   };
 
