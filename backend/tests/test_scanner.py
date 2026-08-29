@@ -9,6 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
+from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import settings
@@ -36,7 +37,7 @@ def _png(path: Path, tone: int = 30):
 def _engine(tmp: Path):
     settings.data_dir = str(tmp)
     settings.ensure_dirs()
-    engine = create_engine(f"sqlite:///{tmp / 't.db'}", connect_args={"check_same_thread": False})
+    engine = create_engine(f"sqlite:///{tmp / 't.db'}", connect_args={"check_same_thread": False}, poolclass=NullPool)
     SQLModel.metadata.create_all(engine)
     return engine
 
