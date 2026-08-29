@@ -4,6 +4,61 @@
 
 > 个人单机工具：单进程同时提供 REST API 与前端静态托管，无鉴权，建议仅在可信局域网/本机使用。
 
+
+## 零基础快速启动（Windows）
+### 方法一（推荐）
+在WorkBuddy或其它Agent助手中输入：
+> 帮我下载并运行该程序，https://github.com/ShenZiLi/ArtMirror
+
+### 方法二
+1. 安装 **Python 3.11 或更高**（[python.org 下载](https://www.python.org/downloads/)，安装时勾选 **Add Python to PATH**）
+2. 双击项目根目录的 **`启动.bat`**
+3. 首次会自动创建虚拟环境并安装依赖（约 1-3 分钟），之后几秒内启动
+4. 启动完成后自动打开浏览器进入图库；窗口保持运行，**按回车键停止服务并退出**
+
+> 服务地址：http://127.0.0.1:8000/gallery.html（手动访问也可）
+
+## 部署流程
+
+### 环境要求
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)（Python 包管理）
+- ComfyUI 输出目录（可配置任意本地图片目录）
+
+### 安装与启动
+
+```bash
+# 1. 进入后端目录
+cd backend
+
+# 2. 安装/同步依赖（首次）
+uv sync
+
+# 3. 启动服务（API + 前端托管）
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### 访问
+
+| 地址 | 说明    |
+| --- |-------|
+| http://127.0.0.1:8000/gallery.html | 首页-图库 |
+
+### 首次配置
+
+1. 打开 **设置** 页
+2. 在「图片目录」添加你的 ComfyUI 输出目录（校验目录存在、防路径穿越）
+3. 可选：配置「大模型」三角色（文本 / 视觉 / Embedding，OpenAI 兼容接口）以启用反推 / 翻译 / 评分 / 解析
+4. 返回 **图库** 即可浏览已扫描图片
+
+### 数据与运行目录
+
+- 运行数据位于 `data/`（SQLite 库 `data/artmirror.db` + 缩略图 `data/thumbs/`），已被 `.gitignore` 忽略
+- 每图只存引用（绝对路径 + sha256）与 meta，不存图片字节
+- 清空数据 = 删除 `data/artmirror.db` 与 `data/thumbs/`
+
+---
 ## 功能特性
 
 - **图片采集**：后台定时扫描注册目录、浏览器/拖拽导入图片、目录批量导入（保留目录结构）
@@ -45,52 +100,6 @@ ArtMirror/
 ├── docs/                    # 功能清单 / 设计文档 / 截图
 └── README.md
 ```
-
-## 部署流程
-
-### 环境要求
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/)（Python 包管理）
-- ComfyUI 输出目录（可配置任意本地图片目录）
-
-### 安装与启动
-
-```bash
-# 1. 进入后端目录
-cd backend
-
-# 2. 安装/同步依赖（首次）
-uv sync
-
-# 3. 启动服务（API + 前端托管）
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### 访问
-
-| 地址 | 说明 |
-| --- | --- |
-| http://127.0.0.1:8000/gallery.html | 图库 |
-| http://127.0.0.1:8000/settings.html | 设置 |
-| http://127.0.0.1:8000/docs | 后端 OpenAPI 文档 |
-
-### 首次配置
-
-1. 打开 **设置** 页
-2. 在「图片目录」添加你的 ComfyUI 输出目录（校验目录存在、防路径穿越）
-3. 可选：配置「大模型」三角色（文本 / 视觉 / Embedding，OpenAI 兼容接口）以启用反推 / 翻译 / 评分 / 解析
-4. 返回 **图库** 即可浏览已扫描图片
-
-### 数据与运行目录
-
-- 运行数据位于 `data/`（SQLite 库 `data/artmirror.db` + 缩略图 `data/thumbs/`），已被 `.gitignore` 忽略
-- 每图只存引用（绝对路径 + sha256）与 meta，不存图片字节
-- 清空数据 = 删除 `data/artmirror.db` 与 `data/thumbs/`
-
-### 局域网访问
-
-服务监听 `0.0.0.0`，同局域网设备通过本机 IP + 端口访问前端地址即可（单用户无鉴权，仅限可信网络）。
 
 ## 前端页面
 

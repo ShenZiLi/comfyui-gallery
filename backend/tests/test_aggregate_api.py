@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
@@ -16,7 +17,7 @@ def _setup(tmp: Path):
     settings.data_dir = str(tmp)
     settings.ensure_dirs()
     engine = create_engine(
-        f"sqlite:///{tmp / 't.db'}", connect_args={"check_same_thread": False}
+        f"sqlite:///{tmp / 't.db'}", connect_args={"check_same_thread": False}, poolclass=NullPool
     )
     SQLModel.metadata.create_all(engine)
     app = FastAPI()
