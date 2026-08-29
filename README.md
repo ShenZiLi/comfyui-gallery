@@ -46,6 +46,15 @@ ArtMirror/
 └── README.md
 ```
 
+## 小白快速启动（Windows）
+
+1. 安装 **Python 3.11 或更高**（[python.org 下载](https://www.python.org/downloads/)，安装时勾选 **Add Python to PATH**）
+2. 双击项目根目录的 **`启动.bat`**
+3. 首次会自动创建虚拟环境并安装依赖（约 1-3 分钟），之后秒启
+4. 启动完成后自动打开浏览器进入图库；窗口保持运行，**按回车键停止服务并退出**
+
+> 服务地址：http://127.0.0.1:8000/gallery.html（手动访问也可）
+
 ## 部署流程
 
 ### 环境要求
