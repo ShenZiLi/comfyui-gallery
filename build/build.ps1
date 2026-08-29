@@ -28,6 +28,7 @@ im.save(r'$iconOut', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,1
 print('icon ->', r'$iconOut')
 "@
 }
+if ($LASTEXITCODE -ne 0) { Write-Host "icon 生成失败：$iconSrc"; exit 1 }
 
 # 3) 打包（在 build/ 下执行，spec 内路径相对 SPECPATH；dist 输出到项目根 dist/）
 Push-Location $BuildDir
