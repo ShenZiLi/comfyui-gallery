@@ -32,15 +32,19 @@ def fatal_box(title: str, msg: str) -> None:
 
 
 def main() -> int:
-    from app import main as app_main
-    from app.config import settings
+    try:
+        from app import main as app_main
+        from app.config import settings
 
-    app = app_main.app
-    settings.ensure_dirs()
+        app = app_main.app
+        settings.ensure_dirs()
 
-    log_path = Path(settings.data_dir) / "server.log"
-    setup_file_logging(log_path)
-    log = logging.getLogger("run")
+        log_path = Path(settings.data_dir) / "server.log"
+        setup_file_logging(log_path)
+        log = logging.getLogger("run")
+    except Exception as exc:  # noqa: BLE001
+        fatal_box("画镜启动失败", f"初始化失败：{exc}\n请确认 exe 放在可写目录（勿放 Program Files），并查看日志。")
+        return 1
 
     if "--version" in sys.argv:
         log.info("画镜 ArtMirror %s (frozen=%s)", VERSION, bool(getattr(sys, "frozen", False)))
