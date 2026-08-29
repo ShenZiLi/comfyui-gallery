@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>图片详情 · 画镜 ArtMirror</title>
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
   <!-- 提前设置主题，避免刷新时亮/暗色闪烁 -->
   <script>
     try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
@@ -23,7 +27,7 @@
     <div class="detail-image card">
       <div class="pad" style="padding:8px 12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span x-text="im.name" style="font-weight:600;font-size:13px"></span>
+          <span x-text="im.name" :data-tip="im.absPath || im.path" style="font-weight:600;font-size:13px"></span>
           <span class="muted" x-text="fmt(im)" style="font-size:12px"></span>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
             <button class="icon-btn" title="复制图片" @click="copyImage()">
@@ -57,7 +61,8 @@
               <span x-text="pState==='rev' ? '反推中' : '反推'"></span>
             </button>
             <button class="src-tab ai" :class="{active: im._src==='ai', has: !!im.aiPrompt || pState==='parse'}"
-                    @click="selectPrompt('ai')">
+                    @click="selectPrompt('ai')"
+                    data-tip="原生提示词不准确时，可用AI重新解析工作流" data-tip-delay="1500">
               <span x-text="pState==='parse' ? '解析中' : 'AI'"></span>
             </button>
           </span>
@@ -66,20 +71,19 @@
               <span x-show="trIng">翻译中…</span>
               <span x-show="!trIng" x-text="trLabel()"></span>
             </button>
-            <button class="btn sm" @click="copy(activePrompt())" x-show="activePrompt()">复制</button>
           </span>
         </h3>
         <div class="muted" style="font-size:12px" x-show="pErr"><b x-text="pErr"></b></div>
         <div style="color:var(--text-2)">
           <template x-for="(txt, pi) in activePrompts()" :key="pi">
-            <div class="prompt-item" :class="{'first':pi===0}" x-text="txt"></div>
+            <div class="prompt-item prompt-clickable" :class="{'first':pi===0}" @click.stop="copy(txt)" x-text="txt"></div>
           </template>
           <span x-show="!activePrompts().length && pState==='parse'" style="color:var(--text-3)">AI 解析中…</span>
           <span x-show="!activePrompts().length && pState==='rev'" style="color:var(--text-3)">AI 反推中…</span>
           <span x-show="!activePrompts().length && !pState" style="color:var(--text-3)">（无提示词）</span>
         </div>
         <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
-          <b>负向：</b><span x-text="activeNegative()"></span>
+          <b>负向：</b><span class="prompt-clickable" @click.stop="copy(activeNegative())" x-text="activeNegative()"></span>
         </div>
       </div>
 
@@ -89,7 +93,8 @@
           <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
             <button class="btn sm" @click="preview()">预览工作流</button>
             <button class="btn sm" :class="{spin:mState==='ing'}" @click="reparseModels()"
-                    x-text="mState==='ing' ? '解析中' : 'AI'"></button>
+                    x-text="mState==='ing' ? '解析中' : 'AI解析'"
+                    data-tip="模型不准确时，可用AI重新解析工作流" data-tip-delay="1500"></button>
           </span>
         </h3>
         <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
@@ -122,7 +127,7 @@
           <div>
             <div class="muted" style="font-size:12px">AI 评分</div>
             <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:20px;font-weight:700;color:var(--brand)" x-text="im.aiRating!=null ? im.aiRating : '—'"></span>
+              <span style="font-size:20px;font-weight:700" :style="{color: im.aiRating!=null ? 'var(--brand)' : 'var(--text-3)'}" x-text="im.aiRating!=null ? im.aiRating : '—'"></span>
               <button class="icon-btn" title="用 AI 重新评分" :class="{spin:aState==='ing'}" @click="aiScore()">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
               </button>
@@ -175,7 +180,7 @@
   window.Detail = {
     im: null, showModal: false, aState: "", mState: "", mErr: "", hoverRating: 0,
     delTarget: null,
-    pState: "", pErr: "", trOn: false, trSrc: "", trText: "",
+    pState: "", pErr: "", trOn: false, trSrc: "", trTexts: [],
     trIng: false,
     init() {
       App.initNav("");
@@ -241,8 +246,8 @@
     // 提示词三源（原生/反推/AI）
     activePrompts() {
       var im = this.im; if (!im) return [];
-      // 当前源已翻译：直接显示译文（切换显示，不再请求 AI）
-      if (this.trOn && this.trSrc === im._src && this.trText) return [this.trText];
+      // 当前源已翻译：直接显示译文数组（切换显示，不再请求 AI）
+      if (this.trOn && this.trSrc === im._src && this.trTexts.length) return this.trTexts;
       var raw;
       if (im._src === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
       else if (im._src === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
@@ -252,17 +257,44 @@
       return raw;
     },
     activePrompt() { return (this.activePrompts()[0] || ""); },
+    // 译文可能为多段（后端用 <<<SEG>>> 或换行分隔），切回数组逐段展示
+    _splitSegs(text) {
+      if (!text) return [];
+      var parts = text.split("\n<<<SEG>>>\n").map(function (s) { return s.trim(); }).filter(Boolean);
+      if (parts.length < 2) {
+        parts = text.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      }
+      return parts.length ? parts : [text.trim()];
+    },
+    // 原文按长度降序展示，译文需按同一索引重排，保证第 i 段译文对应第 i 段原文
+    _alignSegs(srcRaw, trs) {
+      if (!srcRaw.length || !trs.length) return trs;
+      var idx = srcRaw.map(function (_, i) { return i; });
+      idx.sort(function (a, b) { return srcRaw[b].length - srcRaw[a].length; });
+      var out = idx.map(function (i) { return trs[i]; });
+      return out.filter(function (t) { return !!t; });
+    },
+    // 取当前源过滤后的原序原文（用于翻译后按展示顺序对齐译文）
+    _srcRawList(im, kind) {
+      var raw;
+      if (kind === "reverse") raw = (im.reversePrompt || "") ? [im.reversePrompt] : [];
+      else if (kind === "ai") raw = (Array.isArray(im.aiPrompts) && im.aiPrompts.length) ? im.aiPrompts.slice() : ((im.aiPrompt || "") ? [im.aiPrompt] : []);
+      else raw = (Array.isArray(im.originPrompts) && im.originPrompts.length) ? im.originPrompts.slice() : ((im.prompt || "") ? [im.prompt] : []);
+      return raw.filter(function (t) { return (t || "").length >= 10; });
+    },
     trLabel() { return (this.trOn && this.trSrc === this.im._src) ? "原文" : "中英译"; },
     translatePrompt() {
       var self = this;
       var im = this.im;
       if (!im || this.trIng) return;
       var kind = im._src;
+      // 翻译前捕获原序原文，翻译后按原文展示顺序对齐译文
+      var srcRaw = self._srcRawList(im, kind);
       // 已有持久化译文：直接切换显示，不再请求 AI
       var stored = (im.translations && im.translations[kind]) || {};
       var langs = Object.keys(stored);
       if (langs.length) {
-        self.trText = stored[langs[0]];
+        self.trTexts = self._alignSegs(srcRaw, self._splitSegs(stored[langs[0]]));
         self.trSrc = kind;
         self.trOn = !(self.trOn && self.trSrc === kind);
         return;
@@ -271,8 +303,10 @@
       Api.translatePrompt(im.id, kind).then(function (d) {
         im.translations = im.translations || {};
         im.translations[kind] = im.translations[kind] || {};
-        im.translations[kind][d.lang] = d.text;
-        self.trText = d.text; self.trSrc = kind; self.trOn = true;
+        im.translations[kind][d.lang] = d.text || (d.texts || []).join("\n");
+        var trs = (d && Array.isArray(d.texts)) ? d.texts : self._splitSegs(d.text || "");
+        self.trTexts = self._alignSegs(srcRaw, trs);
+        self.trSrc = kind; self.trOn = true;
         self.trIng = false;
       }).catch(function (e) {
         self.trIng = false;
@@ -295,7 +329,7 @@
     selectPrompt(kind) {
       var im = this.im; if (!im) return;
       // 切换提示词源时，重置译文显示（回到原文）
-      this.trOn = false; this.trSrc = ""; this.trText = "";
+      this.trOn = false; this.trSrc = ""; this.trTexts = [];
       if (!this.promptGrey(kind)) { im._src = kind; return; }
       if (kind === "reverse") this.reverseGen();
       else if (kind === "ai") this.reparseModels(true);
@@ -363,6 +397,42 @@
       });
     },
   };
+
+  // 顶层悬浮气泡：data-tip 元素悬停后把气泡挂在 body 顶层显示（避免被裁剪）
+  // 延迟默认 600ms，可用 data-tip-delay 属性按元素指定（毫秒）
+  (function () {
+    var state = { cur: null, bubble: null, timer: null };
+    function hide() {
+      clearTimeout(state.timer);
+      if (state.bubble && state.bubble.parentNode) state.bubble.parentNode.removeChild(state.bubble);
+      state.bubble = null; state.cur = null;
+    }
+    document.addEventListener("mouseover", function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest("[data-tip]") : null;
+      if (!el || el === state.cur) return;
+      hide();
+      state.cur = el;
+      var tip = el.getAttribute("data-tip") || "";
+      if (!tip) return;
+      var b = document.createElement("div");
+      b.className = "am-tip-bubble";
+      b.textContent = tip;
+      document.body.appendChild(b);
+      var r = el.getBoundingClientRect();
+      b.style.left = (r.left + r.width / 2) + "px";
+      b.style.top = (r.bottom + 8) + "px";
+      b.style.transform = "translateX(-50%)";
+      state.bubble = b;
+      var delay = parseInt(el.getAttribute("data-tip-delay") || "600", 10) || 600;
+      state.timer = setTimeout(function () { b.classList.add("show"); }, delay);
+    }, true);
+    document.addEventListener("mouseout", function (ev) {
+      var el = state.cur;
+      if (!el) return;
+      if (ev.relatedTarget && el.contains(ev.relatedTarget)) return; // 仍在元素内
+      hide();
+    }, true);
+  })();
 </script>
 </body>
 </html>

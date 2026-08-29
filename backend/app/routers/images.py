@@ -165,6 +165,7 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
     card["promptGraph"] = meta.prompt_graph_json if meta else ""
     card["workflow"] = meta.workflow_json if meta else ""
     card["path"] = im.file_path
+    card["absPath"] = im.abs_path
     # 各提示词源已持久化的中英译文：{kind: {lang: text}}
     translations: dict[str, dict[str, str]] = {}
     for t in session.exec(
@@ -175,11 +176,14 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
     return card
 
 
-def _kind_prompt(session: Session, im: ImageAsset, kind: str) -> str:
-    """取某个提示词源的主文本（用于互译）。"""
+_SEG = "\n<<<SEG>>>\n"  # 多段提示词间的唯一分隔标记（翻译后用于切回分段）
+
+
+def _kind_prompt_list(session: Session, im: ImageAsset, kind: str) -> list[str]:
+    """取某个提示词源的多段主文本（用于互译，保留分段结构）。"""
     if kind == "reverse":
         rev = _latest(session, ReversePrompt, im.id)
-        return rev.text if rev else ""
+        return [rev.text] if rev and rev.text.strip() else []
     meta = session.exec(
         select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
     ).first()
@@ -191,7 +195,15 @@ def _kind_prompt(session: Session, im: ImageAsset, kind: str) -> str:
         items = _load_str_list(meta.origin_prompts_json if meta else "") or (
             [meta.prompt] if meta and meta.prompt else []
         )
-    return "\n".join(items).strip()
+    return [x for x in items if x and x.strip()]
+
+
+def _split_translation(text: str) -> list[str]:
+    """把翻译结果按段间分隔标记切回多段；标记丢失时退回按换行切。"""
+    parts = [p.strip() for p in text.split(_SEG) if p.strip()]
+    if len(parts) < 2:
+        parts = [p.strip() for p in re.split(r"\n+", text) if p.strip()]
+    return parts or [text.strip()]
 
 
 def _detect_target_lang(text: str) -> str:
@@ -208,10 +220,11 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
     kind = str((body.get("kind") or "origin")).strip()
     if kind not in ("origin", "reverse", "ai"):
         raise HTTPException(400, "kind 仅支持 origin / reverse / ai")
-    src = _kind_prompt(session, im, kind)
-    if not src:
+    parts = _kind_prompt_list(session, im, kind)
+    if not parts:
         raise HTTPException(400, "该提示词源暂无内容，无法翻译")
 
+    src = _SEG.join(parts)
     target = _detect_target_lang(src)
     exists = session.exec(
         select(PromptTranslation).where(
@@ -221,16 +234,17 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
         )
     ).first()
     if exists is not None:
-        return {"text": exists.text, "lang": target, "cached": True}
+        return {"texts": _split_translation(exists.text), "lang": target, "cached": True}
 
     try:
         translated = llm.translate_prompt(src, target, session)
     except llm.LLMError as exc:
         raise HTTPException(502, str(exc))
-    row = PromptTranslation(image_id=im.id, prompt_kind=kind, lang=target, text=translated)
+    texts = _split_translation(translated)
+    row = PromptTranslation(image_id=im.id, prompt_kind=kind, lang=target, text=_SEG.join(texts))
     session.add(row)
     session.commit()
-    return {"text": translated, "lang": target, "cached": False}
+    return {"texts": texts, "lang": target, "cached": False}
 
 
 def _filter_images(session: Session, folder_id, tag, q):

@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>图库 · 画镜 ArtMirror</title>
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png" />
   <!-- 提前设置主题并（返回时）预隐藏内容，避免首绘闪烁 -->
   <script>
     try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
@@ -369,14 +373,7 @@
             document.documentElement.classList.remove("am-restore");
           }
         }, 2000);
-        // 浏览器「后退」bfcache 返回时重新定位并显示
-        window.addEventListener("pageshow", function (ev) {
-          if (ev.persisted) {
-            if (history.scrollRestoration) history.scrollRestoration = "manual";
-            window.scrollTo(0, savedY);
-            document.documentElement.classList.remove("am-restore");
-          }
-        });
+        // bfcache 返回时的滚动恢复由文件底部全局 pageshow 监听处理（见下方 IIFE）
         if (self.mode === "aggregate") {
           // 保持 _restoreScroll 与 am-restore（隐藏态），交由 _resumeGroupScroll 定位后再显示
           if (saved.groups && saved.groups.length) {
@@ -509,7 +506,9 @@
         if (!this.groups.length) this.reloadGroups();
         else this.summary = "已显示 " + this.groups.length + " / 共 " + this.groupTotal + " 组";
       } else {
-        this.summary = "已显示 " + this.images.length + " / 共 " + this.total + " 张";
+        // 从详情页返回时若处于聚合模式，images 未加载：切回平铺/沉浸时补齐，避免误显示「暂无图片」
+        if (!this.images.length && !this.loading) this.loadImages();
+        else this.summary = "已显示 " + this.images.length + " / 共 " + this.total + " 张";
       }
       // 切换后容器变为可见，重新武装对应无限滚动哨兵
       this._afterRender(function () { self._rearm(m === "aggregate" ? "groups" : "list"); });
@@ -837,6 +836,28 @@
       location.href = "image.html?id=" + id;
     },
   };
+
+  // 从详情页 bfcache 返回时的滚动恢复：页面从内存恢复不会重跑 init()，
+  // 故在全局注册 pageshow，命中持久化恢复且存在待消费快照时读取并定位。
+  // 全新加载（persisted=false）由 init() 处理，此处不做任何事。
+  (function () {
+    function restoreFromBfcache() {
+      try {
+        var raw = sessionStorage.getItem("am_gallery_state");
+        if (!raw) return;
+        var saved = JSON.parse(raw);
+        sessionStorage.removeItem("am_gallery_state");
+        if (history.scrollRestoration) history.scrollRestoration = "manual";
+        var y = Number(saved.scroll) || 0;
+        // bfcache 恢复时 DOM 已完整保留，直接定位（内容不足时贴底）
+        window.scrollTo(0, Math.min(y, document.documentElement.scrollHeight - window.innerHeight));
+        document.documentElement.classList.remove("am-restore");
+      } catch (e) {}
+    }
+    window.addEventListener("pageshow", function (ev) {
+      if (ev.persisted) restoreFromBfcache();
+    });
+  })();
 
   // 拖拽导入现由后端 /api/settings/upload 保存到「导入保存目录」并入库，此处不再直写本地目录
   // 顶层悬浮气泡：data-tip 元素悬停 1s 后，把气泡挂在 body 顶层显示（避免被卡片裁剪）
