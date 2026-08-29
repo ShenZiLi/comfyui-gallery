@@ -55,13 +55,20 @@ def main() -> int:
     # 2) 后台启动服务（日志已由 logging 落盘，uvicorn 不再输出到无控制台的 stderr）
     log.info("启动服务 %s:%s", HOST, PORT)
     server = uvicorn.Server(
-        uvicorn.Config(app, host=HOST, port=PORT, log_config=None, access_log=False)
+        uvicorn.Config(
+            app,
+            host=HOST,
+            port=PORT,
+            log_config=None,
+            access_log=False,
+            timeout_graceful_shutdown=5,
+        )
     )
     app.state.server = server
     thread = threading.Thread(target=server.run, daemon=True, name="uvicorn")
     thread.start()
 
-    # 3) 轮询健康检查（最多约 60s）
+    # 3) 轮询健康检查（最多约 60 轮，每次至多 2s 超时 + 1s 间隔）
     ready = False
     for _ in range(60):
         if server.should_exit:
@@ -90,6 +97,7 @@ def main() -> int:
     while not server.should_exit:
         time.sleep(0.5)
     log.info("收到关闭信号，正在退出")
+    thread.join(timeout=10)  # 等 uvicorn 线程跑完 lifespan.shutdown（watcher.stop 等）
     return 0
 
 

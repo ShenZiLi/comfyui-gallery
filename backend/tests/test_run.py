@@ -18,12 +18,18 @@ def test_is_port_in_use():
 
 
 def test_setup_file_logging():
-    """日志落盘到指定文件。"""
+    """日志落盘到指定文件，且内容实际写入。"""
     with tempfile.TemporaryDirectory() as td:
         log_path = Path(td) / "server.log"
         setup_file_logging(log_path)
         assert log_path.exists()
-        # Windows 上 FileHandler 会锁定文件，关闭并移除后临时目录才能被清理
-        logging.shutdown()
-        for h in list(logging.getLogger().handlers):
-            logging.getLogger().removeHandler(h)
+        old = logging.getLogger().handlers[:]  # 保存现场，便于恢复
+        try:
+            logging.getLogger("test").info("hello-artmirror-log")
+        finally:
+            # Windows 上 FileHandler 会锁定文件，关闭并移除 handler 释放句柄，
+            # 避免影响后续用例日志捕获
+            for h in list(logging.getLogger().handlers):
+                logging.getLogger().removeHandler(h)
+                h.close()
+        assert "hello-artmirror-log" in open(log_path, encoding="utf-8").read()
