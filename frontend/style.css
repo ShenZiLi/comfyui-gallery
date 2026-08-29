@@ -190,8 +190,10 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #111; }
 
 /* ===== 输入检索 ===== */
-.searchbox { position: relative; min-width: 240px; }
+.searchbox { position: relative; width: 280px; min-width: 240px; flex: 0 0 auto; }
 .searchbox input { padding-left: 30px; }
+/* 固定统计文案宽度，避免模式切换时文案长度变化推动搜索框左右漂移 */
+.toolbar .summary { flex: 0 0 auto; width: 140px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .search-icon {
   position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
   width: 14px; height: 14px; color: var(--text-3); pointer-events: none;
@@ -229,6 +231,17 @@ html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #1
 .dropdown-item .count { color: var(--text-3); font-size: 12px; flex: none; }
 html[data-theme="dark"] .dropdown-btn { background: #10141c; color: var(--text); }
 
+/* 列数缩放工具（放大/缩小）：分段控件风格，与工具栏 .seg 一致 */
+.zoom-tools {
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
+  background: #eceef2; border-radius: 8px; padding: 3px;
+}
+.zoom-tools .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
+.zoom-tools .icon-btn:hover { background: var(--panel); color: var(--brand); }
+html[data-theme="dark"] .zoom-tools { background: #0d1119; }
+.icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+.icon-btn:disabled:hover { color: var(--text-3); background: transparent; }
+
 /* ===== 目录树 ===== */
 .tree { padding: 4px; user-select: none; }
 .tree-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; cursor: pointer; color: var(--text-2); }
@@ -237,10 +250,10 @@ html[data-theme="dark"] .dropdown-btn { background: #10141c; color: var(--text);
 .tree-item .icon { width: 16px; text-align: center; }
 .tree-item .count { margin-left: auto; font-size: 12px; color: var(--text-3); }
 
-/* ===== 图片网格：瀑布流，保持图片原始宽高比 ===== */
-.masonry { columns: 5 220px; column-gap: 14px; width: 100%; }
+/* ===== 图片网格：瀑布流，保持图片原始宽高比（列数由 --cols 控制，默认 5） ===== */
+.masonry { columns: var(--cols, 5); column-gap: 14px; width: 100%; }
 .masonry .card { break-inside: avoid; margin-bottom: 14px; min-width: 0; content-visibility: auto; contain-intrinsic-size: auto 300px; }
-.masonry.immersive { columns: 6 160px; column-gap: 10px; }
+.masonry.immersive { columns: var(--cols, 5); column-gap: 10px; }
 .masonry.immersive .card { margin-bottom: 10px; content-visibility: auto; contain-intrinsic-size: auto 200px; }
 .masonry .thumb-wrap { position: relative; background: #eceef2; overflow: hidden; }
 .masonry .thumb-wrap img { width: 100%; height: auto; display: block; object-fit: contain; }
@@ -331,7 +344,7 @@ html[data-theme="dark"] .stars .off { color: #3a4251; }
 .star-tip { font-size: 12px; color: var(--text-3); margin-left: 6px; display: inline-block; min-width: 44px; }
 
 /* ===== 聚合页 ===== */
-.group-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.group-grid { display: grid; gap: 14px; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); }
 .group-card .cover-row {
   display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px 0;
   scrollbar-width: thin; scrollbar-color: #c5ccd8 transparent;
