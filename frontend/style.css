@@ -243,6 +243,13 @@ html[data-theme="dark"] .dropdown-btn { background: #10141c; color: var(--text);
   background: #eceef2; border-radius: 8px; padding: 3px;
 }
 .zoom-tools .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
+/* 高清原图预览状态徽标（列数 ≤4 时显示，悬停提示当前原图预览；低对比低调显示） */
+.hd-badge {
+  font-size: 10px; font-weight: 600; letter-spacing: .5px; line-height: 1.8;
+  color: var(--text-3);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 5px; cursor: default; user-select: none; white-space: nowrap;
+}
 .zoom-tools .icon-btn:hover { background: var(--panel); color: var(--brand); }
 html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .icon-btn:disabled { opacity: .35; cursor: not-allowed; }
@@ -312,6 +319,11 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 @keyframes am-flip-in-down { from { transform: translateY(46px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 .am-flip-up .am-flip-in { animation: am-flip-in-up .22s ease-out forwards; }
 @keyframes am-flip-in-up { from { transform: translateY(-46px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+/* 搜索结果切换：原结果淡出、新结果淡入 */
+.am-fade-out { animation: am-fade-out .15s ease-in forwards; }
+@keyframes am-fade-out { from { opacity: 1 } to { opacity: 0 } }
+.am-fade-in { animation: am-fade-in .3s ease-out; }
+@keyframes am-fade-in { from { opacity: 0 } to { opacity: 1 } }
 @media (prefers-reduced-motion: reduce) {
   .masonry, .group-grid { transition: none !important; }
   .am-zooming .masonry,
@@ -322,6 +334,7 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
   .am-flip-down .masonry, .am-flip-down .group-grid,
   .am-flip-up .masonry, .am-flip-up .group-grid,
   .am-flip-down .am-flip-in, .am-flip-up .am-flip-in { opacity: 1; transform: none; animation: none !important; }
+  .am-fade-out, .am-fade-in { animation: none !important; }
 }
 
 .img-card { overflow: hidden; container-type: inline-size; }

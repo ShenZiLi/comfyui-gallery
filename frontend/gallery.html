@@ -26,8 +26,15 @@
     <div id="topnav"></div>
     <div class="sticky-inner">
       <div class="toolbar">
-      <button class="btn primary" @click="$refs.fileInput.click()">导入</button>
+      <div class="dropdown" @click.outside="importOpen=false">
+        <button class="btn primary" @click="importOpen=!importOpen">导入</button>
+        <div class="dropdown-menu" x-show="importOpen" x-cloak>
+          <button class="dropdown-item" @click="importOpen=false;$refs.fileInput.click()">导入图片</button>
+          <button class="dropdown-item" @click="importOpen=false;$refs.dirInput.click()">导入目录</button>
+        </div>
+      </div>
       <input type="file" multiple accept="image/*" style="display:none" x-ref="fileInput" @change="imported($event)" />
+      <input type="file" webkitdirectory style="display:none" x-ref="dirInput" @change="importDir($event)" />
 
       <div class="dropdown" @keydown.escape.window="folderOpen=false" @click.outside="folderOpen=false">
         <button class="dropdown-btn" :class="{open:folderOpen}" @click="folderOpen=!folderOpen">
@@ -63,13 +70,14 @@
         </div>
       </div>
 
-      <div class="zoom-tools" title="列数：放大减列、缩小加列">
-        <button class="icon-btn" title="放大（减少列数）" :disabled="cols[mode]<=1" @click="zoomIn()">
+      <div class="zoom-tools">
+        <button class="icon-btn" data-tip="放大（减少列数）" :disabled="cols[mode]<=1" @click="zoomIn()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
         </button>
-        <button class="icon-btn" title="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
+        <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
         </button>
+        <span class="hd-badge" x-show="hiRes" data-tip="当前原图预览">HD</span>
       </div>
 
       <!-- 后台有更新时显示：点击主动刷新 -->
@@ -82,7 +90,7 @@
       <div class="searchbox">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
-               @keyup.debounce.300ms="loadImages()" />
+               @keyup.debounce.300ms="search()" />
       </div>
       <span class="muted summary" x-text="summary"></span>
     </div>
@@ -112,6 +120,7 @@
         <div class="card img-card">
           <div class="thumb-wrap" @click="open(im.id)">
             <img :src="im.thumb" :alt="im.name" loading="lazy"
+                 :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
                  :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" />
           </div>
           <div class="info">
@@ -119,13 +128,13 @@
             <div class="meta-row">
               <span class="muted" style="font-size:11px" x-text="im.width+'×'+im.height + ' · ' + fmtSize(im.fileSize)"></span>
               <span class="nav-spacer"></span>
-              <button class="icon-btn" title="复制图片" @click.stop="copyImage(im)">
+              <button class="icon-btn" data-tip="复制图片" @click.stop="copyImage(im)">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
               </button>
-              <button class="icon-btn" title="下载" @click.stop="download(im)">
+              <button class="icon-btn" data-tip="下载" @click.stop="download(im)">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
               </button>
-              <button class="icon-btn danger" title="删除" @click.stop="reqDelete(im)">
+              <button class="icon-btn danger" data-tip="删除" @click.stop="reqDelete(im)">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
               </button>
             </div>
@@ -175,10 +184,10 @@
                   </span>
                 </span>
                 <span class="ph-icons">
-                  <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompts(im)[0] || '')">
+                  <button class="icon-btn" data-tip="复制提示词" @click.stop="copy(activePrompts(im)[0] || '')">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                   </button>
-                  <button class="icon-btn" title="预览工作流" @click.stop="previewWorkflow(im)">
+                  <button class="icon-btn" data-tip="预览工作流" @click.stop="previewWorkflow(im)">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4"/></svg>
                   </button>
                 </span>
@@ -204,8 +213,9 @@
     <!-- 沉浸：纯图片，保留原始宽高比 -->
     <div class="masonry immersive" x-show="mode==='immersive' && images.length">
       <template x-for="im in images" :key="im.id">
-        <div class="card img-card immersive-cell" @click="open(im.id)" title="点击查看详情">
+        <div class="card img-card immersive-cell" @click="open(im.id)" data-tip="点击查看详情">
           <div class="thumb-wrap"><img :src="im.thumb" :alt="im.name" loading="lazy"
+               :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
                :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" /></div>
         </div>
       </template>
@@ -222,11 +232,11 @@
           <div class="card group-card">
             <div class="cover-row">
               <template x-for="m in g.coverThumbs" :key="m.id">
-                <img :src="m.thumb" @click="open(m.id)" :title="m.name" loading="lazy" />
+                <img :src="m.thumb" @click="open(m.id)" :data-tip="m.name" loading="lazy" />
               </template>
             </div>
             <div class="g-title">
-              <h4 class="copy-prompt" title="单击复制提示词" @click.stop="copy(g.title)"><span x-html="mark(g.title)"></span></h4>
+              <h4 class="copy-prompt" data-tip="单击复制提示词" @click.stop="copy(g.title)"><span x-html="mark(g.title)"></span></h4>
             </div>
             <div class="g-body">
               <div class="muted" style="display:flex;justify-content:space-between;font-size:12px">
@@ -236,7 +246,7 @@
               <button class="btn sm mt" @click="toggleGroup(g)" x-text="g._open?'收起':'展开'"></button>
               <div class="member-grid" x-show="g._open">
                 <template x-for="m in (g._members||[])" :key="m.id">
-                  <img :src="m.thumb" @click="open(m.id)" :title="m.name" loading="lazy" />
+                  <img :src="m.thumb" @click="open(m.id)" :data-tip="m.name" loading="lazy" />
                 </template>
                 <button x-show="g._mHasMore && !g._mLoading" class="btn sm"
                         @click="loadGroupMembers(g)">加载更多成员</button>
@@ -329,6 +339,7 @@
   window.Gallery = {
     folders: [], images: [], groups: [], groupCount: 0, tags: [], q: "", mode: "flat", currentFolder: "",
     folderOpen: false, sortOpen: false,
+    importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
@@ -340,6 +351,10 @@
     modeSwitching: false,
     _pendingEnter: 0,
     _flipDir: "",
+    _groupsFolder: null,
+    _imagesFolder: null,
+    _searchFade: false,
+    hiRes: false, _hiIO: null,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -386,6 +401,7 @@
             self.groupTotal = saved.groupTotal || saved.groups.length;
             self.groupHasMore = !!saved.groupHasMore;
             self.groupCount = saved.groupTotal || saved.groups.length;
+            self._groupsFolder = saved.folder || ""; // 快照分组对应的目录
             self.summary = "已显示 " + saved.groups.length + " / 共 " + (saved.groupTotal || saved.groups.length) + " 组";
             self._snapshotRestored = true;
           }
@@ -395,6 +411,7 @@
           self.images = saved.images;
           self.total = saved.total || saved.images.length;
           self.hasMore = !!saved.hasMore;
+          self._imagesFolder = saved.folder || ""; // 快照图片对应的目录
           self.summary = "已显示 " + saved.images.length + " / 共 " + self.total + " 张";
           self._snapshotRestored = true;
         }
@@ -415,6 +432,7 @@
         this.loadImages();
       }
       this._initObservers();
+      this._updateHiRes();
       setInterval(function () { self.pollSync(); }, 3000);
     },
     _initObservers() {
@@ -436,6 +454,59 @@
     },
     _afterRender(fn) {
       requestAnimationFrame(function () { requestAnimationFrame(fn); });
+    },
+    // ===== 高清原图渐进替换：平铺/沉浸列数 ≤ 4 时，仅对进入视口的卡片把缩略图替换为原图（按需、渐进、无突发加载）=====
+    _updateHiRes() {
+      var on = this.mode !== "aggregate" && (this.currentCols() <= 4);
+      if (on === this.hiRes) { if (on && !this._hiIO) this._observeHiRes(); return; }
+      this.hiRes = on;
+      var self = this;
+      if (on) {
+        // 列数/模式重排完成后观察可见卡片，IO 立即回调触发渐进替换
+        this._afterRender(function () { self._observeHiRes(); });
+      } else {
+        this._restoreThumbs(); // 恢复缩略图，释放大图内存
+      }
+    },
+    _observeHiRes() {
+      var self = this;
+      var imgs = document.querySelectorAll(".img-card img[data-orig]");
+      if (!("IntersectionObserver" in window)) {
+        // 降级：仅对接近视口的图片直接替换
+        imgs.forEach(function (img) { if (self._isNearViewport(img)) self._loadOrigImg(img); });
+        return;
+      }
+      if (this._hiIO) this._hiIO.disconnect();
+      this._hiIO = new IntersectionObserver(function (ents) {
+        ents.forEach(function (en) { if (en.isIntersecting) self._loadOrigImg(en.target); });
+      }, { rootMargin: "400px 0px" });
+      imgs.forEach(function (img) { self._hiIO.observe(img); });
+    },
+    _isNearViewport(el) {
+      var r = el.getBoundingClientRect();
+      return r.top < window.innerHeight + 400 && r.bottom > -400;
+    },
+    _loadOrigImg(img) {
+      if (img._origLoaded || img._origLoading) return;
+      var url = img.getAttribute("data-orig");
+      if (!url) return;
+      img._origLoading = true;
+      var i = new Image();
+      i.onload = function () {
+        img._origLoading = false;
+        img._origLoaded = true;
+        if (img.getAttribute("src") !== url) img.setAttribute("src", url);
+      };
+      i.onerror = function () { img._origLoading = false; };
+      i.src = url;
+    },
+    _restoreThumbs() {
+      if (this._hiIO) { this._hiIO.disconnect(); this._hiIO = null; }
+      document.querySelectorAll(".img-card img[data-orig]").forEach(function (img) {
+        var t = img.getAttribute("data-thumb");
+        if (t && img.getAttribute("src") !== t) img.setAttribute("src", t);
+        img._origLoaded = false;
+      });
     },
     pollSync() {
       var self = this;
@@ -480,7 +551,7 @@
     // 列数控制：放大=减列（更宽），缩小=加列（更窄），1-10 列并持久化；只影响当前模式
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
-    _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} },
+    _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} this._updateHiRes(); },
     // 缩放转场：先微缩淡出，切换列数（重排被遮罩），再平滑回位淡入，避免瞬时重排闪烁
     _animateZoom(m, next) {
       var self = this;
@@ -578,19 +649,47 @@
       if (this.mode === "aggregate") this.reloadGroups();
       else this.loadImages();
     },
+    // 播放一次淡入动画（重播前先移除类强制重启；并清掉可能残留的淡出态）
+    _playFade(el) {
+      el.classList.remove("am-fade-out");
+      el.classList.remove("am-fade-in");
+      void el.offsetWidth;
+      el.classList.add("am-fade-in");
+      var self = this;
+      // 动画结束后移除类，避免残留类在后续动效（如目录翻页移除覆盖类后）被重新触发导致闪烁
+      clearTimeout(this._fadeTimer);
+      this._fadeTimer = setTimeout(function () {
+        if (el) el.classList.remove("am-fade-in");
+      }, 360);
+    },
+    // 搜索：原结果先淡出，加载完成后新结果淡入
+    search() {
+      var self = this;
+      if (this._searchFade) { this.loadImages(); return; } // 上一次淡入进行中，直接刷新
+      var el = this._containerEl(this.mode);
+      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this._searchFade = true;
+      if (reduced || !el) { this.loadImages(); return; }
+      el.classList.add("am-fade-out");
+      setTimeout(function () { self.loadImages(); }, 150);
+    },
     _doSwitch(m) {
       this.mode = m;
       var self = this;
       if (m === "aggregate") {
-        if (!this.groups.length) this.reloadGroups();
+        // 目录变化后 groups 仍属旧目录：需重新加载，保证目录筛选在三模式同步生效
+        if (!this.groups.length || this._groupsFolder !== this.currentFolder) this.reloadGroups();
         else this.summary = "已显示 " + this.groups.length + " / 共 " + this.groupTotal + " 组";
       } else {
         // 从详情页返回时若处于聚合模式，images 未加载：切回平铺/沉浸时补齐，避免误显示「暂无图片」
-        if (!this.images.length && !this.loading) this.loadImages();
+        // 目录变化后 images 仍属旧目录：需重新加载，保证目录筛选在三模式同步生效
+        if (!this.images.length || this._imagesFolder !== this.currentFolder) this.loadImages();
         else this.summary = "已显示 " + this.images.length + " / 共 " + this.total + " 张";
       }
       // 切换后容器变为可见，重新武装对应无限滚动哨兵
       this._afterRender(function () { self._rearm(m === "aggregate" ? "groups" : "list"); });
+      // 切换模式后同步高清原图显示状态（列数 ≤ 4 时启用）
+      this._updateHiRes();
     },
     _initCards(list) {
       // 初始化卡片状态；默认源：有原生优先原生，否则反推
@@ -612,6 +711,7 @@
           self.total = page.total;
           self.hasMore = page.hasMore;
           self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
+          self._imagesFolder = self.currentFolder; // 记录图片列表对应的目录，用于切换平铺/沉浸时判断是否需要重载
           self.loading = false;
           // 目录垂直翻页：数据渲染完成后播放进入动画（animation 从对侧起点播放）
           var flip = self._flipDir;
@@ -627,7 +727,13 @@
                 if (listEl) listEl.classList.remove("am-flip-in");
                 self.modeSwitching = false;
               }, 240);
+            } else if (self._searchFade) {
+              // 搜索结果展示：渲染完成后播放淡入
+              self._searchFade = false;
+              var listEl2 = self._containerEl(self.mode);
+              if (listEl2) self._playFade(listEl2);
             }
+            if (self.hiRes) self._observeHiRes(); // 新增卡片后重新观察原图替换
           });
           // 从详情页返回：先不可见，补页到目标位置后一次性显示
           if (self._restoreScroll) {
@@ -653,6 +759,7 @@
           self._afterRender(function () {
             self._rearm("list");
             if (self._restoreScroll) self._resumeScroll();
+            if (self.hiRes) self._observeHiRes(); // 新增卡片后重新观察原图替换
           });
         })
         .catch(function () { self.loadingMore = false; });
@@ -719,6 +826,7 @@
         self.groupHasMore = page.hasMore;
         self.groupLoading = false;
         self.groupCount = page.total;
+        self._groupsFolder = self.currentFolder; // 记录分组对应的目录，用于切换聚合时判断是否需要重载
         self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 组";
         // 首次从平铺/沉浸切到聚合：数据赋值后、Alpine 渲染 group-grid 可见前同步加进入起始位，
         // 使其首帧即从对侧位置呈现，渲染完成后移除类平滑滑入
@@ -904,6 +1012,14 @@
       this._import([].slice.call(ev.target.files || []));
       ev.target.value = "";
     },
+    // 导入目录：webkitdirectory 选择整个目录，目录内图片带相对路径上传（保留结构）
+    importDir(ev) {
+      var files = [].slice.call(ev.target.files || []);
+      ev.target.value = "";
+      if (!files.length) return;
+      App.toast("正在导入目录中的图片…");
+      this._import(files);
+    },
     drop(ev) {
       var files = [].slice.call((ev.dataTransfer && ev.dataTransfer.files) || []);
       if (files.length) this._import(files);
@@ -916,6 +1032,10 @@
       // 上传给后端，保存到设置的「导入保存目录」并实时入库展示
       Api.uploadImages(files).then(function (r) {
         App.toast("已导入 " + r.uploaded + " 张图片，正在扫描入库…");
+        // 目录导入后延迟刷新目录数据（等待后台扫描入库），使「全部目录」下拉同步显示
+        if (files.some(function (f) { return f.webkitRelativePath; })) {
+          setTimeout(function () { self._refreshFolders(); }, 3000);
+        }
       }).catch(function (e) {
         // 无写入权限：弹出授权引导，供用户授权后重试
         if (e && e.status === 403) {
@@ -926,6 +1046,10 @@
         }
         App.toast("导入失败：" + ((e && e.message) || e));
       });
+    },
+    _refreshFolders() {
+      var self = this;
+      Api.listFolders().then(function (f) { self.folders = f; }).catch(function () {});
     },
     copy(text) { App.copyText(text); },
     previewWorkflow(im) {
@@ -1009,7 +1133,9 @@
       b.style.top = (r.bottom + 8) + "px";
       b.style.transform = "translateX(-50%)";
       state.bubble = b;
-      state.timer = setTimeout(function () { b.classList.add("show"); }, 1000);
+      // 延迟默认 600ms，可用 data-tip-delay 属性按元素指定（毫秒）
+      var delay = parseInt(el.getAttribute("data-tip-delay") || "600", 10) || 600;
+      state.timer = setTimeout(function () { b.classList.add("show"); }, delay);
     }, true);
     document.addEventListener("mouseout", function (ev) {
       var el = state.cur;

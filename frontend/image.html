@@ -27,16 +27,17 @@
     <div class="detail-image card">
       <div class="pad" style="padding:8px 12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span x-text="im.name" :data-tip="im.absPath || im.path" style="font-weight:600;font-size:13px"></span>
+          <span x-text="im.name" :data-tip="im.absPath || im.path" @click="copy(im.absPath || im.path)"
+                style="font-weight:600;font-size:13px;cursor:pointer;user-select:none"></span>
           <span class="muted" x-text="fmt(im)" style="font-size:12px"></span>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
-            <button class="icon-btn" title="复制图片" @click="copyImage()">
+            <button class="icon-btn" data-tip="复制图片" @click="copyImage()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
             </button>
-            <button class="icon-btn" title="下载" @click="download()">
+            <button class="icon-btn" data-tip="下载" @click="download()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
             </button>
-            <button class="icon-btn danger" title="删除" @click="reqDelete()">
+            <button class="icon-btn danger" data-tip="删除" @click="reqDelete()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>
             <a class="btn sm" @click="goGallery()">返回图库</a>
@@ -128,7 +129,7 @@
             <div class="muted" style="font-size:12px">AI 评分</div>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-size:20px;font-weight:700" :style="{color: im.aiRating!=null ? 'var(--brand)' : 'var(--text-3)'}" x-text="im.aiRating!=null ? im.aiRating : '—'"></span>
-              <button class="icon-btn" title="用 AI 重新评分" :class="{spin:aState==='ing'}" @click="aiScore()">
+              <button class="icon-btn" data-tip="用 AI 重新评分" :class="{spin:aState==='ing'}" @click="aiScore()">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
               </button>
             </div>

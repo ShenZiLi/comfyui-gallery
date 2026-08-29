@@ -16,7 +16,7 @@
     return '<nav><span class="brand">' + ICON_LOGO + '画镜 <span class="dot" style="font-size:12px;color:var(--text-3)">ArtMirror</span></span>' +
       items +
       '<span class="nav-spacer"></span>' +
-      '<button id="theme-toggle" class="theme-toggle" title="切换明暗模式" aria-label="切换明暗模式"></button></nav>';
+      '<button id="theme-toggle" class="theme-toggle" data-tip="切换明暗模式" aria-label="切换明暗模式"></button></nav>';
   }
 
   function currentTheme() {

@@ -2,7 +2,7 @@
 import errno
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from ..config import settings as env_settings
@@ -276,13 +276,14 @@ ALLOWED_IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 @router.post("/upload")
 def upload_image(
     file: UploadFile = File(...),
+    path: str = Form(""),  # 可选相对子路径（目录导入保留目录结构），防穿越
     session: Session = Depends(get_session),
     bg: BackgroundTasks = BackgroundTasks(),
 ):
     """浏览器/拖拽导入图片：将文件保存到「导入保存目录」（绝对路径），并入库展示。
 
     目标目录优先取设置里的 import_dir；未配置时回退到应用数据目录下的自管导入区，
-    以保证总能写入。
+    以保证总能写入。path 提供时按相对子路径落盘（保留目录导入的目录结构）。
     """
     configured = _get(session, "import_dir").strip()
     if configured:
@@ -307,7 +308,28 @@ def upload_image(
     if ext not in ALLOWED_IMG_EXTS:
         raise HTTPException(400, f"仅支持图片格式: {', '.join(sorted(ALLOWED_IMG_EXTS))}")
 
-    target_path = target_dir / name
+    rel = (path or "").strip().replace("\\", "/")
+    if rel:
+        # 防穿越：解析后的子路径必须仍位于导入保存目录内
+        sub = (target_dir / rel).resolve()
+        if not sub.is_relative_to(target_dir.resolve()):
+            raise HTTPException(400, "非法子路径")
+        target_path = sub
+        # 目录导入：把导入的顶层子目录（即用户所选目录名，来自 webkitRelativePath 首段）
+        # 一并注册为扫描根，使其显示在设置页「已注册的图片目录」
+        top = rel.split("/", 1)[0]
+        if top:
+            top_dir = (target_dir / top).resolve()
+            if top_dir.is_relative_to(target_dir.resolve()):
+                top_roots = list(scanner.get_scan_roots(session))
+                if str(top_dir) not in [str(r.resolve()) for r in top_roots]:
+                    top_roots.append(top_dir)
+                    scanner.save_scan_roots(session, [str(r) for r in top_roots])
+                # 嵌套注册根的子树由自己扫描（父根 scan 会跳过），立即后台扫描使图片尽快入库
+                bg.add_task(_background_scan, str(top_dir))
+    else:
+        target_path = target_dir / name
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with open(target_path, "wb") as f:
             f.write(file.file.read())

@@ -205,11 +205,14 @@
       return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
     },
     uploadImages: function (files) {
-      // 逐文件表单上传所有图片到导入保存目录
+      // 逐文件表单上传所有图片到导入保存目录；分批并发（每批 8），避免目录导入大量文件打满连接
       var list = Array.prototype.slice.call(files || []);
+      var results = [];
       var up = function (f) {
         var fd = new FormData();
         fd.append("file", f);
+        // 目录导入（webkitdirectory）：携带相对路径，后端保留目录结构落盘
+        if (f.webkitRelativePath) fd.append("path", f.webkitRelativePath);
         return fetch("api/settings/upload", { method: "POST", body: fd }).then(function (r) {
           if (!r.ok) {
             return r.json().catch(function () { return {}; }).then(function (body) {
@@ -221,7 +224,16 @@
           return r.json();
         });
       };
-      return Promise.all(list.map(up)).then(function (results) {
+      var CHUNK = 8;
+      function run(from) {
+        if (from >= list.length) return Promise.resolve();
+        var batch = list.slice(from, from + CHUNK);
+        return Promise.all(batch.map(up)).then(function (rs) {
+          results = results.concat(rs);
+          return run(from + CHUNK);
+        });
+      }
+      return run(0).then(function () {
         return { uploaded: results.length, paths: results.map(function (r) { return r.path; }) };
       }).catch(function (e) {
         if (!(e && e.status)) e.status = 0;
