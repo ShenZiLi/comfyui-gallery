@@ -75,6 +75,28 @@ def save_scan_roots(session: Session, roots: list[str]) -> None:
     session.commit()
 
 
+def _nested_root_prefixes(session: Session, root: Path) -> list[str]:
+    """返回注册在 root 目录之下的其他扫描根目录（规范化小写前缀，不带尾部 /）。
+
+    用于避免嵌套根目录被父根重复扫描：父根跳过其子树内的嵌套根文件，
+    软删除也跳过属于嵌套根的行（由嵌套根自己管理），否则同一物理文件
+    每轮都被判定为「更新/移除」，导致同步版本号持续递增。
+    """
+    root_norm = str(root.resolve()).replace("\\", "/").rstrip("/").lower()
+    prefixes: list[str] = []
+    for r in get_scan_roots(session):
+        rn = str(r.resolve()).replace("\\", "/").rstrip("/").lower()
+        if rn != root_norm and rn.startswith(root_norm + "/"):
+            prefixes.append(rn)
+    return prefixes
+
+
+def _under_prefix(path, prefixes: list[str]) -> bool:
+    """规范化路径（/ 分隔、小写）是否位于任一前缀之下。"""
+    p = str(path).replace("\\", "/").rstrip("/").lower()
+    return any(p == pre or p.startswith(pre + "/") for pre in prefixes)
+
+
 def scan_all(session: Session, roots: list[Path]) -> ScanStats:
     """依次扫描多个根目录，汇总统计。"""
     total = ScanStats()
@@ -154,6 +176,8 @@ def scan(session: Session, root: Path) -> ScanStats:
         return stats
     settings.ensure_dirs()
 
+    # 注册在 root 之下的嵌套根目录：其子树由嵌套根自己扫描，父根跳过
+    nested = _nested_root_prefixes(session, root)
     folder_ids = _ensure_folders(session, root)
     seen_paths: set[str] = set()
 
@@ -164,6 +188,8 @@ def scan(session: Session, root: Path) -> ScanStats:
             if Path(name).suffix.lower() not in IMAGE_EXTS:
                 continue
             full = Path(dirpath) / name
+            if nested and _under_prefix(full, nested):
+                continue  # 属于嵌套根目录，由嵌套根扫描
             rel_norm = os.path.relpath(full, root).replace(os.sep, "/")
             seen_paths.add(rel_norm)
 
@@ -275,6 +301,8 @@ def scan(session: Session, root: Path) -> ScanStats:
         )
     ).all():
         if im.file_path not in seen_paths:
+            if nested and _under_prefix(im.abs_path, nested):
+                continue  # 属于嵌套根目录，不由父根软删
             im.is_deleted = 1
             stats.removed += 1
     session.commit()

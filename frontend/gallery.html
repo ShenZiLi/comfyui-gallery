@@ -68,6 +68,11 @@
         </button>
       </div>
 
+      <!-- 后台有更新时显示：点击主动刷新 -->
+      <button class="icon-btn refresh-btn" data-tip="后台有更新，点击刷新" x-show="hasUpdate" x-cloak @click="manualRefresh()">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+
       <span class="nav-spacer"></span>
 
       <div class="searchbox">
@@ -91,8 +96,7 @@
     </div>
   </div>
 
-  <div class="page" @dragover.prevent @drop.prevent="drop($event)" :style="'--cols:'+currentCols()" :class="'cols-'+currentCols()" :data-cols="currentCols()">
-    <div class="sync-banner" x-show="syncDirty" x-cloak @click="applySync()">后台有更新 · 点击查看</div>
+  <div class="page" @dragover.prevent @drop.prevent="drop($event)" :style="'--cols:'+currentCols()">
     <div style="margin-top:12px">
     <div x-show="!loading && !images.length && (mode==='flat'||mode==='immersive')" class="empty">
       暂无图片 —— 点击左上角「导入」或前往「设置」配置图片目录。
@@ -151,7 +155,7 @@
             <!-- 3) 提示词（原生 / 反推 / AI） -->
             <div style="margin-top:8px">
               <div class="prompt-header">
-                <span style="display:inline-flex;align-items:center;gap:6px">
+                <span class="ph-left">
                   <span class="prompt-label" style="font-size:12px;color:var(--text-3)">提示词</span>
                   <span class="src-tabs">
                     <button class="src-tab origin" :class="{active: im._src==='origin', has: !promptGrey(im,'origin')}"
@@ -166,7 +170,7 @@
                     </button>
                   </span>
                 </span>
-                <span style="display:inline-flex;align-items:center;gap:2px">
+                <span class="ph-icons">
                   <button class="icon-btn" title="复制提示词" @click.stop="copy(activePrompts(im)[0] || '')">
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                   </button>
@@ -325,7 +329,7 @@
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
-    syncDirty: false,
+    hasUpdate: false,
     // 每种预览模式独立的列数：平铺/沉浸默认 5 列，聚合默认 3 列；放大减列（最小 1）、缩小加列（最大 10）
     cols: { flat: 5, immersive: 5, aggregate: 3 },
     zooming: false,
@@ -376,11 +380,29 @@
         if (self.mode === "aggregate") {
           self._restoreScroll = 0;
           document.documentElement.classList.remove("am-restore");
+        } else if (saved.images && saved.images.length) {
+          // 快照恢复：直接复用已加载图片，免重新分页请求（返回秒开）
+          self._initCards(saved.images);
+          self.images = saved.images;
+          self.total = saved.total || saved.images.length;
+          self.hasMore = !!saved.hasMore;
+          self.summary = "已显示 " + saved.images.length + " / 共 " + self.total + " 张";
+          self._snapshotRestored = true;
         }
       }
       Api.listFolders().then(f => { self.folders = f; });
       Api.listTags().then(t => { self.tags = t; });
-      this.loadImages();
+      if (this._snapshotRestored) {
+        this._snapshotRestored = false;
+        this.loading = false;
+        // 等 Alpine 渲染出恢复的图片后定位并显示，同时重新武装无限滚动哨兵
+        this._afterRender(function () {
+          self._resumeScroll();
+          self._rearm("list");
+        });
+      } else {
+        this.loadImages();
+      }
       this._initObservers();
       setInterval(function () { self.pollSync(); }, 3000);
     },
@@ -411,16 +433,22 @@
         var first = self._ver === -1;
         self._ver = v;
         if (first) return; // 首次仅建立基线，不打扰
-        self.syncDirty = true; // 不自动重拉列表：顶部提示条由用户点击触发
+        // 后台检测到变化：自动刷新当前视图（无需手动点按钮）
+        self.hasUpdate = false;
+        if (self.mode === "aggregate") self.reloadGroups();
+        else self.loadImages();
         Api.listFolders().then(function (f) { self.folders = f; });
         Api.listTags().then(function (t) { self.tags = t; });
       });
     },
-    applySync() {
-      this.syncDirty = false;
+    manualRefresh() {
+      var self = this;
+      this.hasUpdate = false;
       if (this.mode === "aggregate") this.reloadGroups();
       else this.loadImages();
-      window.scrollTo(0, 0);
+      Api.listFolders().then(function (f) { self.folders = f; });
+      Api.listTags().then(function (t) { self.tags = t; });
+      App.toast("已刷新");
     },
     allTags() { return this.tags; },
     // 下拉框只显示有图片且未隐藏的目录（与设置页「已隐藏」同步）
@@ -764,11 +792,12 @@
       a.href = URL.createObjectURL(blob); a.download = "workflow.json"; a.click();
     },
     open(id) {
-      // 记录视图状态与滚动位置，返回时恢复
+      // 记录视图状态、滚动位置与已加载图片快照，返回时免重新请求直接恢复
       try {
         sessionStorage.setItem("am_gallery_state", JSON.stringify({
           scroll: window.scrollY, mode: this.mode, folder: this.currentFolder,
-          sort: this.sort, q: this.q, tag: this.selectedTag
+          sort: this.sort, q: this.q, tag: this.selectedTag,
+          images: this.images, total: this.total, hasMore: this.hasMore
         }));
       } catch (e) {}
       location.href = "image.html?id=" + id;

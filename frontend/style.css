@@ -242,6 +242,25 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .icon-btn:disabled { opacity: .35; cursor: not-allowed; }
 .icon-btn:disabled:hover { color: var(--text-3); background: transparent; }
 
+/* 后台更新刷新按钮：品牌色底 + 悬停旋转 */
+.icon-btn.refresh-btn {
+  position: relative;
+  color: var(--brand);
+  background: var(--brand-weak);
+  animation: refresh-in .25s ease-out;
+}
+.icon-btn.refresh-btn svg { transition: transform .3s ease; }
+.icon-btn.refresh-btn:hover { background: var(--brand); color: #fff; }
+.icon-btn.refresh-btn:hover svg { transform: rotate(180deg); }
+@keyframes refresh-in {
+  from { opacity: 0; transform: scale(.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn.refresh-btn { animation: none; }
+  .icon-btn.refresh-btn svg { transition: none; }
+}
+
 /* ===== 目录树 ===== */
 .tree { padding: 4px; user-select: none; }
 .tree-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 7px; cursor: pointer; color: var(--text-2); }
@@ -272,12 +291,27 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .img-card { overflow: hidden; container-type: inline-size; }
 .img-card .thumb-wrap { overflow: hidden; background: #eceef2; }
 .img-card img { display: block; }
-/* 超窄卡片（约 ≥10 列）：压缩内边距与图标尺寸，防止 meta 区图标溢出（提升特异性避免被基础规则覆盖） */
+/* 超窄卡片（约 ≥10 列）：压缩内边距与间距，图标保持原尺寸（不缩小） */
 @container (max-width: 140px) {
   .card.img-card .info { padding: 8px 8px 10px; }
   .img-card .meta-row { gap: 4px; }
-  .img-card .meta-row .icon-btn { width: 20px; height: 20px; }
-  .img-card .meta-row .icon-btn svg { width: 12px; height: 12px; }
+}
+
+/* 平铺卡片宽度渐进适配（容器查询，按卡片实际宽度）：窄卡片分级压缩 */
+/* 第 1 级（卡片 ≤230px，约 >5 列）：分辨率/大小行 与 按钮 分两行，图标居中 */
+@container (max-width: 230px) {
+  .img-card .meta-row { flex-wrap: wrap; row-gap: 4px; justify-content: center; }
+  .img-card .meta-row .muted { flex: 1 1 100%; }
+  .img-card .meta-row .nav-spacer { display: none; }
+}
+/* 第 1 级提示词行（卡片 ≤225px，约 >5 列）：先隐藏「提示词」字样 */
+@container (max-width: 225px) {
+  .img-card .prompt-header .prompt-label { display: none; }
+}
+/* 第 2 级（卡片 ≤180px，约 ≥7 列）：原生/反推/AI 与 复制/工作流 分两行 */
+@container (max-width: 180px) {
+  .img-card .prompt-header { flex-direction: column; align-items: stretch; gap: 4px; }
+  .img-card .prompt-header .ph-icons { justify-content: flex-end; }
 }
 .meta-row { display: flex; align-items: center; gap: 8px; }
 /* 尺寸文字窄卡片下省略而非换行/溢出，图标保持右侧不挤出 */
@@ -305,29 +339,9 @@ html[data-theme="dark"] .zoom-tools { background: #0d1119; }
 .prompt-item + .prompt-item { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
 .prompt-box mark { background: #fff3bf; color: var(--text); border-radius: 3px; padding: 0 2px; }
 .prompt-header { display: flex; align-items: center; justify-content: space-between; gap: 4px 8px; flex-wrap: wrap; }
+.prompt-header .ph-left { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.prompt-header .ph-icons { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .toggle-prompt { color: var(--brand); font-size: 12px; cursor: pointer; background: none; border: none; padding: 0; }
-
-/* ===== 平铺窄列：提示词行分级压缩（列数 ≤4 / ≤3 / ≤2）===== */
-/* 第 1 级（≤4 列）：隐藏「提示词」字样 */
-.page.cols-1 .prompt-label, .page.cols-2 .prompt-label,
-.page.cols-3 .prompt-label, .page.cols-4 .prompt-label { display: none; }
-
-/* 第 2 级（≤3 列）：来源标签(原生/反推/AI) 与 操作图标(复制/工作流) 分两行 */
-.page.cols-1 .prompt-header, .page.cols-2 .prompt-header, .page.cols-3 .prompt-header {
-  flex-direction: column; align-items: stretch; gap: 8px 0;
-}
-.page.cols-1 .prompt-header > span:last-child,
-.page.cols-2 .prompt-header > span:last-child,
-.page.cols-3 .prompt-header > span:last-child { align-self: flex-end; }
-
-/* 第 3 级（≤2 列）：来源标签纯图标化——隐藏文字，仅以彩色圆点示意有无数据 */
-.page.cols-1 .card .src-tab, .page.cols-2 .card .src-tab {
-  width: 14px; height: 14px; padding: 0; border-radius: 50%;
-  font-size: 0; border: 1px solid var(--text-3); background: transparent;
-}
-.page.cols-1 .card .src-tab.has, .page.cols-2 .card .src-tab.has {
-  border-color: currentColor; background: currentColor;
-}
 
 /* 提示词来源标签（原生/反推/AI）：字体颜色=有没有数据，背景色=当前是否选中 */
 .src-tabs { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; row-gap: 2px; }
@@ -481,15 +495,4 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 /* 无限滚动哨兵 */
 .loading-more { padding: 16px; text-align: center; }
 
-/* 同步提示条：后台扫描有更新时显示，点击刷新（不遮盖图片，占位在列表上方） */
-.sync-banner {
-  margin: 0 0 12px;
-  padding: 8px 14px;
-  border: 1px solid var(--brand);
-  border-radius: 8px;
-  color: var(--brand);
-  font-size: 13px;
-  text-align: center;
-  cursor: pointer;
-  user-select: none;
-}
+/* 同步提示条已移除：后台检测到变化自动刷新，不再需要横幅 */

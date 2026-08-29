@@ -19,15 +19,12 @@
 
 <div class="page" x-data="Detail" x-init="init()" x-show="im">
   <div class="detail-layout" :class="ratioClass()">
-    <!-- 大图：用原图展示以保证清晰度 -->
+    <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
-      <div style="position:relative">
-        <img :src="'/api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
-      </div>
-      <div class="pad">
+      <div class="pad" style="padding:8px 12px">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span x-text="im.name" style="font-weight:600"></span>
-          <span class="muted" x-text="fmt(im)"></span>
+          <span x-text="im.name" style="font-weight:600;font-size:13px"></span>
+          <span class="muted" x-text="fmt(im)" style="font-size:12px"></span>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
             <button class="icon-btn" title="复制图片" @click="copyImage()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -38,9 +35,12 @@
             <button class="icon-btn danger" title="删除" @click="reqDelete()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>
-            <a class="btn" @click="goGallery()">返回图库</a>
+            <a class="btn sm" @click="goGallery()">返回图库</a>
           </div>
         </div>
+      </div>
+      <div style="position:relative">
+        <img :src="'/api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
     </div>
 
@@ -83,38 +83,11 @@
         </div>
       </div>
 
-      <!-- 反推提示词（另开卡片供对照 + 中英译） -->
-      <div class="card section pad" x-show="im.reversePrompt">
-        <h3>反推提示词
-          <span style="margin-left:auto;display:flex;gap:6px">
-            <button class="btn sm" @click="translateReverse()">
-              <span x-show="revIng">翻译中…</span>
-              <span x-show="!revIng" x-text="revOn?'原文':'中英译'"></span>
-            </button>
-            <button class="btn sm" @click="copy(revText || im.reversePrompt)">复制</button>
-          </span>
-        </h3>
-        <div style="color:var(--text-2)">
-          <span x-show="!revOn" x-text="im.reversePrompt"></span>
-          <span x-show="revOn" x-text="revText"></span>
-        </div>
-      </div>
-
-      <!-- 工作流 -->
-      <div class="card section pad">
-        <h3>工作流</h3>
-        <div class="btn-row">
-          <button class="btn" @click="preview()">预览工作流</button>
-          <button class="btn" @click="copy(workflowJSON())">复制</button>
-          <button class="btn" @click="exportWorkflow()">导出</button>
-        </div>
-        <div class="muted" style="font-size:12px;margin-top:8px">提示：可将导出的 JSON 拖回 ComfyUI 画布复现。</div>
-      </div>
-
       <!-- 模型 / 参数 -->
       <div class="card section pad">
         <h3>模型
           <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+            <button class="btn sm" @click="preview()">预览工作流</button>
             <button class="btn sm" :class="{spin:mState==='ing'}" @click="reparseModels()"
                     x-text="mState==='ing' ? '解析中' : 'AI'"></button>
           </span>
@@ -127,8 +100,7 @@
         </div>
         <div class="muted mt" style="font-size:12px" x-show="im.params">
           steps <b x-text="im.params.steps"></b> · cfg <b x-text="im.params.cfg"></b> ·
-          <b x-text="im.params.sampler"></b> · seed <b x-text="im.params.seed"></b> ·
-          <b x-text="im.params.scheduler"></b>
+          <b x-text="im.params.sampler"></b> · <b x-text="im.params.scheduler"></b> · seed <b x-text="im.params.seed"></b>
         </div>
       </div>
 
@@ -204,7 +176,7 @@
     im: null, showModal: false, aState: "", mState: "", mErr: "", hoverRating: 0,
     delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trText: "",
-    trIng: false, revIng: false, revOn: false, revText: "",
+    trIng: false,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
@@ -214,7 +186,7 @@
         image._src = (image.prompt && image.prompt !== "") ? "origin" : "reverse";
       });
     },
-    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3) + " · " + (im.params && im.params.seed || ""); },
+    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3); },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
       var im = this.im; if (!im) return "portrait";
@@ -357,30 +329,6 @@
         prompt: im.prompt, negative: im.negative,
         model: im.tags && im.tags[0].name, sample: true,
       }, null, 2);
-    },
-    translateReverse() {
-      var self = this;
-      var im = this.im;
-      if (!im || this.revIng) return;
-      var kind = "reverse";
-      // 已有持久化译文：直接切换原文/译文，不再请求 AI
-      var stored = (im.translations && im.translations[kind]) || {};
-      var langs = Object.keys(stored);
-      if (langs.length) {
-        self.revText = stored[langs[0]];
-        self.revOn = !self.revOn;
-        return;
-      }
-      this.revIng = true;
-      Api.translatePrompt(im.id, kind).then(function (d) {
-        im.translations = im.translations || {};
-        im.translations[kind] = im.translations[kind] || {};
-        im.translations[kind][d.lang] = d.text;
-        self.revText = d.text; self.revOn = true; self.revIng = false;
-      }).catch(function (e) {
-        self.revIng = false;
-        App.toast("翻译失败：" + ((e && e.message) || e));
-      });
     },
     aiScore() {
       var self = this;
