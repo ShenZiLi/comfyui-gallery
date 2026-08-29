@@ -91,7 +91,7 @@
     </div>
   </div>
 
-  <div class="page" @dragover.prevent @drop.prevent="drop($event)" :style="'--cols:'+currentCols()">
+  <div class="page" @dragover.prevent @drop.prevent="drop($event)" :style="'--cols:'+currentCols()" :class="'cols-'+currentCols()" :data-cols="currentCols()">
     <div class="sync-banner" x-show="syncDirty" x-cloak @click="applySync()">后台有更新 · 点击查看</div>
     <div style="margin-top:12px">
     <div x-show="!loading && !images.length && (mode==='flat'||mode==='immersive')" class="empty">
@@ -152,7 +152,7 @@
             <div style="margin-top:8px">
               <div class="prompt-header">
                 <span style="display:inline-flex;align-items:center;gap:6px">
-                  <span style="font-size:12px;color:var(--text-3)">提示词</span>
+                  <span class="prompt-label" style="font-size:12px;color:var(--text-3)">提示词</span>
                   <span class="src-tabs">
                     <button class="src-tab origin" :class="{active: im._src==='origin', has: !promptGrey(im,'origin')}"
                         @click.stop="selectPrompt(im,'origin')">原生</button>
