@@ -45,7 +45,7 @@ $venvPy = Join-Path $Venv "Scripts\python.exe"
 if (-not (Test-Path $venvPy)) {
     Write-Step "首次运行：创建虚拟环境…"
     & python -m venv $Venv
-    if ($LASTEXITCODE -ne 0) { Exit-Fail "创建虚拟环境失败。" }
+    if ($LASTEXITCODE -ne 0) { Exit-Fail "创建虚拟环境失败，请将上方错误信息截图反馈。" }
 }
 
 # 4) 安装依赖（幂等，已装则秒过；首次展示进度）

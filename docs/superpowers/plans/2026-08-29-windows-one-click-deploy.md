@@ -10,14 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-29-windows-one-click-deploy-design.md`
 
----
+***
 
 ### Task 1: 生成 backend/requirements.txt
 
 **Files:**
-- Create: `backend/requirements.txt`
 
-- [ ] **Step 1: 创建 requirements.txt**
+* Create: `backend/requirements.txt`
+
+* [ ] **Step 1: 创建 requirements.txt**
 
 内容（来自 `backend/pyproject.toml` 运行依赖，`requires-python >=3.11`）：
 
@@ -32,26 +33,27 @@ python-multipart>=0.0.9
 send2trash>=1.8
 ```
 
-- [ ] **Step 2: 验证依赖可解析**
+* [ ] **Step 2: 验证依赖可解析**
 
 运行：`cd backend; python -m pip install --disable-pip-version-check --dry-run -r requirements.txt -q`
 预期：无报错，输出「Would install ...」清单（列出上述 8 个包）。
 
-- [ ] **Step 3: 提交**
+* [ ] **Step 3: 提交**
 
 ```bash
 git add backend/requirements.txt
 git commit -m "chore: 为纯 pip 部署生成 requirements.txt"
 ```
 
----
+***
 
 ### Task 2: 创建 start.ps1（核心启动逻辑）
 
 **Files:**
-- Create: `start.ps1`（项目根目录）
 
-- [ ] **Step 1: 创建 start.ps1**
+* Create: `start.ps1`（项目根目录）
+
+* [ ] **Step 1: 创建 start.ps1**
 
 完整内容：
 
@@ -160,31 +162,32 @@ if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
 exit 0
 ```
 
-- [ ] **Step 2: 验证 PowerShell 语法**
+* [ ] **Step 2: 验证 PowerShell 语法**
 
 运行：`powershell -NoProfile -Command "$tokens=$null;$errors=$null; [System.Management.Automation.Language.Parser]::ParseFile('C:\Project\Code\ArtMirror\start.ps1',[ref]$tokens,[ref]$errors) | Out-Null; if($errors.Count){$errors | ForEach-Object {$_.Message}; exit 1} else {'语法 OK'}"`
 预期：输出「语法 OK」。
 
-- [ ] **Step 3: 验证「端口占用」路径（当前服务已在 8000 运行）**
+* [ ] **Step 3: 验证「端口占用」路径（当前服务已在 8000 运行）**
 
 运行：`cd C:\Project\Code\ArtMirror; powershell -NoProfile -ExecutionPolicy Bypass -File start.ps1`，输入回车退出。
 预期：检测到端口 8000 被占用 → 提示「视为画镜已在运行」→ 尝试打开浏览器 → 按回车退出；不创建/破坏现有 `.venv` 与服务。
 
-- [ ] **Step 4: 提交**
+* [ ] **Step 4: 提交**
 
 ```bash
 git add start.ps1
 git commit -m "feat: 一键启动脚本 start.ps1（检测/venv/依赖/启动/开浏览器）"
 ```
 
----
+***
 
 ### Task 3: 创建 启动.bat（双击入口）
 
 **Files:**
-- Create: `启动.bat`（项目根目录，UTF-8 编码）
 
-- [ ] **Step 1: 创建 启动.bat**
+* Create: `启动.bat`（项目根目录，UTF-8 编码）
+
+* [ ] **Step 1: 创建 启动.bat**
 
 完整内容（需以 UTF-8 保存，含中文窗口标题）：
 
@@ -196,26 +199,27 @@ cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1"
 ```
 
-- [ ] **Step 2: 验证文件与编码**
+* [ ] **Step 2: 验证文件与编码**
 
 运行：`Get-Content "C:\Project\Code\ArtMirror\启动.bat"` 与 `powershell -NoProfile -ExecutionPolicy Bypass -Command "& { $null = [System.Management.Automation.Language.Parser]::ParseFile('C:\Project\Code\ArtMirror\start.ps1',[ref]$null,[ref]$null) }"`
 预期：能读取 bat 内容（chcp/title/powershell 调用三行）；start.ps1 可解析。
 
-- [ ] **Step 3: 提交**
+* [ ] **Step 3: 提交**
 
 ```bash
 git add "启动.bat"
 git commit -m "feat: 双击入口 启动.bat"
 ```
 
----
+***
 
 ### Task 4: README 新增「小白快速启动」章节
 
 **Files:**
-- Modify: `README.md`（在「部署流程」之前插入）
 
-- [ ] **Step 1: 编辑 README.md**
+* Modify: `README.md`（在「部署流程」之前插入）
+
+* [ ] **Step 1: 编辑 README.md**
 
 在 `## 部署流程` 之前插入：
 
@@ -230,46 +234,51 @@ git commit -m "feat: 双击入口 启动.bat"
 > 服务地址：http://127.0.0.1:8000/gallery.html（手动访问也可）
 ```
 
-- [ ] **Step 2: 验证插入成功**
+* [ ] **Step 2: 验证插入成功**
 
 运行：`Select-String -Path "C:\Project\Code\ArtMirror\README.md" -Pattern "小白快速启动"`
 预期：命中该标题行。
 
-- [ ] **Step 3: 提交**
+* [ ] **Step 3: 提交**
 
 ```bash
 git add README.md
 git commit -m "docs: README 新增小白快速启动章节"
 ```
 
----
+***
 
 ### Task 5: 端到端核对
 
 **Files:** 无新增
 
-- [ ] **Step 1: 确认关键路径一致**
+* [ ] **Step 1: 确认关键路径一致**
 
 运行：
+
 ```powershell
 Test-Path "C:\Project\Code\ArtMirror\启动.bat"
 Test-Path "C:\Project\Code\ArtMirror\start.ps1"
 Test-Path "C:\Project\Code\ArtMirror\backend\requirements.txt"
 Select-String -Path "C:\Project\Code\ArtMirror\README.md" -Pattern "启动.bat"
 ```
+
 预期：四个均为 True/命中。
 
-- [ ] **Step 2: 确认未破坏现有环境**
+* [ ] **Step 2: 确认未破坏现有环境**
 
 运行：`curl.exe -s http://127.0.0.1:8000/api/health`
 预期：服务仍返回 `{"status":"ok",...}`（脚本「端口占用」路径不干扰现有运行）。
 
-- [ ] **Step 3: 提交（若 Task 1-4 均已提交则跳过）**
+* [ ] **Step 3: 提交（若 Task 1-4 均已提交则跳过）**
 
----
+***
 
 ## Self-Review
 
-- **Spec 覆盖**：双击入口（Task 3）、纯 pip + venv（Task 2）、Python 缺失提示（Task 2 step1 第 1 步）、自动开浏览器（Task 2 第 7 步）、端口占用（Task 2 第 2 步）、requirements.txt（Task 1）、README 章节（Task 4）—— 全部覆盖。
-- **占位符**：无 TBD/TODO，所有代码完整给出。
-- **类型一致性**：`start.ps1` 内 `$Venv/$venvPy/$Url/$Port/$Backend` 命名在 Task 2 步骤内自洽；`启动.bat` 调用 `start.ps1` 路径一致。
+* **Spec 覆盖**：双击入口（Task 3）、纯 pip + venv（Task 2）、Python 缺失提示（Task 2 step1 第 1 步）、自动开浏览器（Task 2 第 7 步）、端口占用（Task 2 第 2 步）、requirements.txt（Task 1）、README 章节（Task 4）—— 全部覆盖。
+
+* **占位符**：无 TBD/TODO，所有代码完整给出。
+
+* **类型一致性**：`start.ps1` 内 `$Venv/$venvPy/$Url/$Port/$Backend` 命名在 Task 2 步骤内自洽；`启动.bat` 调用 `start.ps1` 路径一致。
+
