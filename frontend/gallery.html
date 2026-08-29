@@ -222,7 +222,7 @@
               </template>
             </div>
             <div class="g-title">
-              <h4><span x-html="mark(g.title)"></span></h4>
+              <h4 class="copy-prompt" title="单击复制提示词" @click.stop="copy(g.title)"><span x-html="mark(g.title)"></span></h4>
             </div>
             <div class="g-body">
               <div class="muted" style="display:flex;justify-content:space-between;font-size:12px">
