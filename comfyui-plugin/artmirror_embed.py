@@ -111,3 +111,22 @@ def stop() -> None:
         db_engine.dispose()
     except Exception:  # noqa: BLE001
         pass
+
+
+def ensure_default_scan_root() -> None:
+    """空库时将 ComfyUI 输出目录注册为扫描根（有根则不动）。"""
+    try:
+        from artmirror_app.config import settings
+        _configure(settings)
+        settings.ensure_dirs()
+        from artmirror_app.database import get_session
+        from artmirror_app.services import scanner
+        with next(get_session()) as session:
+            roots = list(scanner.get_scan_roots(session))
+            if roots:
+                return
+            out = comfy_paths.get_output_dir()
+            if out and Path(out).is_dir():
+                scanner.save_scan_roots(session, [str(Path(out).resolve())])
+    except Exception:  # noqa: BLE001
+        log.exception("设置默认扫描根失败")
