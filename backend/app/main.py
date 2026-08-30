@@ -50,6 +50,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "app": "artmirror",
+        "version": app.version,
         "scan_root": settings.scan_root,
         "llm_configured": bool(settings.llm_base_url and settings.llm_api_key),
     }

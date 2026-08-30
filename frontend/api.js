@@ -204,6 +204,12 @@
     getSyncVersion: function () {
       return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
     },
+    getHealth: function () {
+      return req("api/health").catch(function () {
+        Api._fallback = true;
+        return ok({ status: "ok", app: "artmirror", version: "0.1.0" });
+      });
+    },
     uploadImages: function (files) {
       // 逐文件表单上传所有图片到导入保存目录；分批并发（每批 8），避免目录导入大量文件打满连接
       var list = Array.prototype.slice.call(files || []);

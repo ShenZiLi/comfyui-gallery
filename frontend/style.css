@@ -24,6 +24,20 @@
 * { box-sizing: border-box; }
 [x-cloak] { display: none !important; }
 
+/* 版本号水印（设置页右下角）：小字号低对比，不干扰内容、不拦截交互 */
+.version-watermark {
+  position: fixed;
+  right: 14px;
+  bottom: 10px;
+  z-index: 20;
+  font-size: 11px;
+  color: var(--text-3);
+  opacity: .8;
+  letter-spacing: .3px;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* 页面间跳转淡入淡出：加载时淡入；离开前加 am-page-out 淡出 */
 body { animation: am-page-in .28s ease-out; }
 @keyframes am-page-in { from { opacity: 0 } to { opacity: 1 } }
