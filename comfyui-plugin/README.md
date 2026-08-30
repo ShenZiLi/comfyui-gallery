@@ -40,7 +40,7 @@
 
 ## 发布 Registry（可选）
 
-1. **先跑 `python comfyui-plugin/sync_all.py` 生成最新副本**，再用 `git subtree split` 把 `comfyui-plugin/` 拆为独立仓库 `ComfyUI-ArtMirror`（副本会被打包进独立仓库，保证自包含）
+1. **先跑** **`python comfyui-plugin/sync_all.py`** **生成最新副本**，再用 `git subtree split` 把 `comfyui-plugin/` 拆为独立仓库 `ComfyUI-ArtMirror`（副本会被打包进独立仓库，保证自包含）
 2. 填 `pyproject.toml` 的 `[tool.comfy] PublisherId`
 3. `comfy node publish --install-deps`（或配置 GitHub Actions）
 4. 发布 stable 后，Desktop「Manage Extensions」搜索安装验证
