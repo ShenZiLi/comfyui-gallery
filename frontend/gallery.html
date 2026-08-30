@@ -935,17 +935,18 @@
       this.selIds = this.selIds.slice();
     },
     clearSel() { if (this.selIds.length) this.selIds = []; },
-    // 绑定「空白处按下拖动」框选：mousedown 起点在空白（非卡片/控件）即开始，拖动中按相交实时高亮
+    // 绑定「空白处按下拖动」框选：mousedown 起点在空白（非卡片/控件）即开始，拖动中按相交实时高亮。
+    // 监听整个 document：.page 是 max-width 居中的内容区，窗口更宽时左右大片空白在 .page 之外，
+    // 从这些空白侧按下也应能触发框选。
     _bindSelect() {
       var self = this;
-      var page = document.querySelector(".page");
-      if (!page) return;
       var startX = 0, startY = 0, active = false, moved = false, box = null;
-      page.addEventListener("mousedown", function (ev) {
+      // 从这些元素上按下不进入框选（卡片点击仍走详情，控件点击仍走各自逻辑，弹窗/工具栏不干扰）
+      var EXCLUDE = ".img-card, button, a, input, textarea, select, .chip, .dropdown, .seg, .searchbox, .sticky-head, .modal-mask, .am-tip-bubble, .am-toast, .empty";
+      document.addEventListener("mousedown", function (ev) {
         if (ev.button !== 0 || self.mode === "aggregate") return;
         var t = ev.target;
-        // 从卡片或交互控件上按下不进入框选（卡片点击仍走详情，控件点击仍走各自逻辑）
-        if (t && t.closest && t.closest(".img-card, button, a, input, .chip, .dropdown, .seg, .searchbox, .sticky-head")) return;
+        if (t && t.closest && t.closest(EXCLUDE)) return;
         active = true; moved = false;
         startX = ev.clientX; startY = ev.clientY;
         box = document.createElement("div");
