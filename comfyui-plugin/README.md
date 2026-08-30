@@ -4,8 +4,9 @@
 
 ## 安装
 
-- **ComfyUI-Manager / Desktop**：搜索 `ArtMirror 图库` 一键安装（发布到 Registry 后）
-- **手动**：`git clone` 到 `custom_nodes/`，重启 ComfyUI
+* **ComfyUI-Manager / Desktop**：搜索 `ArtMirror 图库` 一键安装（发布到 Registry 后）
+
+* **手动**：`git clone` 到 `custom_nodes/`，重启 ComfyUI
 
 ## 使用
 
@@ -17,9 +18,11 @@
 
 ## 开发
 
-- 同步后端：`python comfyui-plugin/sync_backend.py`（backend/app → artmirror_app/）
-- 同步前端：`python comfyui-plugin/sync_frontend.py`（frontend/ → static/）
-- 测试：`..\backend\.venv\Scripts\python.exe -m pip install aiohttp` 后
+* 同步后端：`python comfyui-plugin/sync_backend.py`（backend/app → artmirror\_app/）
+
+* 同步前端：`python comfyui-plugin/sync_frontend.py`（frontend/ → static/）
+
+* 测试：`..\backend\.venv\Scripts\python.exe -m pip install aiohttp` 后
   `..\backend\.venv\Scripts\python.exe -m pytest comfyui-plugin -q`
 
 ## 手工冒烟（Windows）
@@ -35,3 +38,4 @@
 2. 填 `pyproject.toml` 的 `[tool.comfy] PublisherId`
 3. `comfy node publish --install-deps`（或配置 GitHub Actions）
 4. 发布 stable 后，Desktop「Manage Extensions」搜索安装验证
+

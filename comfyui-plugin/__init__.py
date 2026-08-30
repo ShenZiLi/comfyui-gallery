@@ -1,7 +1,21 @@
 """ComfyUI-ArtMirror：画镜 ArtMirror 图库插件。"""
 import logging
+import os
+import sys
+from pathlib import Path
 
 log = logging.getLogger("artmirror.plugin")
+
+# 本地包引导：ComfyUI 0.33+ 的 load_custom_node 不把 custom node 目录加入 sys.path，
+# 需显式注入，否则 artmirror_app 等本地包绝对导入失败。
+_plugin_dir = str(Path(__file__).resolve().parent)
+if _plugin_dir not in sys.path:
+    sys.path.insert(0, _plugin_dir)
+
+# 本地依赖引导：同目录 _deps 存在时优先加入 sys.path（可选；便于 venv 未装依赖时自给）
+_deps = Path(__file__).resolve().parent / "_deps"
+if _deps.is_dir():
+    sys.path.insert(0, str(_deps))
 
 # 前端扩展目录（WEB_DIRECTORY 仅服务 .js，HTML 前端由后端路由托管）
 WEB_DIRECTORY = "web"
