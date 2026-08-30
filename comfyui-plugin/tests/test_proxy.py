@@ -80,3 +80,11 @@ def test_proxy_backend_unreachable_502():
         "/artmirror/api/health", expect=502, target="http://127.0.0.1:1"
     )
     assert "不可达" in body.decode("utf-8", "ignore")
+
+
+def test_proxy_query_string_forwarded():
+    """query string（分页/筛选/排序）必须透传到后端，否则分页参数丢失、无限滚动失效。"""
+    _, _, body = _check("/artmirror/api/images?limit=5&offset=13&q=foo")
+    data = json.loads(body)
+    assert data.get("limit") == 5, data
+    assert data.get("offset") == 13, data
