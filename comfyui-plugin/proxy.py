@@ -31,7 +31,10 @@ async def handler(request: web.Request) -> web.StreamResponse:
     if not tail:
         return web.Response(status=302, headers={"Location": "/artmirror/gallery.html"})
 
-    url = f"{target}/{tail}"
+    # query string 必须透传：分页/筛选/排序参数（offset/limit/q/folder_id 等）都在其中，
+    # 否则后端永远按默认参数返回第一页，导致前端无限滚动反复加载同一页、表现为卡住。
+    qs = request.query_string
+    url = f"{target}/{tail}" + (f"?{qs}" if qs else "")
     headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in (
