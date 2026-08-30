@@ -45,6 +45,15 @@ LORA_LOADERS = {
 
 NEGATIVE_LINK = 1  # conditioning 数组下标 1 为 negative
 
+# 提示词最小长度：真实提示词通常为中文/英文且长度超过 10；
+# 更短的文本（模型名、文件名、占位标签、参数值等）一律忽略，避免误判为提示词。
+MIN_PROMPT_LEN = 10
+
+
+def _is_prompt_text(t) -> bool:
+    """是否为有效提示词候选：去除首尾空白后长度超过 MIN_PROMPT_LEN。"""
+    return len(str(t or "").strip()) > MIN_PROMPT_LEN
+
 
 @dataclass
 class ParseResult:
@@ -131,6 +140,16 @@ TEXT_SOURCE_NODES = {
     "CR Text", "ShowText", "ShowText|pysssss",
 }
 
+# 可穿越的传递/开关节点：沿其输入连线继续回溯文本源。
+# 注意：不能对所有节点都穿透（否则 ConditioningZeroOut / ControlNet 应用等会把
+# conditioning 输入误当文本源，导致负向链路错取正向提示词）；Note/Label 等纯备注
+# 装饰节点不参与，避免把说明文字当提示词。
+PASSTHROUGH_NODES = {
+    "Any Switch", "Any Switch (rgthree)",
+    "easy getNode", "easy setNode", "easy anythingEverywhere",
+    "Fast Bypasser (rgthree)", "Bypasser (rgthree)", "Fast Groups Bypasser (rgthree)",
+}
+
 
 def extract_prompt_lists(graph: dict) -> dict:
     """提取提示词列表 {positive: [...], negative: [...]}，兼容 API/UI 两种图。
@@ -149,13 +168,13 @@ def extract_prompt_lists(graph: dict) -> dict:
 
     def add_pos(t: str):
         t = (t or "").strip()
-        if t and t not in pos_seen:
+        if t and _is_prompt_text(t) and t not in pos_seen:
             pos_seen.add(t)
             positives.append(t)
 
     def add_neg(t: str):
         t = (t or "").strip()
-        if t and t not in neg_seen:
+        if t and _is_prompt_text(t) and t not in neg_seen:
             neg_seen.add(t)
             negatives.append(t)
 
@@ -235,7 +254,10 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
                 return k.strip()
         return ""
 
-    # 传递/开关节点（Any Switch、easy getNode/setNode 等）：沿输入引脚取第一个能解析出的文本
+    # 仅传递/开关节点沿输入引脚回溯；其余节点（如 ConditioningZeroOut、ControlNet
+    # 应用）不穿透，避免负向链路误取正向文本
+    if cls not in PASSTHROUGH_NODES:
+        return ""
     for name, v in inputs.items():
         if isinstance(v, list) and v and isinstance(v[0], str):
             r = _resolve_text(v, graph, depth + 1)
@@ -244,40 +266,144 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
     return ""
 
 
-# UI 图中真正承载提示词文本的节点类型
+# UI 图中真正承载提示词文本的节点类型（兜底启发式用；连接回溯优先于 widget 值）
 UI_TEXT_NODES = {
     "CLIPTextEncode", "CLIPTextEncodeSDXL", "CLIPTextEncodeControlNet",
     "CR Text",
+    "easy showAnything", "ShowText|pysssss",
 }
 
 
+def _ui_widget_texts(node: dict) -> list[str]:
+    """取 UI 节点的提示词候选：widgets_values 首项为字符串或字符串数组。"""
+    wv = node.get("widgets_values")
+    if not isinstance(wv, list) or not wv:
+        return []
+    first = wv[0]
+    if isinstance(first, str):
+        return [first.strip()]
+    if isinstance(first, list):
+        return [str(x).strip() for x in first if isinstance(x, str) and x.strip()]
+    return []
+
+
 def _extract_prompt_lists_ui(graph: dict) -> dict:
-    """UI workflow 图（nodes/links）尽力提取提示词列表（按节点 id 排序 + 启发式正负）。"""
+    """UI workflow 图（nodes/links）提取提示词列表（去重保序 + 长度过滤 + 启发式正负）。
+
+    - 主路径：从采样器/引导器的 positive/negative 连线，沿 conditioning 源节点再经
+      text 输入连线回溯 STRING 源（穿越 Any Switch / easy getNode 等），取真实生效的提示词；
+    - 兜底：未命中的 CLIPTextEncode / CR Text / easy showAnything 等文本节点的 widget 值
+      （含数组），启发式判定正负。
+    """
     positives: list[str] = []
     negatives: list[str] = []
-    encoders: list[tuple[int, str]] = []
-    for n in graph.get("nodes") or []:
-        if not isinstance(n, dict):
-            continue
-        ntype = n.get("type", "")
-        if ntype not in UI_TEXT_NODES:
-            continue
-        wv = n.get("widgets_values")
-        t = ""
-        if isinstance(wv, list) and wv and isinstance(wv[0], str):
-            t = wv[0].strip()
-        if not t:
-            continue
-        encoders.append((int(n.get("id", 0) or 0), t))
-    encoders.sort(key=lambda x: x[0])
-    for nid, t in encoders:
-        if t in positives or t in negatives:
-            continue
-        if _looks_negative(str(nid), t):
-            negatives.append(t)
-        else:
+    pos_seen = set()
+    neg_seen = set()
+
+    def add_pos(t: str):
+        t = (t or "").strip()
+        if t and _is_prompt_text(t) and t not in pos_seen:
+            pos_seen.add(t)
             positives.append(t)
+
+    def add_neg(t: str):
+        t = (t or "").strip()
+        if t and _is_prompt_text(t) and t not in neg_seen:
+            neg_seen.add(t)
+            negatives.append(t)
+
+    nodes = graph.get("nodes") or []
+    links = graph.get("links") or []
+    # links: [id, from_node, from_slot, to_node, to_slot, type]
+    link_from = {
+        int(ln[0]): ln[1]
+        for ln in links
+        if isinstance(ln, list) and len(ln) >= 2
+    }
+    by_id: dict = {}
+    for n in nodes:
+        if isinstance(n, dict):
+            by_id[str(n.get("id", ""))] = n
+
+    # 1) 主路径：采样器 / 引导器的正负 conditioning 链路回溯
+    for n in nodes:
+        ntype = n.get("type", "")
+        if ntype not in SAMPLER_POS_NEG and ntype not in GUIDER_NODES:
+            continue
+        add_pos(_ui_trace_text(n, "positive", by_id, link_from))
+        add_neg(_ui_trace_text(n, "negative", by_id, link_from))
+
+    # 2) 兜底：未命中的文本节点（widget 值，含数组），启发式正负
+    ordered = sorted(
+        (n for n in nodes if isinstance(n, dict) and n.get("type", "") in UI_TEXT_NODES),
+        key=lambda n: int(n.get("id", 0) or 0),
+    )
+    for n in ordered:
+        for t in _ui_widget_texts(n):
+            if t in pos_seen or t in neg_seen:
+                continue
+            if _looks_negative(str(n.get("id", 0)), t):
+                add_neg(t)
+            else:
+                add_pos(t)
+
     return {"positive": positives, "negative": negatives}
+
+
+def _ui_trace_text(node: dict, input_name: str, by_id: dict, link_from: dict, depth: int = 0) -> str:
+    """从 UI 节点的某输入连线回溯文本源（返回首个有效提示词文本）。"""
+    if depth > 14:
+        return ""
+    for inp in node.get("inputs") or []:
+        if not isinstance(inp, dict):
+            continue
+        if inp.get("name") != input_name or inp.get("link") is None:
+            continue
+        src_id = link_from.get(int(inp["link"]))
+        if src_id is None:
+            return ""
+        return _ui_node_text(by_id.get(str(src_id)), by_id, link_from, depth)
+    return ""
+
+
+def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
+    """UI 图节点文本：文本源优先 text 输入连线，其次 widget 值；传递节点沿首个可解析输入回溯。"""
+    if not node or depth > 14:
+        return ""
+    ntype = node.get("type", "")
+    inputs = node.get("inputs") or []
+
+    # 文本源节点：若 text 输入被连线接管（如 CR Text → Any Switch → CLIPTextEncode.text），
+    # 沿连线取真正生效的文本；否则取 widget 值
+    if ntype in UI_TEXT_NODES:
+        for inp in inputs:
+            if not isinstance(inp, dict):
+                continue
+            if inp.get("name") in ("text", "string", "text_value") and inp.get("link") is not None:
+                src_id = link_from.get(int(inp["link"]))
+                if src_id is not None:
+                    r = _ui_node_text(by_id.get(str(src_id)), by_id, link_from, depth + 1)
+                    if r:
+                        return r
+        for t in _ui_widget_texts(node):
+            if t:
+                return t
+        return ""
+
+    # 传递 / 开关节点（Any Switch、easy getNode 等）沿输入回溯；其余节点（如
+    # ConditioningZeroOut、ControlNet 应用）不穿透，避免负向链路误取正向文本
+    if ntype not in PASSTHROUGH_NODES:
+        return ""
+    for inp in inputs:
+        if not isinstance(inp, dict) or inp.get("link") is None:
+            continue
+        src_id = link_from.get(int(inp["link"]))
+        if src_id is None:
+            continue
+        r = _ui_node_text(by_id.get(str(src_id)), by_id, link_from, depth + 1)
+        if r:
+            return r
+    return ""
 
 
 def _looks_negative(node_id: str, text: str) -> bool:

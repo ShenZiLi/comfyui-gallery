@@ -208,3 +208,80 @@ def _plain() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (8, 8)).save(buf, format="PNG")
     return buf.getvalue()
+
+
+def test_ui_prompt_follows_text_link_and_isolates_zeroout():
+    """UI 图：CLIPTextEncode widget 为空但 text 经 Any Switch 连到 CR Text →
+    取真实生效提示词；负向经 ConditioningZeroOut 不应泄漏正向文本。"""
+    ui = {
+        "nodes": [
+            {"id": 7, "type": "CLIPTextEncode", "widgets_values": [""],
+             "inputs": [{"name": "text", "link": 133}]},
+            {"id": 13, "type": "ConditioningZeroOut",
+             "inputs": [{"name": "conditioning", "link": 12}]},
+            {"id": 55, "type": "KSampler",
+             "inputs": [{"name": "positive", "link": 84}, {"name": "negative", "link": 85}]},
+            {"id": 67, "type": "CR Text",
+             "widgets_values": ["a serene lake at golden hour, cinematic lighting, ultra detailed"]},
+            {"id": 79, "type": "Any Switch (rgthree)",
+             "inputs": [{"name": "input1", "link": 131}]},
+        ],
+        "links": [
+            [12, 7, 0, 13, 0, "CONDITIONING"],
+            [84, 7, 0, 55, 0, "CONDITIONING"],
+            [85, 13, 0, 55, 1, "CONDITIONING"],
+            [131, 67, 0, 79, 0, "STRING"],
+            [133, 79, 0, 7, 1, "STRING"],
+        ],
+    }
+    lists = extract_prompt_lists(ui)
+    assert lists["positive"] == ["a serene lake at golden hour, cinematic lighting, ultra detailed"]
+    assert lists["negative"] == []
+
+
+def test_ui_array_text_and_short_text_filtered():
+    """easy showAnything 数组文本提取；短文本（≤10 字符）一律忽略。"""
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "CLIPTextEncode",
+             "widgets_values": ["a portrait of a young woman in soft window light, film grain"]},
+            {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["blurry, lowres, bad hands"]},
+            {"id": 3, "type": "easy showAnything",
+             "widgets_values": [["cinematic cityscape at night, neon reflections",
+                                 "close-up portrait of a man"]]},
+            {"id": 4, "type": "CR Text", "widgets_values": ["short"]},
+        ],
+        "links": [],
+    }
+    lists = extract_prompt_lists(ui)
+    assert "short" not in lists["positive"]  # 长度 ≤10 被忽略
+    assert lists["positive"] == [
+        "a portrait of a young woman in soft window light, film grain",
+        "cinematic cityscape at night, neon reflections",
+        "close-up portrait of a man",
+    ]
+    assert lists["negative"] == ["blurry, lowres, bad hands"]
+
+
+def test_api_short_prompt_ignored():
+    """API 图：长度 ≤10 的提示词候选被忽略。"""
+    graph = {
+        "3": {"class_type": "KSampler", "inputs": {"positive": ["5", 0], "negative": ["6", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "ok"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, lowres"}},
+    }
+    lists = extract_prompt_lists(graph)
+    assert lists["positive"] == []
+    assert lists["negative"] == ["blurry, lowres"]
+
+
+def test_api_zeroout_not_leaked_to_negative():
+    """API 图：负向经 ConditioningZeroOut 空 conditioning，不应泄漏正向文本。"""
+    graph = {
+        "3": {"class_type": "KSampler", "inputs": {"positive": ["5", 0], "negative": ["13", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "a detailed scene, sunlight, soft shadows"}},
+        "13": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+    }
+    lists = extract_prompt_lists(graph)
+    assert lists["positive"] == ["a detailed scene, sunlight, soft shadows"]
+    assert lists["negative"] == []
