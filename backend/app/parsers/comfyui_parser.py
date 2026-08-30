@@ -602,15 +602,24 @@ def parse_bytes(data: bytes) -> ParseResult:
         result.negative_prompt = _join(plist["negative"])
         result.__dict__.update(extract_assets(prompt_graph))
         result.__dict__.update(extract_sampler_params(prompt_graph))
+        # 兜底：prompt（API）图提取不到提示词时（如文本源未被序列化），
+        # 用 workflow（UI）图的完整连接信息补解析提示词
+        if not result.positive_prompts and workflow:
+            _apply_workflow_prompts(result, workflow)
     elif workflow:
         # 部分图像仅含 UI workflow，尽力解析文本与模型/LoRA
         result.__dict__.update(extract_assets(workflow))
-        plist = extract_prompt_lists(workflow)
-        result.positive_prompts = plist["positive"]
-        result.negative_prompts = plist["negative"]
-        result.prompt = _join(plist["positive"])
-        result.negative_prompt = _join(plist["negative"])
-        result.workflow = workflow
+        _apply_workflow_prompts(result, workflow)
     else:
         result.error = "no comfyui meta found"
     return result
+
+
+def _apply_workflow_prompts(result: ParseResult, workflow: dict) -> None:
+    """用 UI workflow 图提取提示词并回填到解析结果（不覆盖 prompt 图的资产/参数）。"""
+    plist = extract_prompt_lists(workflow)
+    result.positive_prompts = plist["positive"]
+    result.negative_prompts = plist["negative"]
+    result.prompt = _join(plist["positive"])
+    result.negative_prompt = _join(plist["negative"])
+    result.workflow = workflow

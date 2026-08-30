@@ -285,3 +285,43 @@ def test_api_zeroout_not_leaked_to_negative():
     lists = extract_prompt_lists(graph)
     assert lists["positive"] == ["a detailed scene, sunlight, soft shadows"]
     assert lists["negative"] == []
+
+
+def test_parse_falls_back_to_workflow_when_prompt_empty():
+    """prompt（API）图提取不到提示词时，回退 workflow（UI）图补解析提示词。"""
+    import base64
+    import io
+
+    from PIL.PngImagePlugin import PngInfo
+
+    prompt_empty = {
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": "", "clip": ["4", 0]}},
+        "13": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+        "55": {"class_type": "KSampler", "inputs": {"positive": ["7", 0], "negative": ["13", 0]}},
+    }
+    workflow_full = {
+        "nodes": [
+            {"id": 7, "type": "CLIPTextEncode", "widgets_values": [""],
+             "inputs": [{"name": "text", "link": 133}]},
+            {"id": 55, "type": "KSampler",
+             "inputs": [{"name": "positive", "link": 84}]},
+            {"id": 67, "type": "CR Text",
+             "widgets_values": ["a magical forest with glowing fireflies, deep colors, highly detailed"]},
+            {"id": 79, "type": "Any Switch (rgthree)",
+             "inputs": [{"name": "input1", "link": 131}]},
+        ],
+        "links": [
+            [84, 7, 0, 55, 0, "CONDITIONING"],
+            [131, 67, 0, 79, 0, "STRING"],
+            [133, 79, 0, 7, 1, "STRING"],
+        ],
+    }
+    pnginfo = PngInfo()
+    pnginfo.add_text("workflow", base64.b64encode(_encode(workflow_full).encode()).decode("latin-1"))
+    pnginfo.add_text("prompt", base64.b64encode(_encode(prompt_empty).encode()).decode("latin-1"))
+    buf = io.BytesIO()
+    Image.new("RGB", (512, 512), "white").save(buf, format="PNG", pnginfo=pnginfo)
+    result = parse_bytes(buf.getvalue())
+    assert result.error == ""
+    assert "magical forest" in result.prompt, result.prompt
+    assert result.negative_prompt == ""
