@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 _deps/
+
+# 生成物副本：由 sync_backend.py / sync_frontend.py 从主仓库真源生成，勿提交、勿手改
+artmirror_app/
+static/

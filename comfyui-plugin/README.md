@@ -18,9 +18,15 @@
 
 ## 开发
 
-* 同步后端：`python comfyui-plugin/sync_backend.py`（backend/app → artmirror\_app/）
+底层代码（`backend/app/` 与 `frontend/`）在主仓库是唯一真源；插件内 `artmirror_app/`、`static/` 是由同步脚本生成的**副本**（已 .gitignore，不提交 git、勿手改）。
 
-* 同步前端：`python comfyui-plugin/sync_frontend.py`（frontend/ → static/）
+* 改完主代码后必须同步副本：`python comfyui-plugin/sync_all.py`（backend/app → artmirror\_app/，frontend/ → static/）
+
+* 校验副本与真源一致：`python comfyui-plugin/sync_all.py --check`（有漂移时退出码非 0）
+
+* 后端改动：重启 ComfyUI（进程内 Python 需重启）；前端改动：浏览器强刷（`Ctrl+Shift+R`）
+
+* 新克隆/新环境首次使用：副本不在 git 中，需先跑 `sync_all.py` 生成，再部署到 `custom_nodes/`
 
 * 测试：`..\backend\.venv\Scripts\python.exe -m pip install aiohttp` 后
   `..\backend\.venv\Scripts\python.exe -m pytest comfyui-plugin -q`
@@ -34,7 +40,7 @@
 
 ## 发布 Registry（可选）
 
-1. 用 `git subtree split` 把 `comfyui-plugin/` 拆为独立仓库 `ComfyUI-ArtMirror`
+1. **先跑 `python comfyui-plugin/sync_all.py` 生成最新副本**，再用 `git subtree split` 把 `comfyui-plugin/` 拆为独立仓库 `ComfyUI-ArtMirror`（副本会被打包进独立仓库，保证自包含）
 2. 填 `pyproject.toml` 的 `[tool.comfy] PublisherId`
 3. `comfy node publish --install-deps`（或配置 GitHub Actions）
 4. 发布 stable 后，Desktop「Manage Extensions」搜索安装验证
