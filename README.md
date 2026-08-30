@@ -18,7 +18,7 @@
 
 > 服务地址：http://127.0.0.1:8000/gallery.html（手动访问也可）
 
-## ComfyUI 插件
+## ComfyUI 插件安装
 
 已支持 **ComfyUI 插件安装**：`comfyui-plugin/` 打包为自定义节点，安装后侧边栏内嵌「图库」tab，可在 ComfyUI 内直接浏览/管理输出图片，功能与独立版画镜一致（后端随 ComfyUI 进程内启动，数据落 `user/artmirror/`）。
 
