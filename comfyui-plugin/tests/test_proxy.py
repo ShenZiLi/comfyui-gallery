@@ -16,7 +16,7 @@ def _make_app() -> web.Application:
     app = web.Application()
 
     async def root(request):
-        return web.HTTPFound("/artmirror/gallery.html")
+        raise web.HTTPFound("/artmirror/gallery.html")
 
     async def catch(request):
         return await proxy.handler(request)
@@ -27,13 +27,18 @@ def _make_app() -> web.Application:
     return app
 
 
-def _check(path, method="GET", expect=200):
+_UNSET = object()
+
+
+def _check(path, method="GET", expect=200, target=_UNSET):
     """同步封装：启动 embed → 起代理 client → 请求断言 → 清理。"""
     async def run():
         with tempfile.TemporaryDirectory() as td:
             comfy_paths.set_paths(str(Path(td) / "user"), str(Path(td) / "out"))
             port = artmirror_embed.start()
-            proxy.set_target(f"http://127.0.0.1:{port}")
+            proxy.set_target(
+                f"http://127.0.0.1:{port}" if target is _UNSET else target
+            )
             client = TestClient(TestServer(_make_app()))
             await client.start_server()
             try:
@@ -61,3 +66,17 @@ def test_proxy_redirect():
 def test_proxy_static():
     _, _, body = _check("/artmirror/gallery.html")
     assert "画镜" in body.decode("utf-8", "ignore")
+
+
+def test_proxy_target_none_503():
+    """target 未就绪（None）→ 503，不转发。"""
+    status, _, body = _check("/artmirror/api/health", expect=503, target=None)
+    assert "未就绪" in body.decode("utf-8", "ignore")
+
+
+def test_proxy_backend_unreachable_502():
+    """目标后端不可达（连接拒绝）→ 502，而非 500。"""
+    status, _, body = _check(
+        "/artmirror/api/health", expect=502, target="http://127.0.0.1:1"
+    )
+    assert "不可达" in body.decode("utf-8", "ignore")
