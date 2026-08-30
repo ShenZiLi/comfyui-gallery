@@ -109,3 +109,25 @@ def test_unlink_root():
             assert im.is_deleted == 1
             assert len(session.exec(select(Folder)).all()) == 0
     settings.data_dir = "/Users/shen/Studio/Code/ArtMirror/data"
+
+
+def test_rescan_fills_missing_prompt_legacy():
+    """旧解析器入库的图（workflowmeta 存在但 prompt 空），文件未变也应重扫补齐。"""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        root = td / "outputs"; root.mkdir()
+        _png(root / "x.png")
+        engine = _engine(td / "data")
+        with Session(engine) as session:
+            scanner.scan(session, root)
+            meta = session.exec(select(WorkflowMeta)).one()
+            assert meta.prompt == "snowy fox macro"
+            # 模拟旧解析器遗留：workflowmeta 存在但提示词为空
+            meta.prompt = ""
+            session.commit()
+            # 文件 mtime/size 未变，重扫应重新解析补齐而非跳过
+            stats = scanner.scan(session, root)
+            assert stats.skipped == 0
+            meta2 = session.exec(select(WorkflowMeta)).one()
+            assert meta2.prompt == "snowy fox macro"
+    settings.data_dir = "/Users/shen/Studio/Code/ArtMirror/data"

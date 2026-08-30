@@ -17,12 +17,21 @@ from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 
 from ..config import settings
-from ..models import Folder, ImageAsset, Setting
+from ..models import Folder, ImageAsset, Setting, WorkflowMeta
 from ..parsers.comfyui_parser import parse_bytes
 from . import meta_service
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 THUMB_SIZE = (480, 600)
+
+
+def _meta_missing_prompt(session: Session, image_id: int) -> bool:
+    """该图已有 workflowmeta 但提示词为空：说明入库时用旧解析器未提取出提示词，
+    文件未变也应重新解析一次补齐（增强解析后 prompt 非空即不再触发）。"""
+    meta = session.exec(
+        select(WorkflowMeta).where(WorkflowMeta.image_id == image_id)
+    ).first()
+    return bool(meta and not (meta.prompt or "").strip())
 
 
 @dataclass
@@ -202,7 +211,10 @@ def scan(session: Session, root: Path) -> ScanStats:
             mtime = full.stat().st_mtime
             size = full.stat().st_size
 
-            if existing and existing.file_size == size and abs(existing.file_mtime - mtime) < 1e-6:
+            # 已入库且文件未变时默认跳过；但若该图已有 workflowmeta 却缺提示词
+            # （旧解析器入库的遗留），仍重新解析一次补齐
+            needs_reparse = existing is not None and _meta_missing_prompt(session, existing.id)
+            if existing and existing.file_size == size and abs(existing.file_mtime - mtime) < 1e-6 and not needs_reparse:
                 stats.skipped += 1
                 continue
 
