@@ -40,3 +40,14 @@ def test_resolve_paths():
         assert data == str(Path(td) / "user" / "artmirror")
         fe = artmirror_embed.resolve_frontend_dir()
         assert fe.endswith("static")
+
+
+def test_data_dir_override_effective():
+    """start() 后 SQLite 库落在 user/artmirror（覆盖真实生效）。"""
+    with tempfile.TemporaryDirectory() as td:
+        user = Path(td) / "user"
+        comfy_paths.set_paths(str(user), str(Path(td) / "out"))
+        port = artmirror_embed.start()
+        assert port is not None
+        assert (user / "artmirror" / "artmirror.db").exists()
+        artmirror_embed.stop()
