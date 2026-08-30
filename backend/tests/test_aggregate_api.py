@@ -73,7 +73,7 @@ def test_cover_thumbs_capped_at_six():
         items = client.get("/api/aggregate/by-prompt?limit=10").json()["items"]
         big = next(g for g in items if g["count"] == 8)
         assert len(big["coverThumbs"]) == 6
-        assert all(m["thumb"].startswith("/api/images/") for m in big["coverThumbs"])
+        assert all(m["thumb"].startswith("api/images/") for m in big["coverThumbs"])
 
 
 def test_group_members_paged():

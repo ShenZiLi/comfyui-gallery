@@ -76,7 +76,7 @@ def test_to_cards_batch_and_full_card():
             assert c["reversePrompt"] == "rev-new"          # 取最新一条
             assert c["tags"] == [{"name": "model-x", "category": "model"}]
             assert c["originPrompts"] == ["pa", "pb"]
-            assert c["thumb"] == f"/api/images/{c['id']}/thumb"
+            assert c["thumb"] == f"api/images/{c['id']}/thumb"
             for absent in ("negative", "negativePrompts", "aiNegative", "aiReason", "translationZH", "params"):
                 assert absent not in c                      # 列表瘦身字段
             full = to_card(s, ims[0])
