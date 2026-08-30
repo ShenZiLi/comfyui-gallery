@@ -118,6 +118,7 @@ def ensure_default_scan_root() -> None:
     try:
         from artmirror_app.config import settings
         _configure(settings)
+        _rebind_engine(settings)
         settings.ensure_dirs()
         from artmirror_app.database import get_session
         from artmirror_app.services import scanner
