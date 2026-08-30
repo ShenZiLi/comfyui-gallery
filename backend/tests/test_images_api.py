@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import NullPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import settings
 from app.database import get_session
@@ -87,6 +87,25 @@ def test_to_cards_batch_and_full_card():
             assert full["params"]["steps"] == 20
             # 批量组装边界：空列表与无 meta 图片
             assert to_cards(s, []) == []
+
+
+def test_batch_delete_soft_deletes_and_recycles_tags():
+    """批量删除：多张一次软删 + 标签计数回收。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 3)
+            ids = [im.id for im in ims]
+        resp = client.post("/api/images/batch-delete", json=ids)
+        assert resp.status_code == 200
+        assert resp.json()["moved"] == 3
+        with Session(engine) as s:
+            rows = s.exec(select(ImageAsset)).all()
+            assert all(r.is_deleted for r in rows)
+            tag = s.exec(select(Tag)).one()
+            assert tag.count == 0
+        # 空列表幂等
+        assert client.post("/api/images/batch-delete", json=[]).json()["moved"] == 0
 
 
 def test_list_pagination_defaults_and_caps():

@@ -78,6 +78,12 @@
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
         </button>
         <span class="hd-badge" x-show="hiRes" data-tip="当前原图预览">HD</span>
+        <!-- 批量删除（平铺/沉浸）：空白处拖动框选多图后可用 -->
+        <button class="icon-btn danger batch-del-btn" data-tip="删除选中图片" x-show="mode!=='aggregate'" x-cloak
+                :class="{active: selCount()>0}" :disabled="selCount()===0" @click="reqBatchDelete()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+          <span class="sel-badge" x-show="selCount()>0" x-text="selCount()"></span>
+        </button>
       </div>
 
       <!-- 后台有更新时显示：点击主动刷新 -->
@@ -117,7 +123,7 @@
     <!-- 平铺：图片 + 提示词 -->
     <div class="masonry" x-show="mode==='flat' && images.length">
       <template x-for="im in images" :key="im.id">
-        <div class="card img-card">
+        <div class="card img-card" :class="{'selected': isSel(im)}" :data-id="im.id">
           <div class="thumb-wrap" @click="open(im.id)">
             <img :src="im.thumb" :alt="im.name" loading="lazy"
                  :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
@@ -213,7 +219,7 @@
     <!-- 沉浸：纯图片，保留原始宽高比 -->
     <div class="masonry immersive" x-show="mode==='immersive' && images.length">
       <template x-for="im in images" :key="im.id">
-        <div class="card img-card immersive-cell" @click="open(im.id)" data-tip="点击查看详情">
+        <div class="card img-card immersive-cell" :class="{'selected': isSel(im)}" :data-id="im.id" @click="open(im.id)" data-tip="点击查看详情">
           <div class="thumb-wrap"><img :src="im.thumb" :alt="im.name" loading="lazy"
                :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
                :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" /></div>
@@ -286,17 +292,24 @@
     </div>
   </div>
 
-  <!-- 删除二次确认弹窗 -->
-  <div class="modal-mask" x-show="delTarget" x-cloak @keydown.escape.window="delTarget=null">
+  <!-- 删除二次确认弹窗（单图 / 批量共用） -->
+  <div class="modal-mask" x-show="delTarget || batchDelCount" x-cloak @keydown.escape.window="closeDel()">
     <div class="modal" style="max-width:400px">
       <div class="modal-head">
         <h3>删除确认</h3>
-        <button class="modal-x" @click="delTarget=null">&times;</button>
+        <button class="modal-x" @click="closeDel()">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="margin:0 0 16px;color:var(--text-2)">确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？原文件将移入系统废纸篓，可从废纸篓中恢复。</p>
+        <p style="margin:0 0 16px;color:var(--text-2)">
+          <template x-if="batchDelCount">
+            <span>确定要删除选中的 <b x-text="batchDelCount"></b> 张图片吗？原文件将移入系统废纸篓，可从废纸篓中恢复。</span>
+          </template>
+          <template x-if="!batchDelCount">
+            <span>确定要删除图片 <b x-text="delTarget && delTarget.name"></b> 吗？原文件将移入系统废纸篓，可从废纸篓中恢复。</span>
+          </template>
+        </p>
         <div style="display:flex;justify-content:flex-end;gap:8px">
-          <button class="btn sm" @click="delTarget=null">取消</button>
+          <button class="btn sm" @click="closeDel()">取消</button>
           <button class="btn sm danger" @click="confirmDelete()">删除</button>
         </div>
       </div>
@@ -342,6 +355,7 @@
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
+    selIds: [], batchDelCount: 0,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
     hasUpdate: false,
@@ -433,6 +447,7 @@
       }
       this._initObservers();
       this._updateHiRes();
+      this._bindSelect();
       setInterval(function () { self.pollSync(); }, 3000);
     },
     _initObservers() {
@@ -626,6 +641,7 @@
     selectFolder(id) {
       var self = this;
       this.folderOpen = false;
+      this.clearSel(); // 切换目录：清空多选
       var curIdx = this._folderIndex(this.currentFolder);
       var targetIdx = this._folderIndex(id);
       var dir = targetIdx > curIdx ? "down" : (targetIdx < curIdx ? "up" : "");
@@ -675,6 +691,7 @@
     },
     _doSwitch(m) {
       this.mode = m;
+      this.clearSel(); // 切换模式：清空多选
       var self = this;
       if (m === "aggregate") {
         // 目录变化后 groups 仍属旧目录：需重新加载，保证目录筛选在三模式同步生效
@@ -706,6 +723,7 @@
                        sort: this.sort, limit: this.limit, offset: 0 })
         .then(function (page) {
           if (seq !== self._reqSeq) return; // 过期响应丢弃
+          self.clearSel(); // 首屏新列表：清空多选
           self._initCards(page.items);
           self.images = page.items;
           self.total = page.total;
@@ -908,6 +926,90 @@
       });
     },
     reqDelete(im) { this.delTarget = im; },
+    // ===== 多选（空白处拖动框选，平铺/沉浸） =====
+    isSel(im) { return im && this.selIds.indexOf(im.id) >= 0; },
+    selCount() { return this.selIds.length; },
+    toggleSel(im) {
+      var i = this.selIds.indexOf(im.id);
+      if (i >= 0) this.selIds.splice(i, 1); else this.selIds.push(im.id);
+      this.selIds = this.selIds.slice();
+    },
+    clearSel() { if (this.selIds.length) this.selIds = []; },
+    // 绑定「空白处按下拖动」框选：mousedown 起点在空白（非卡片/控件）即开始，拖动中按相交实时高亮
+    _bindSelect() {
+      var self = this;
+      var page = document.querySelector(".page");
+      if (!page) return;
+      var startX = 0, startY = 0, active = false, moved = false, box = null;
+      page.addEventListener("mousedown", function (ev) {
+        if (ev.button !== 0 || self.mode === "aggregate") return;
+        var t = ev.target;
+        // 从卡片或交互控件上按下不进入框选（卡片点击仍走详情，控件点击仍走各自逻辑）
+        if (t && t.closest && t.closest(".img-card, button, a, input, .chip, .dropdown, .seg, .searchbox, .sticky-head")) return;
+        active = true; moved = false;
+        startX = ev.clientX; startY = ev.clientY;
+        box = document.createElement("div");
+        box.className = "am-select-box";
+        document.body.appendChild(box);
+        self._updateBox(startX, startY, startX, startY);
+        document.body.classList.add("am-selecting");
+        ev.preventDefault();
+      });
+      document.addEventListener("mousemove", function (ev) {
+        if (!active) return;
+        if (Math.abs(ev.clientX - startX) > 5 || Math.abs(ev.clientY - startY) > 5) moved = true;
+        self._updateBox(startX, startY, ev.clientX, ev.clientY);
+        // 高频：直接操作 DOM class 做高亮，mouseup 时统一写回 state
+        var r = self._boxRect(startX, startY, ev.clientX, ev.clientY);
+        document.querySelectorAll(".masonry .img-card").forEach(function (card) {
+          var cr = card.getBoundingClientRect();
+          card.classList.toggle("selected",
+            r.left < cr.right && r.right > cr.left && r.top < cr.bottom && r.bottom > cr.top);
+        });
+      });
+      document.addEventListener("mouseup", function () {
+        if (!active) return;
+        active = false;
+        document.body.classList.remove("am-selecting");
+        if (box && box.parentNode) box.parentNode.removeChild(box);
+        box = null;
+        if (!moved) { self.clearSel(); return; } // 空白点击（无拖动）：清空选择
+        // 收集相交卡片 id 写回 state（触发 Alpine 同步高亮与计数）
+        var sel = [];
+        var rect = self._lastSelRect;
+        document.querySelectorAll(".masonry .img-card").forEach(function (card) {
+          var cr = card.getBoundingClientRect();
+          if (rect && rect.left < cr.right && rect.right > cr.left && rect.top < cr.bottom && rect.bottom > cr.top) {
+            var id = card.getAttribute("data-id");
+            if (id && sel.indexOf(Number(id)) < 0) sel.push(Number(id));
+          }
+        });
+        self.selIds = sel;
+      });
+    },
+    // 记录最近一次框选矩形（供 mouseup 收集相交卡片复用）
+    _lastSelRect: null,
+    _updateBox(x1, y1, x2, y2) {
+      var r = this._boxRect(x1, y1, x2, y2);
+      this._lastSelRect = r;
+      var box = document.querySelector(".am-select-box");
+      if (box) {
+        box.style.left = r.left + "px"; box.style.top = r.top + "px";
+        box.style.width = r.width + "px"; box.style.height = r.height + "px";
+      }
+    },
+    _boxRect(x1, y1, x2, y2) {
+      return {
+        left: Math.min(x1, x2), top: Math.min(y1, y2),
+        right: Math.max(x1, x2), bottom: Math.max(y1, y2),
+        width: Math.abs(x2 - x1), height: Math.abs(y2 - y1),
+      };
+    },
+    reqBatchDelete() {
+      if (this.mode === "aggregate" || !this.selIds.length) return;
+      this.batchDelCount = this.selIds.length;
+    },
+    closeDel() { this.delTarget = null; this.batchDelCount = 0; },
     retryImport() {
       var files = this.permFiles;
       var self = this;
@@ -923,11 +1025,31 @@
     },
     confirmDelete() {
       var self = this;
+      // 批量删除：一次移入废纸篓 + 软删，更新列表与总数
+      if (this.batchDelCount) {
+        var ids = this.selIds.slice();
+        var n = ids.length;
+        this.batchDelCount = 0;
+        Api.deleteImages(ids).then(function () {
+          self.images = self.images.filter(function (x) { return ids.indexOf(x.id) < 0; });
+          self.selIds = [];
+          self.total = Math.max(0, (self.total || 0) - n);
+          self.summary = "已显示 " + self.images.length + " / 共 " + self.total + " 张";
+          App.toast("已删除 " + n + " 张图片");
+        }).catch(function (e) {
+          alert((e && e.message) || "删除失败");
+        });
+        return;
+      }
+      // 单图删除
       var im = this.delTarget;
       if (!im) return;
       this.delTarget = null;
       Api.deleteImage(im.id).then(function () {
         self.images = self.images.filter(function (x) { return x.id !== im.id; });
+        self.total = Math.max(0, (self.total || 0) - 1);
+        self.summary = "已显示 " + self.images.length + " / 共 " + self.total + " 张";
+        App.toast("已删除");
       }).catch(function (e) {
         alert((e && e.message) || "删除失败");
       });

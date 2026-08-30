@@ -101,6 +101,11 @@
         throw e;
       });
     },
+    deleteImages: function (ids) {
+      return req("api/images/batch-delete", { method: "POST", body: ids }).catch(function (e) {
+        throw e;
+      });
+    },
 
     scoreImage: function (id) {
       return req("api/images/" + id + "/score", { method: "POST" }).catch(function (e) {

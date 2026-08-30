@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -348,7 +348,30 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
     im = session.get(ImageAsset, image_id)
     if im is None or im.is_deleted:
         raise HTTPException(404, "image not found")
+    _delete_image(session, im)
+    watcher.bump()
+    return {"ok": True, "id": image_id, "moved_to_trash": True}
 
+
+@router.post("/batch-delete")
+def batch_delete_images(ids: list[int] = Body(...), session: Session = Depends(get_session)):
+    """批量删除图片：逐张把物理文件移入系统废纸篓并软删入库记录。"""
+    if not ids:
+        return {"ok": True, "moved": 0, "moved_to_trash": True}
+    moved = 0
+    for image_id in ids:
+        im = session.get(ImageAsset, image_id)
+        if im is None or im.is_deleted:
+            continue
+        _delete_image(session, im)
+        moved += 1
+    if moved:
+        watcher.bump()
+    return {"ok": True, "moved": moved, "moved_to_trash": True}
+
+
+def _delete_image(session: Session, im: ImageAsset) -> None:
+    """删除单张图片：物理文件移入废纸篓 + 软删记录 + 回收标签计数（调用方需 commit）。"""
     path = Path(im.abs_path)
     if path.exists():
         _move_to_trash(path)  # 失败会抛出，从而中断删除
@@ -356,15 +379,13 @@ def delete_image(image_id: int, session: Session = Depends(get_session)):
     # 软删入库记录并回收标签计数
     im.is_deleted = 1
     for link in session.exec(
-        select(ImageTag).where(ImageTag.image_id == image_id)
+        select(ImageTag).where(ImageTag.image_id == im.id)
     ).all():
         tag = session.get(Tag, link.tag_id)
         session.delete(link)
         if tag is not None:
             tag.count = max(0, (tag.count or 0) - 1)
     session.commit()
-    watcher.bump()
-    return {"ok": True, "id": image_id, "moved_to_trash": True}
 
 
 def _move_to_trash(path: Path) -> None:
