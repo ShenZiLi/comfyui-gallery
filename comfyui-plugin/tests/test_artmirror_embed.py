@@ -3,9 +3,17 @@ import tempfile
 from pathlib import Path
 
 import httpx
+import pytest
 
 import artmirror_embed
 import comfy_paths
+
+
+@pytest.fixture(autouse=True)
+def _reset_inject():
+    """每个用例后复位注入状态，消除与 comfy_paths 测试的顺序依赖。"""
+    yield
+    comfy_paths.set_paths(None, None)
 
 
 def test_start_and_health():
@@ -50,4 +58,21 @@ def test_data_dir_override_effective():
         port = artmirror_embed.start()
         assert port is not None
         assert (user / "artmirror" / "artmirror.db").exists()
+        artmirror_embed.stop()
+
+
+def test_restart_with_new_user_dir():
+    """stop 后更换用户目录再 start，DB 落在新目录（_rebind_engine 生效）。"""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        user_a = td / "userA"
+        user_b = td / "userB"
+        comfy_paths.set_paths(str(user_a), str(td / "out"))
+        assert artmirror_embed.start() is not None
+        artmirror_embed.stop()
+
+        comfy_paths.set_paths(str(user_b), str(td / "out"))
+        assert artmirror_embed.start() is not None
+        assert (user_a / "artmirror" / "artmirror.db").exists()
+        assert (user_b / "artmirror" / "artmirror.db").exists()
         artmirror_embed.stop()
