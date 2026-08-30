@@ -77,13 +77,13 @@
         <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
         </button>
-        <span class="hd-badge" x-show="hiRes" data-tip="当前原图预览">HD</span>
         <!-- 批量删除（平铺/沉浸）：空白处拖动框选多图后可用 -->
         <button class="icon-btn danger batch-del-btn" data-tip="删除选中图片" x-show="mode!=='aggregate'" x-cloak
                 :class="{active: selCount()>0}" :disabled="selCount()===0" @click="reqBatchDelete()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
           <span class="sel-badge" x-show="selCount()>0" x-text="selCount()"></span>
         </button>
+        <span class="hd-badge" x-show="hiRes" data-tip="当前原图预览">HD</span>
       </div>
 
       <!-- 后台有更新时显示：点击主动刷新 -->
