@@ -5,7 +5,7 @@
 > 个人单机工具：单进程同时提供 REST API 与前端静态托管，无鉴权，建议仅在可信局域网/本机使用。
 
 
-## 零基础快速启动（Windows）
+## 零基础快速安装（Windows）
 ### 方法一（推荐）
 在WorkBuddy或其它Agent助手中输入：
 > 安装运行该程序  https://github.com/ShenZiLi/ArtMirror
@@ -17,6 +17,17 @@
 4. 启动完成后自动打开浏览器进入图库；窗口保持运行，**按回车键停止服务并退出**
 
 > 服务地址：http://127.0.0.1:8000/gallery.html（手动访问也可）
+
+## ComfyUI 插件
+
+已支持 **ComfyUI 插件安装**：`comfyui-plugin/` 打包为自定义节点，安装后侧边栏内嵌「图库」tab，可在 ComfyUI 内直接浏览/管理输出图片，功能与独立版画镜一致（后端随 ComfyUI 进程内启动，数据落 `user/artmirror/`）。
+
+![ComfyUI 插件-侧边栏图库 tab](docs/screenshots/plugin.png)
+
+- **安装方式**：将 `comfyui-plugin` 目录拷入 `custom_nodes/`（或 `git clone` 独立仓库）后重启 ComfyUI
+- **依赖**：内置 `_deps/` 本地依赖自给，无需额外 pip 安装；前端扩展由 `WEB_DIRECTORY` 注册
+- **使用**：侧边栏点开「图库」tab，首次打开自动启动后端并扫描 ComfyUI 输出目录
+- **发布**：可经 `git subtree split` 拆为独立仓库发布到 Comfy Registry（详见 `comfyui-plugin/README.md`）
 
 ## 部署流程
 
@@ -138,6 +149,7 @@ ArtMirror/
 - **导入保存目录**：配置导入/拖拽图片的目标目录（未配置回退 `data/import`）
 - **大模型**：文本 / 视觉 / Embedding 三角色配置 + 一键连通性测试
 - **AI 提示词配置**：反推 / 评分 / 互译 / 工作流解析四组提示词可自定义
+
 
 ## 文档
 
