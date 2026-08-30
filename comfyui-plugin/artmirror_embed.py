@@ -42,6 +42,10 @@ def _rebind_engine(settings) -> None:
 
     from artmirror_app import database as db
 
+    try:
+        db.engine.dispose()
+    except Exception:  # noqa: BLE001
+        pass
     db.engine = create_engine(
         f"sqlite:///{settings.db_path}",
         connect_args={"check_same_thread": False, "timeout": 30},

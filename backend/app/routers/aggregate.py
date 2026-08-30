@@ -105,7 +105,7 @@ def _group_payload(g: dict) -> dict:
         "count": len(members),
         "maxScore": members[0]["aiRating"],
         "coverThumbs": [
-            {"id": m["id"], "name": m["name"], "thumb": f"/api/images/{m['id']}/thumb"}
+            {"id": m["id"], "name": m["name"], "thumb": f"api/images/{m['id']}/thumb"}
             for m in members[:6]
         ],
     }

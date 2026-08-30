@@ -122,7 +122,7 @@ def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
             "aiPrompt": meta.ai_prompt if meta else "",
             "reversePrompt": reverse.text if reverse else None,
             "tags": tags_by[im.id],
-            "thumb": f"/api/images/{im.id}/thumb",
+            "thumb": f"api/images/{im.id}/thumb",
         })
     return cards
 
