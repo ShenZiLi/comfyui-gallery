@@ -31,8 +31,12 @@ def _register_routes():
     try:
         from . import server as _server
         _server.register_proxy_routes()
+    except ImportError:
+        # 非 ComfyUI 环境（server 模块不可用）属预期，静默跳过
+        log.debug("ArtMirror 路由未挂载（非 ComfyUI 环境）")
     except Exception:  # noqa: BLE001
-        log.warning("ArtMirror 路由未挂载（非 ComfyUI 环境）", exc_info=True)
+        # ComfyUI 环境内的真实异常需暴露，避免掩盖 bug
+        log.warning("ArtMirror 路由挂载失败", exc_info=True)
 
 
 _register_routes()
