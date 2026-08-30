@@ -77,6 +77,28 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 4. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
 5. 修改提交到 **dev** 分支（当前工作分支）。
 
+## 插件独立仓库（comfyui-gallery）
+
+插件代码除随主仓库 `comfyui-plugin/` 维护外，**单独推送一份到独立仓库 `https://github.com/ShenZiLi/comfyui-gallery`**（ComfyUI 侧安装用的独立插件仓库，remote 名 `gallery`）。它是主仓库插件代码的**镜像产物**，不保留独立提交。
+
+**每次推送主仓库 GitHub 后，必须同步二次推送插件仓库：**
+
+1. 生成最新副本：`python comfyui-plugin/sync_all.py`（backend/app → artmirror_app/，frontend/ → static/）
+2. 重建自包含插件分支（含副本，`.gitignore` 忽略的文件 subtree split 不含，故用「临时提交 → split → 回退」纳入）：
+   ```bash
+   git branch -D comfyui-gallery 2>/dev/null      # 重建旧分支
+   git add -f comfyui-plugin/artmirror_app comfyui-plugin/static
+   git commit -m "tmp: 暂存副本以生成自包含插件分支（随后回退）"
+   git subtree split --prefix=comfyui-plugin -b comfyui-gallery
+   git reset --soft HEAD~1 && git reset           # 回退临时提交（不推送主仓库）
+   ```
+3. 推送到插件仓库（force：镜像覆盖，不保留独立提交）：
+   ```bash
+   git push -f gallery comfyui-gallery:main
+   ```
+
+> 新克隆插件仓库后，副本（artmirror_app/、static/）已随仓库携带，可直接部署到 ComfyUI `custom_nodes/`，无需再同步。
+
 ## 数据与目录
 
 - `data/` 为运行数据（DB + 缩略图），已被 `.gitignore` 忽略；清空数据 = 删 `data/artmirror.db` 与 `data/thumbs/`。
