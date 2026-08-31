@@ -567,7 +567,7 @@
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
     _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} this._updateHiRes(); },
-    // 缩放转场：先微缩淡出，切换列数（重排被遮罩），再平滑回位淡入，避免瞬时重排闪烁
+    // 缩放转场（方案 C·弹性落地）：快闪遮重排 + 弹性回位
     _animateZoom(m, next) {
       var self = this;
       if (this.zooming) return; // 动画进行中忽略连点
@@ -575,16 +575,20 @@
       var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       var page = document.querySelector(".page");
       if (reduced || !page) { this._setCols(m, next); this.zooming = false; return; }
-      page.classList.add("am-zooming");
+      page.classList.add("am-zooming"); // 90ms 微缩淡出遮住重排
       setTimeout(function () {
         self._setCols(m, next);
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
             page.classList.remove("am-zooming");
-            setTimeout(function () { self.zooming = false; }, 240);
+            page.classList.add("am-zoom-settle"); // 弹性回位
+            setTimeout(function () {
+              page.classList.remove("am-zoom-settle");
+              self.zooming = false;
+            }, 380);
           });
         });
-      }, 130);
+      }, 105);
     },
     // 切换展示模式：翻页特效——旧视图横向滑出，新视图从对侧滑入
     // 向右切（点右侧按钮）触发右翻页、向左切触发左翻页；仅切视图，不重新拉取/排序数据

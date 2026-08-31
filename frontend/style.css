@@ -365,10 +365,14 @@ body.am-selecting { user-select: none; }
 .masonry .thumb-wrap img { width: 100%; height: auto; display: block; object-fit: contain; }
 .immersive-cell { cursor: zoom-in; }
 
-/* 缩放/翻页切换动效：缩放=微缩淡出；翻页=旧视图横向滑出、新视图从对侧滑入 */
-.masonry, .group-grid { transition: opacity .22s ease-out, transform .22s ease-out; }
+/* 缩放/翻页切换动效：缩放=快闪遮重排+弹性回位（方案 C）；翻页=旧视图横向滑出、新视图从对侧滑入 */
+.masonry, .group-grid { transition: opacity var(--dur-med) var(--ease-out), transform var(--dur-med) var(--ease-out); }
+/* 弹性回位（过冲曲线，柔和落地感）——置于 .am-zooming 之前，遮罩类同在时遮罩优先 */
+.am-zoom-settle .masonry,
+.am-zoom-settle .group-grid { opacity: 1; transform: scale(1); transition: transform .25s cubic-bezier(.34,1.56,.64,1), opacity .24s ease-out; }
+/* 收缩遮罩：极短微缩淡出，遮蔽列数重排的闪烁 */
 .am-zooming .masonry,
-.am-zooming .group-grid { transition: opacity .12s ease-in, transform .12s ease-in; opacity: .4; transform: scale(.965); }
+.am-zooming .group-grid { transition: transform 90ms cubic-bezier(.6,0,.5,1), opacity 90ms ease; opacity: .42; transform: scale(.955); }
 /* 翻页滑出阶段：当前视图快速横向滑出并淡出 */
 .am-turn-right .masonry,
 .am-turn-right .group-grid,
@@ -400,8 +404,8 @@ body.am-selecting { user-select: none; }
 @keyframes am-fade-in { from { opacity: 0 } to { opacity: 1 } }
 @media (prefers-reduced-motion: reduce) {
   .masonry, .group-grid { transition: none !important; }
-  .am-zooming .masonry,
-  .am-zooming .group-grid { opacity: 1; transform: none; }
+  .am-zooming .masonry, .am-zooming .group-grid,
+  .am-zoom-settle .masonry, .am-zoom-settle .group-grid { opacity: 1; transform: none; }
   .am-turn-right .masonry, .am-turn-right .group-grid,
   .am-turn-left .masonry, .am-turn-left .group-grid,
   .am-turn-right .am-turn-in, .am-turn-left .am-turn-in { opacity: 1; transform: none; }
