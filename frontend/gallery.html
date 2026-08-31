@@ -64,9 +64,9 @@
           <svg class="chev" :class="{up:sortOpen}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="dropdown-menu" x-show="sortOpen" x-cloak>
-          <button class="dropdown-item" :class="{active: sort==='time'}" @click="doSort('time')">按时间</button>
-          <button class="dropdown-item" :class="{active: sort==='ai'}" @click="doSort('ai')">按 AI 评分</button>
-          <button class="dropdown-item" :class="{active: sort==='manual'}" @click="doSort('manual')">按人工评分</button>
+          <button class="dropdown-item" :class="{active: sort==='time'}" @click="sort='time';sortOpen=false;loadImages()">按时间</button>
+          <button class="dropdown-item" :class="{active: sort==='ai'}" @click="sort='ai';sortOpen=false;loadImages()">按 AI 评分</button>
+          <button class="dropdown-item" :class="{active: sort==='manual'}" @click="sort='manual';sortOpen=false;loadImages()">按人工评分</button>
         </div>
       </div>
 
@@ -559,45 +559,6 @@
       if (this.sort === "ai") return "按 AI 评分";
       if (this.sort === "manual") return "按人工评分";
       return "按时间";
-    },
-    // 排序切换：用 View Transitions 重排图片列表（方案 C）
-    doSort(k) {
-      var self = this;
-      this.sortOpen = false;
-      this.sort = k;
-      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (document.startViewTransition && !reduced && this.mode !== "aggregate") {
-        document.startViewTransition(function () { return self._loadSortedImages(); });
-      } else {
-        this.loadImages(); // 降级：直排瞬切（不支持 VT / 减弱动态 / 聚合模式）
-      }
-    },
-    // 排序专用拉取：等 Alpine 渲染完新列表再结束转场，让 View Transitions 取到新旧两帧做交叉淡变重排
-    _loadSortedImages() {
-      var self = this, seq = ++this._reqSeq;
-      this.loading = true;
-      return Api.listImages({ folderId: this.currentFolder || null, tag: this.selectedTag, q: this.q,
-                              sort: this.sort, limit: this.limit, offset: 0 })
-        .then(function (page) {
-          if (seq !== self._reqSeq) return;
-          self.clearSel();
-          self._initCards(page.items);
-          self.images = page.items;
-          self.total = page.total;
-          self.hasMore = page.hasMore;
-          self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
-          self._imagesFolder = self.currentFolder;
-          // 等 Alpine 渲染新 DOM 后再结束转场，保证新快照就绪
-          return new Promise(function (res) {
-            self._afterRender(function () {
-              self.loading = false;
-              self._rearm("list");
-              if (self.hiRes) self._observeHiRes();
-              res();
-            });
-          });
-        })
-        .catch(function () { self.loading = false; });
     },
     fmtSize: App.fmtSize,
     // 当前模式的列数（平铺/沉浸/聚合独立记录）
