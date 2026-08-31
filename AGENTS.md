@@ -30,17 +30,23 @@ ArtMirror/                       # 仓库根即 ComfyUI 插件（clone 放入 cu
 └── README.md
 ```
 
-> **核心约定：仓库根即插件，改 `artmirror/` 或 `frontend/` 即双端生效，无任何构建/同步步骤。**
+> **核心约定：仓库根即插件，改** **`artmirror/`** **或** **`frontend/`** **即双端生效，无任何构建/同步步骤。**
 
 ## 技术栈与关键约定
 
-- **后端**：Python 3.12 + FastAPI + uvicorn + SQLModel(SQLite) + Pillow + httpx；依赖用 `uv` 管理。
-- **前端**：无构建静态页；响应式由 Alpine.js + 手写 CSS 实现；封装在 `api.js` 的 `App` / `Api` 全局对象。
-- **数据库**：SQLite `data/artmirror.db`；每图**只存引用**(`abs_path`/`sha256`)与 meta，不存图片字节；缩略图在 `data/thumbs/<sha>.webp`。
-- **图片目录**：入库存**对本地路径的链接**，不拷贝导入。实时同步由 `watcher.py` 后台 20s 增量扫描 + 递增版本号 + 前端 3s 轮询 `/api/sync/version` 实现。
-- **Folder.path 一律绝对路径**；`is_deleted=1` 用于软删。
-- **图片不可被遮盖**：图片上方不允许叠加图标或文字（如角标、徽章）进行遮盖；相关提示信息放在图片之外展示。
-- 静态资源已启用 `Cache-Control: no-cache`，前端改动刷新即生效。
+* **后端**：Python 3.12 + FastAPI + uvicorn + SQLModel(SQLite) + Pillow + httpx；依赖用 `uv` 管理。
+
+* **前端**：无构建静态页；响应式由 Alpine.js + 手写 CSS 实现；封装在 `api.js` 的 `App` / `Api` 全局对象。
+
+* **数据库**：SQLite `data/artmirror.db`；每图**只存引用**(`abs_path`/`sha256`)与 meta，不存图片字节；缩略图在 `data/thumbs/<sha>.webp`。
+
+* **图片目录**：入库存**对本地路径的链接**，不拷贝导入。实时同步由 `watcher.py` 后台 20s 增量扫描 + 递增版本号 + 前端 3s 轮询 `/api/sync/version` 实现。
+
+* **Folder.path 一律绝对路径**；`is_deleted=1` 用于软删。
+
+* **图片不可被遮盖**：图片上方不允许叠加图标或文字（如角标、徽章）进行遮盖；相关提示信息放在图片之外展示。
+
+* 静态资源已启用 `Cache-Control: no-cache`，前端改动刷新即生效。
 
 ## 常用命令
 
@@ -64,13 +70,14 @@ uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
 
 ## 文档维护
 
-- 每次**新增功能点**，必须同步记录到 `docs/功能清单.md`（归类：优先按页面，其次按功能类型），并新增一行「更新记录」。
+* 每次**新增功能点**，必须同步记录到 `docs/功能清单.md`（归类：优先按页面，其次按功能类型），并新增一行「更新记录」。
 
 ## 强制工作流
 
 > **每次修改代码后，必须重启服务进行验证。**
 
 1. 修改后端或前端文件后，**立即重启后端服务**（否则改动不生效）：
+
    ```bash
    lsof -ti:8000 | xargs kill -9 2>/dev/null; sleep 1
    (uv run uvicorn launchers.web.main:app --host 127.0.0.1 --port 8000 >/tmp/am.log 2>&1 &)
@@ -100,9 +107,11 @@ git push -f gallery <分支>:main
 
 ## 数据与目录
 
-- `data/` 为运行数据（DB + 缩略图），已被 `.gitignore` 忽略；清空数据 = 删 `data/artmirror.db` 与 `data/thumbs/`。
-- 扫描目录通过设置页「图片目录」注册（校验 `Path.is_dir()`，审核路径防穿越）。
-- 服务本地为单用户，无鉴权；跨机访问时由前端通过局域网地址调用。
+* `data/` 为运行数据（DB + 缩略图），已被 `.gitignore` 忽略；清空数据 = 删 `data/artmirror.db` 与 `data/thumbs/`。
+
+* 扫描目录通过设置页「图片目录」注册（校验 `Path.is_dir()`，审核路径防穿越）。
+
+* 服务本地为单用户，无鉴权；跨机访问时由前端通过局域网地址调用。
 
 ## 部署 / 自启动
 
