@@ -425,7 +425,7 @@ body.am-selecting { user-select: none; }
   .member-grid { animation: none !important; transition: none !important; }
 }
 
-.img-card { overflow: hidden; container-type: inline-size; }
+.img-card { overflow: hidden; container-type: inline-size; transform-origin: center; }
 .img-card .thumb-wrap { overflow: hidden; background: #eceef2; }
 .img-card img { display: block; }
 /* 超窄卡片（约 ≥10 列）：压缩内边距与间距，图标保持原尺寸（不缩小） */
