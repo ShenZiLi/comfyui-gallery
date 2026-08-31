@@ -401,18 +401,15 @@ body.am-selecting { user-select: none; }
   /* 新增的按钮/卡片悬浮与弹窗/下拉入场动效：一律禁用，避免运动不适 */
   .btn, .btn:active:not([disabled]), .btn.primary:active:not([disabled]),
   .seg button:active, .theme-toggle:active, .icon-btn:active, .chip:active { transform: none !important; transition: none !important; }
-  .img-card, .img-card:hover,
-  .img-card .thumb-wrap img, .img-card .thumb-wrap:hover img,
-  .group-card .cover-row img, .group-card .cover-row img:hover,
-  .member-grid img, .member-grid img:hover { transform: none !important; transition: none !important; }
-  .dropdown-menu, .modal-mask, .modal, .modal-x { animation: none !important; transition: none !important; }
+  .group-card .cover-row img:hover, .member-grid img:hover { transform: none !important; transition: none !important; }
+  .thumb-wrap img, .cover-row img, .member-grid img, .detail-image img { opacity: 1 !important; transition: none !important; }
+  .dropdown-menu, .modal-mask, .modal, .modal-x, .detail-layout, .empty { animation: none !important; transition: none !important; }
+  .star:hover, .theme-toggle:hover svg { transform: none !important; transition: none !important; }
+  .progress > i { animation: none !important; }
 }
 
-.img-card { overflow: hidden; container-type: inline-size; transition: transform var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out), border-color var(--dur-med) var(--ease-out); }
-.img-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--border) 45%, transparent); }
+.img-card { overflow: hidden; container-type: inline-size; }
 .img-card .thumb-wrap { overflow: hidden; background: #eceef2; }
-.img-card .thumb-wrap img { display: block; transition: transform var(--dur-slow) var(--ease-out); }
-.img-card .thumb-wrap:hover img { transform: scale(1.04); }
 .img-card img { display: block; }
 /* 超窄卡片（约 ≥10 列）：压缩内边距与间距，图标保持原尺寸（不缩小） */
 @container (max-width: 140px) {
@@ -633,3 +630,42 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 .loading-more { padding: 16px; text-align: center; }
 
 /* 同步提示条已移除：后台检测到变化自动刷新，不再需要横幅 */
+
+/* ===== 深层动效增强：图片加载淡入 + 关键交互反馈（统一沿用 --ease-*/--dur-* 令牌） ===== */
+
+/* 图片加载淡入：缩略图/封面/成员图/详情大图默认透明，加载完成（JS 补 .am-img-in）后平滑淡入，消除「弹出」感。
+   一并合并 cover/member 的悬停缩放过渡，避免被本处 transition 简写覆盖。 */
+.thumb-wrap img,
+.cover-row img,
+.member-grid img,
+.detail-image img {
+  opacity: 0;
+  transition: opacity var(--dur-med) var(--ease-in-out), transform var(--dur-med) var(--ease-out);
+}
+.thumb-wrap img.am-img-in,
+.cover-row img.am-img-in,
+.member-grid img.am-img-in,
+.detail-image img.am-img-in { opacity: 1; }
+
+/* 异步内容入场：详情页布局 / 空状态软性显现 */
+.detail-layout, .empty { animation: rise-in var(--dur-med) var(--ease-out); }
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 详情页人工评分星星：悬停轻微放大反馈 */
+.star { transition: transform var(--dur-fast) var(--ease-out); }
+.star:hover { transform: scale(1.25); }
+
+/* 明暗切换按钮图标：悬停轻微旋转，提升按钮活度 */
+.theme-toggle svg { transition: transform var(--dur-slow) var(--ease-out); }
+.theme-toggle:hover svg { transform: rotate(20deg); }
+
+/* 扫描进度条：品牌色流动高光，反馈扫描进行中（宽度过渡保留） */
+.progress > i {
+  background-image: linear-gradient(90deg, var(--brand) 0%, color-mix(in srgb, var(--brand) 72%, #fff) 50%, var(--brand) 100%);
+  background-size: 200% 100%;
+  animation: sheen 1.6s var(--ease-in-out) infinite;
+}
+@keyframes sheen { from { background-position: 200% 0 } to { background-position: 0 0 } }

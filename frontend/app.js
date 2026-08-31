@@ -78,6 +78,20 @@
     if (ev.persisted && document.body) document.body.classList.remove("am-page-out");
   });
 
+  // 图片加载淡入：捕获阶段监听 img 的 load/error，加载完成后补 .am-img-in 触发淡入。
+  // 捕获阶段能收到不冒泡的 load 事件，动态新增图（含高清原图替换）也都覆盖。
+  // 已在缓存中、load 已派发完成的图在 DOMContentLoaded 时补标，避免永远透明。
+  (function () {
+    function mark(el) { if (el && el.tagName === "IMG") el.classList.add("am-img-in"); }
+    document.addEventListener("load", function (e) { mark(e.target); }, true);
+    document.addEventListener("error", function (e) { mark(e.target); }, true);
+    function scan() {
+      document.querySelectorAll("img").forEach(function (i) { if (i.complete) mark(i); });
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", scan);
+    else scan();
+  })();
+
   // 星级（人工评分）
   function starHTML(rating, interactive, onClick) {
     var stars = "";
