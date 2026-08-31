@@ -64,9 +64,9 @@
           <svg class="chev" :class="{up:sortOpen}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
         <div class="dropdown-menu" x-show="sortOpen" x-cloak>
-          <button class="dropdown-item" :class="{active: sort==='time'}" @click="sort='time';sortOpen=false;loadImages()">按时间</button>
-          <button class="dropdown-item" :class="{active: sort==='ai'}" @click="sort='ai';sortOpen=false;loadImages()">按 AI 评分</button>
-          <button class="dropdown-item" :class="{active: sort==='manual'}" @click="sort='manual';sortOpen=false;loadImages()">按人工评分</button>
+          <button class="dropdown-item" :class="{active: sort==='time'}" @click="doSort('time')">按时间</button>
+          <button class="dropdown-item" :class="{active: sort==='ai'}" @click="doSort('ai')">按 AI 评分</button>
+          <button class="dropdown-item" :class="{active: sort==='manual'}" @click="doSort('manual')">按人工评分</button>
         </div>
       </div>
 
@@ -354,7 +354,7 @@
     folderOpen: false, sortOpen: false,
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
+    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _waveIn: false,
     selIds: [], batchDelCount: 0,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
@@ -560,6 +560,35 @@
       if (this.sort === "manual") return "按人工评分";
       return "按时间";
     },
+    // 排序切换（方案 B·波浪推移）：切换后按新序逐列波浪淡入
+    doSort(k) {
+      this.sortOpen = false;
+      this.sort = k;
+      var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this._waveIn = !reduced;
+      this.loadImages();
+    },
+    // 新列表渲染后：给卡片叠加波浪入场（按列错落），播放完清除类
+    _waveStart() {
+      var self = this;
+      this._waveIn = false;
+      this._afterRender(function () {
+        var cards = document.querySelectorAll(".masonry .img-card");
+        if (!cards.length) return;
+        var cols = self.currentCols();
+        cards.forEach(function (c, i) {
+          var delay = (i % cols) * 40;
+          c.classList.add("am-wave-in");
+          c.style.animationDelay = delay + "ms";
+        });
+        setTimeout(function () {
+          document.querySelectorAll(".masonry .img-card").forEach(function (c) {
+            c.classList.remove("am-wave-in");
+            c.style.animationDelay = "";
+          });
+        }, 400);
+      });
+    },
     fmtSize: App.fmtSize,
     // 当前模式的列数（平铺/沉浸/聚合独立记录）
     currentCols() { return (this.cols[this.mode] || 5); },
@@ -567,7 +596,7 @@
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
     _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} this._updateHiRes(); },
-    // 缩放转场：先微缩淡出，切换列数（重排被遮罩），再平滑回位淡入，避免瞬时重排闪烁
+    // 缩放转场（方案 C·弹性落地）：快闪遮重排 + 弹性回位
     _animateZoom(m, next) {
       var self = this;
       if (this.zooming) return; // 动画进行中忽略连点
@@ -575,16 +604,20 @@
       var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       var page = document.querySelector(".page");
       if (reduced || !page) { this._setCols(m, next); this.zooming = false; return; }
-      page.classList.add("am-zooming");
+      page.classList.add("am-zooming"); // 90ms 微缩淡出遮住重排
       setTimeout(function () {
         self._setCols(m, next);
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
             page.classList.remove("am-zooming");
-            setTimeout(function () { self.zooming = false; }, 240);
+            page.classList.add("am-zoom-settle"); // 弹性回位
+            setTimeout(function () {
+              page.classList.remove("am-zoom-settle");
+              self.zooming = false;
+            }, 380);
           });
         });
-      }, 130);
+      }, 105);
     },
     // 切换展示模式：翻页特效——旧视图横向滑出，新视图从对侧滑入
     // 向右切（点右侧按钮）触发右翻页、向左切触发左翻页；仅切视图，不重新拉取/排序数据
@@ -757,6 +790,8 @@
           if (self._restoreScroll) {
             self._afterRender(function () { self._resumeScroll(); });
           }
+          // 排序切换：新列表渲染后做波浪推移入场
+          if (self._waveIn) self._waveStart();
         });
     },
     loadMore() {
@@ -1202,6 +1237,18 @@
           images: this.images, total: this.total, hasMore: this.hasMore,
           groups: this.groups, groupTotal: this.groupTotal, groupHasMore: this.groupHasMore
         }));
+        // 记录当前视图的图片顺序与所点图索引，供详情页「左右空白翻页」用
+        if (this.mode !== "aggregate" && this.images.length) {
+          var idx = -1;
+          for (var i = 0; i < this.images.length; i++) {
+            if (String(this.images[i].id) === String(id)) { idx = i; break; }
+          }
+          if (idx >= 0) {
+            sessionStorage.setItem("am_nav", JSON.stringify({
+              ids: this.images.map(function (x) { return x.id; }), index: idx
+            }));
+          }
+        }
       } catch (e) {}
       App.go("image.html?id=" + id);
     },

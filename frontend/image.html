@@ -22,6 +22,13 @@
 <div id="topnav"></div>
 
 <div class="page" x-data="Detail" x-init="init()" x-show="im">
+  <!-- 左右空白区域翻页：仅宽屏有侧边留白时显示，悬停浮现圆形毛玻璃钮，不遮盖图片 -->
+  <div class="nav-zone prev" x-cloak x-show="canPrev()" @click="goPrev()" title="上一张">
+    <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+  </div>
+  <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张">
+    <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+  </div>
   <div class="detail-layout" :class="ratioClass()">
     <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
@@ -68,14 +75,23 @@
             </button>
           </span>
           <span style="margin-left:auto;display:flex;gap:6px">
-            <button class="btn sm" @click="translatePrompt()" x-show="activePrompt()" :disabled="trIng">
+            <button class="btn sm" @click="toggleEdit()" x-show="editBtnVisible()" :class="{primary:editing}">
+              <span x-text="editing ? '保存' : '编辑'"></span>
+            </button>
+            <button class="btn sm" @click="translatePrompt()" x-show="activePrompt() && !editing" :disabled="trIng">
               <span x-show="trIng">翻译中…</span>
               <span x-show="!trIng" x-text="trLabel()"></span>
             </button>
           </span>
         </h3>
         <div class="muted" style="font-size:12px" x-show="pErr"><b x-text="pErr"></b></div>
-        <div style="color:var(--text-2)">
+        <!-- 编辑模式：可编辑当前源的提示词/译文 -->
+        <div x-show="editing" x-cloak>
+          <textarea class="edit-prompt" x-model="editText" rows="6"
+                    @keydown.escape.window="cancelEdit()" @keydown.meta.enter="saveEdit()"></textarea>
+          <div class="muted mt" style="font-size:11px">多段提示词用空行分隔；Ctrl/⌘+Enter 保存，Esc 取消。</div>
+        </div>
+        <div x-show="!editing" style="color:var(--text-2)">
           <template x-for="(txt, pi) in activePrompts()" :key="pi">
             <div class="prompt-item prompt-clickable" :class="{'first':pi===0}" @click.stop="copy(txt)" x-text="txt"></div>
           </template>
@@ -182,16 +198,65 @@
     im: null, showModal: false, aState: "", mState: "", mErr: "", hoverRating: 0,
     delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trTexts: [],
-    trIng: false,
+    trIng: false, trLang: "",
+    editing: false, editText: "", _editWhat: "", savingEdit: false,
+    navIds: [], navIdx: -1, curId: null,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
+      // 读取图库传入的浏览顺序（图库 open 时写入 am_nav），用于左右翻页
+      try {
+        var nav = JSON.parse(sessionStorage.getItem("am_nav") || "null");
+        if (nav && Array.isArray(nav.ids) && nav.ids.length) {
+          this.navIds = nav.ids.map(function (x) { return Number(x); });
+          this.navIdx = this.navIds.indexOf(Number(id));
+        }
+      } catch (e) {}
+      this._load(id);
+    },
+    // 加载指定图片：更新视图与 URL（replaceState 让刷新/前进后退不丢上下文）
+    _load(id, dir) {
       var self = this;
+      this.curId = Number(id);
+      this.navIdx = this.navIds.indexOf(this.curId);
+      if (Number(new URLSearchParams(location.search).get("id")) !== this.curId) {
+        history.replaceState(null, "", "?id=" + this.curId);
+      }
+      // 切图后清空瞬态交互状态
+      this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
+      this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
+      this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
         image._src = (image.prompt && image.prompt !== "") ? "origin" : "reverse";
+        // 翻页动效（方案 D·滑动景深）：等 Alpine 渲染完新图再播放，避免旧内容被动画闪到
+        if (dir === 1 || dir === -1) {
+          var p = document.querySelector(".detail-layout");
+          if (p) {
+            p.classList.remove("am-pg-left", "am-pg-right");
+            requestAnimationFrame(function () {
+              requestAnimationFrame(function () {
+                if (dir === -1) p.classList.add("am-pg-left");
+                else p.classList.add("am-pg-right");
+              });
+            });
+          }
+        }
       });
     },
+    // 左右翻页：左=上一张（右→左滑动），右=下一张（左→右滑动）；到边界给出提示
+    goPrev() {
+      var i = this.navIds.indexOf(this.curId);
+      if (i <= 0) { App.toast("已是第一张"); return; }
+      this._load(this.navIds[i - 1], -1);
+    },
+    goNext() {
+      var i = this.navIds.indexOf(this.curId);
+      if (i < 0 || i >= this.navIds.length - 1) { App.toast("已是最后一张"); return; }
+      this._load(this.navIds[i + 1], 1);
+    },
+    canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
+    canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3); },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
@@ -258,6 +323,70 @@
       return raw;
     },
     activePrompt() { return (this.activePrompts()[0] || ""); },
+    // ===== 提示词编辑 / 保存 =====
+    editBtnVisible() {
+      // 始终可编辑：原生为空也可进入编辑「新增提示词」
+      return !!this.im;
+    },
+    toggleEdit() {
+      if (!this.im) return;
+      if (this.editing) { this.saveEdit(); return; }
+      this.editing = true;
+      this._editWhat = (this.trOn && this.trSrc === this.im._src && this.trTexts.length > 0) ? "translation" : this.im._src;
+      // 当前源为空时，默认落回「原生」，便于为（原生无提示词的）图片新增原生提示词
+      if (this._editWhat !== "translation" && this.activePrompts().length === 0) {
+        this.im._src = "origin"; this._editWhat = "origin";
+      }
+      this.editText = this._editingSourceText();
+    },
+    cancelEdit() {
+      if (!this.editing) return;
+      this.editing = false; this.editText = ""; this._editWhat = "";
+      // 恢复原文显示（若之前切到译文则回到原文）
+      this.trOn = false; this.trSrc = ""; this.trTexts = [];
+    },
+    // 当前编辑对象对应的可编辑全文
+    _editingSourceText() {
+      if (this._editWhat === "translation") return (this.trTexts || []).join("\n");
+      return this.activePrompts().join("\n");
+    },
+    saveEdit() {
+      var im = this.im; var self = this;
+      if (!im || this.savingEdit) return;
+      var texts = String(this.editText || "").split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      var data;
+      if (this._editWhat === "translation") {
+        var lang = this.trLang || "en";
+        data = { target: "translation", kind: im._src, lang: lang, texts: texts };
+      } else {
+        data = { target: im._src, texts: texts };
+      }
+      this.savingEdit = true;
+      Api.updatePrompt(im.id, data).then(function (card) {
+        self.savingEdit = false;
+        self._applyCard(card);
+        self.editing = false; self.editText = ""; self._editWhat = "";
+        // 编辑的是译文时，保存后继续显示该译文
+        if (data.target === "translation") {
+          self.trOn = true; self.trSrc = self.im._src;
+          self.trTexts = texts; self.trLang = lang;
+        }
+        App.toast("已保存");
+      }).catch(function (e) {
+        self.savingEdit = false;
+        App.toast("保存失败：" + ((e && e.message) || e) );
+      });
+    },
+    _applyCard(card) {
+      if (!card || !this.im) return;
+      var im = this.im;
+      if (card.prompt !== undefined) im.prompt = card.prompt || "";
+      if (card.originPrompts !== undefined) im.originPrompts = card.originPrompts || [];
+      if (card.aiPrompt !== undefined) im.aiPrompt = card.aiPrompt || "";
+      if (card.aiPrompts !== undefined) im.aiPrompts = card.aiPrompts || [];
+      if (card.reversePrompt !== undefined) im.reversePrompt = card.reversePrompt || "";
+      if (card.translations !== undefined) im.translations = card.translations || {};
+    },
     // 译文可能为多段（后端用 <<<SEG>>> 或换行分隔），切回数组逐段展示
     _splitSegs(text) {
       if (!text) return [];
@@ -294,9 +423,12 @@
       // 已有持久化译文：直接切换显示，不再请求 AI
       var stored = (im.translations && im.translations[kind]) || {};
       var langs = Object.keys(stored);
+      var lang = null;
       if (langs.length) {
-        self.trTexts = self._alignSegs(srcRaw, self._splitSegs(stored[langs[0]]));
+        lang = langs[0];
+        self.trTexts = self._alignSegs(srcRaw, self._splitSegs(stored[lang]));
         self.trSrc = kind;
+        self.trLang = lang;
         self.trOn = !(self.trOn && self.trSrc === kind);
         return;
       }
@@ -307,7 +439,7 @@
         im.translations[kind][d.lang] = d.text || (d.texts || []).join("\n");
         var trs = (d && Array.isArray(d.texts)) ? d.texts : self._splitSegs(d.text || "");
         self.trTexts = self._alignSegs(srcRaw, trs);
-        self.trSrc = kind; self.trOn = true;
+        self.trSrc = kind; self.trOn = true; self.trLang = d.lang;
         self.trIng = false;
       }).catch(function (e) {
         self.trIng = false;
@@ -329,6 +461,12 @@
     },
     selectPrompt(kind) {
       var im = this.im; if (!im) return;
+      // 编辑模式下切换源：仅换编辑对象，不触发 AI 解析
+      if (this.editing) {
+        im._src = kind; this._editWhat = kind;
+        this.editText = this._editingSourceText();
+        return;
+      }
       // 切换提示词源时，重置译文显示（回到原文）
       this.trOn = false; this.trSrc = ""; this.trTexts = [];
       if (!this.promptGrey(kind)) { im._src = kind; return; }

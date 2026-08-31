@@ -1,6 +1,6 @@
 [project]
 name = "artmirror"
-version = "0.1.0"
+version = "1.0.0"
 description = "画镜 ArtMirror — ComfyUI 图片/提示词资产管理工具（仓库根即插件，解压即用）"
 requires-python = ">=3.11"
 dependencies = [

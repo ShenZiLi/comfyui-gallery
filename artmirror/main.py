@@ -34,7 +34,7 @@ def create_app(data_dir: str | None = None, frontend_dir: str | None = None) -> 
     settings.configure(data_dir=data_dir, frontend_dir=frontend_dir)
     reset_engine()  # 确保 engine 按当前 data_dir 重建绑定
 
-    app = FastAPI(title="画镜 ArtMirror", version="0.1.0")
+    app = FastAPI(title="画镜 ArtMirror", version="1.0.0")
 
     # 跨域（原型阶段前端直连或局域网访问均可行）。
     app.add_middleware(

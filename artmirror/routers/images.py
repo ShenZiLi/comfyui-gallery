@@ -518,6 +518,62 @@ def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     return {"text": text, "reversePrompt": text}
 
 
+@router.post("/{image_id}/prompt")
+def update_image_prompt(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """保存手编提示词：原生 / AI / 反推 或某源的中英译文。返回最新详情卡片。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    target = str(body.get("target") or "").strip()
+    if target not in ("origin", "ai", "reverse", "translation"):
+        raise HTTPException(400, "target 仅支持 origin / ai / reverse / translation")
+
+    raw = body.get("texts")
+    if not isinstance(raw, list):
+        raw = [str(body.get("text") or "")]
+    texts = [str(x).strip() for x in raw if str(x or "").strip()]
+
+    if target in ("origin", "ai"):
+        meta = session.exec(
+            select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
+        ).first()
+        if meta is None:
+            meta = WorkflowMeta(image_id=im.id)
+            session.add(meta)
+        if target == "origin":
+            meta.origin_prompts_json = _dumps_list(texts)
+            meta.prompt = texts[0] if texts else ""
+        else:
+            meta.ai_prompts_json = _dumps_list(texts)
+            meta.ai_prompt = texts[0] if texts else ""
+    elif target == "reverse":
+        rev = _latest(session, ReversePrompt, im.id)
+        if rev is None and texts:
+            rev = ReversePrompt(image_id=im.id)
+            session.add(rev)
+        if rev is not None:
+            rev.text = "\n".join(texts)
+    else:  # translation
+        kind = str(body.get("kind") or "").strip()
+        lang = str(body.get("lang") or "").strip()
+        if kind not in ("origin", "ai", "reverse") or lang not in ("zh", "en"):
+            raise HTTPException(400, "translation 需 kind∈origin/ai/reverse 且 lang∈zh/en")
+        row = session.exec(
+            select(PromptTranslation).where(
+                PromptTranslation.image_id == im.id,
+                PromptTranslation.prompt_kind == kind,
+                PromptTranslation.lang == lang,
+            )
+        ).first()
+        if row is None:
+            row = PromptTranslation(image_id=im.id, prompt_kind=kind, lang=lang)
+            session.add(row)
+        row.text = _SEG.join(texts)
+
+    session.commit()
+    return to_detail(session, im)
+
+
 def _assets_from_analysis(parsed: dict) -> dict[str, list[str]]:
     """把 AI 结构化结果的 models 映射为 {类别: [文件...]} 标签。"""
     models = parsed.get("models") or {}
