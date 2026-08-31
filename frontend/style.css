@@ -16,7 +16,7 @@
   --special: #16a34a;
   --danger: #e5484d;
   --radius: 10px;
-  --shadow: 0 1px 3px rgba(16, 24, 40, .06), 0 4px 14px rgba(16, 24, 40, .06);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 6px 20px -8px rgba(16, 24, 40, .12);
   --shadow-hover: 0 6px 18px rgba(16, 24, 40, .10), 0 14px 40px rgba(16, 24, 40, .08);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -193,11 +193,20 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 .btn:active:not([disabled]) { transform: scale(.97); }
 .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .btn.primary:active:not([disabled]) { transform: scale(.97); }
-.btn.primary:hover { opacity: .9; color: #fff; }
+.btn.primary:hover { filter: brightness(1.07); color: #fff; }
 .btn.danger { border-color: var(--danger); color: var(--danger); }
 .btn.sm { padding: 4px 9px; font-size: 12px; border-radius: 6px; }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* 键盘焦点：所有可交互控件统一可见描边（触屏/鼠标点击不触发，仅键盘 Tab 到达时显示） */
+.btn:focus-visible, .icon-btn:focus-visible, .nav-link:focus-visible,
+.chip:focus-visible, .dropdown-btn:focus-visible, .dropdown-item:focus-visible,
+.seg button:focus-visible, .src-tab:focus-visible, .theme-toggle:focus-visible,
+.modal-x:focus-visible, a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
 /* 图标按钮（弱化下载/复制/工作流等操作） */
 .icon-btn {
@@ -581,7 +590,12 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 }
 
 /* ===== Modal ===== */
-.modal-mask { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; animation: modal-mask-in var(--dur-med) var(--ease-in-out); }
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .46);
+  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
+  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px;
+  animation: modal-mask-in var(--dur-med) var(--ease-in-out);
+}
 @keyframes modal-mask-in { from { opacity: 0 } to { opacity: 1 } }
 .modal { background: #fff; border-radius: 12px; max-width: 960px; width: 100%; max-height: 86vh; display: flex; flex-direction: column; animation: modal-in var(--dur-med) var(--ease-out); transform-origin: center; }
 @keyframes modal-in {
@@ -626,7 +640,7 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 .muted { color: var(--text-3); font-size: 12px; }
 .mt { margin-top: 12px; }
 .mb { margin-bottom: 12px; }
-.empty { color: var(--text-3); text-align: center; padding: 40px; }
+.empty { color: var(--text-3); text-align: center; padding: 60px 24px; font-size: 14px; line-height: 1.7; }
 .sticky-actions { position: sticky; bottom: 12px; display: flex; gap: 8px; justify-content: flex-end; }
 
 /* 无限滚动哨兵 */
