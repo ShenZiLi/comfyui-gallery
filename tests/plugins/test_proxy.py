@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 import artmirror_embed
 import comfy_paths
-import proxy
+import comfy_routes as proxy
 
 
 def _make_app() -> web.Application:

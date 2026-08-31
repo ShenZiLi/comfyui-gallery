@@ -1,6 +1,6 @@
 """造数压测：向 data/artmirror.db 插入大量图片记录与占位缩略图。
 
-用法（backend/ 目录下执行）：
+用法（仓库根目录下执行）：
     uv run python scripts/seed_stress.py            # 插入 10000 条压测数据
     uv run python scripts/seed_stress.py --n 2000   # 自定义数量
     uv run python scripts/seed_stress.py --clean    # 清理全部压测数据
