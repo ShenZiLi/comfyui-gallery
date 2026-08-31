@@ -218,7 +218,7 @@
     getHealth: function () {
       return req("api/health").catch(function () {
         Api._fallback = true;
-        return ok({ status: "ok", app: "artmirror", version: "0.1.0" });
+        return ok({ status: "ok", app: "artmirror", version: "1.0.0" });
       });
     },
     uploadImages: function (files) {

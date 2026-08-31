@@ -273,7 +273,7 @@
       });
       Api.listFolders().then(function (f) { self.scanned = f; });
       // 版本号水印（右下角）：版本单一来源为后端 /api/health（app.version），离线回退本地常量
-      Api.getHealth().then(function (h) { self.version = (h && h.version) || "0.1.0"; });
+      Api.getHealth().then(function (h) { self.version = (h && h.version) || "1.0.0"; });
       // 点击任意下拉框外部时关闭厂商下拉（共享 vendorOpen 状态，不能逐项用 @click.outside）
       window.addEventListener("click", function (e) {
         if (!e.target || !e.target.closest || !e.target.closest(".dropdown")) self.vendorOpen = null;
