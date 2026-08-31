@@ -47,9 +47,11 @@ def _register_routes():
     try:
         from .comfyui import routes as _routes
         _routes.register_proxy_routes()
-    except ImportError:
-        # 非 ComfyUI 环境（comfyui.routes 模块不可用）属预期，静默跳过
-        log.debug("ArtMirror 路由未挂载（非 ComfyUI 环境）")
+    except ImportError as exc:
+        # 依赖缺失（uvicorn/fastapi/sqlmodel 等）或 comfyui.routes 导入失败时，
+        # 路由不注册 → 图库 tab 白屏。必须显式告警，不能静默吞掉。
+        log.warning("ArtMirror 路由未挂载，图库 tab 将无法加载（%s）。"
+                    "请确认依赖已安装：pip install -r requirements.txt", exc)
     except Exception:  # noqa: BLE001
         # ComfyUI 环境内的真实异常需暴露，避免掩盖 bug
         log.warning("ArtMirror 路由挂载失败", exc_info=True)
