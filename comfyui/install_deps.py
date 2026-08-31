@@ -6,7 +6,7 @@ ComfyUI 0.33+ 不再自动安装 custom node 的 requirements.txt；依赖缺失
 python）自动 pip 安装：
 
 - 幂等：无缺失依赖时零开销直接返回，重启/多实例不会重复安装；
-- 健壮：默认 PyPI 源失败自动回退清华镜像（大陆网络常见场景）；
+- 健壮：优先清华镜像（大陆网络），失败自动回退默认 PyPI 源；
 - 不阻塞：任何异常仅告警不抛出，绝不中断 ComfyUI 正常加载。
 """
 import importlib.util
@@ -78,13 +78,13 @@ def ensure(req_path: Path | None = None) -> None:
     missing = missing_deps(req_path)
     if not missing:
         return
-    log.warning("检测到缺失依赖 %s，正在自动安装（首次约需数十秒）…", missing)
-    if _run_pip(["install", "-r", str(req_path)]):
-        log.info("依赖自动安装完成：%s", missing)
-        return
-    log.warning("默认源安装失败，回退清华镜像重试…")
+    log.warning("检测到缺失依赖 %s，正在自动安装（优先清华镜像，首次约需数十秒）…", missing)
     if _run_pip(["install", "-r", str(req_path), "-i", _PIP_MIRROR]):
-        log.info("依赖自动安装完成（镜像源）：%s", missing)
+        log.info("依赖自动安装完成（清华镜像）：%s", missing)
+        return
+    log.warning("清华镜像安装失败，回退默认 PyPI 源重试…")
+    if _run_pip(["install", "-r", str(req_path)]):
+        log.info("依赖自动安装完成（默认源）：%s", missing)
     else:
         log.error("依赖自动安装失败，图库 tab 可能无法使用。"
                   "请手动执行: %s -m pip install -r %s",

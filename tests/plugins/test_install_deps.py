@@ -63,3 +63,33 @@ def test_ensure_idempotent_when_all_installed(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(install_deps, "_run_pip", lambda *a: called.append(a) or True)
     install_deps.ensure(req)
     assert called == []
+
+
+def test_ensure_prefers_mirror_first(tmp_path: Path, monkeypatch):
+    """有缺失依赖时，首次安装必须优先清华镜像。"""
+    req = tmp_path / "requirements.txt"
+    req.write_text("this-package-does-not-exist-artmirror-xyz\n", encoding="utf-8")
+
+    called = []
+    monkeypatch.setattr(install_deps, "_run_pip", lambda *a: called.append(a) or True)
+    install_deps.ensure(req)
+    assert len(called) == 1
+    assert "-i" in called[0][0]
+    assert install_deps._PIP_MIRROR in called[0][0]
+
+
+def test_ensure_falls_back_to_default_source(tmp_path: Path, monkeypatch):
+    """镜像安装失败时，回退默认 PyPI 源重试（无 -i 参数）。"""
+    req = tmp_path / "requirements.txt"
+    req.write_text("this-package-does-not-exist-artmirror-xyz\n", encoding="utf-8")
+
+    called = []
+    # 第一次（镜像）失败，第二次（默认源）成功
+    monkeypatch.setattr(
+        install_deps, "_run_pip",
+        lambda *a: called.append(a) or len(called) == 2,
+    )
+    install_deps.ensure(req)
+    assert len(called) == 2
+    assert "-i" in called[0][0]          # 第 1 次：镜像
+    assert "-i" not in called[1][0]      # 第 2 次：默认源
