@@ -1,8 +1,7 @@
 ﻿# 画镜 ArtMirror 一键启动（纯 pip 方案）
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Backend = Join-Path $Root "backend"
-$Venv = Join-Path $Backend ".venv"
+$Venv = Join-Path $Root ".venv"
 $Port = 8000
 $Url = "http://127.0.0.1:$Port"
 
@@ -48,9 +47,9 @@ if (-not (Test-Path $venvPy)) {
     if ($LASTEXITCODE -ne 0) { Exit-Fail "创建虚拟环境失败，请将上方错误信息截图反馈。" }
 }
 
-# 4) 安装依赖（幂等，已装则秒过；首次展示进度）
+# 4) 安装依赖（幂等，已装则秒过；首次展示进度）；-e . 以 src layout 安装 artmirror 真源
 Write-Step "检查依赖（首次需联网下载，请稍候）…"
-& $venvPy -m pip install --disable-pip-version-check -r (Join-Path $Backend "requirements.txt")
+& $venvPy -m pip install --disable-pip-version-check -r (Join-Path $Root "requirements.txt") -e $Root
 if ($LASTEXITCODE -ne 0) { Exit-Fail "依赖安装失败，请将上方错误信息截图反馈。" }
 
 # 5) 后台启动服务，日志落盘
@@ -61,8 +60,8 @@ $logOut = Join-Path $dataDir "server.log"
 $logErr = Join-Path $dataDir "server.err.log"
 $proc = $null
 try {
-    $proc = Start-Process -FilePath $venvPy -ArgumentList "-m","uvicorn","app.main:app","--host","0.0.0.0","--port","$Port" `
-        -WorkingDirectory $Backend `
+    $proc = Start-Process -FilePath $venvPy -ArgumentList "-m","uvicorn","launchers.web.main:app","--host","0.0.0.0","--port","$Port" `
+        -WorkingDirectory $Root `
         -RedirectStandardOutput $logOut -RedirectStandardError $logErr -PassThru
 
     # 6) 轮询健康检查（直连不走代理，最多约 60s）

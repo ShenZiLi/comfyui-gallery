@@ -5,29 +5,32 @@ ComfyUI 图片/提示词资产管理工具：浏览、管理、检索本地 Comf
 ## 项目结构
 
 ```
-ArtMirror/
-├── backend/                 # Python + FastAPI 后端（单进程 = API + 前端静态托管）
-│   ├── app/
-│   │   ├── main.py          # 应用入口：启动 watcher、托管静态、NoCache 静态
-│   │   ├── models.py        # SQLModel 全部表模型
-│   │   ├── database.py      # SQLite engine（check_same_thread=False, timeout=30）
-│   │   ├── config.py        # 环境配置（data_dir / llm_* / frontend_dir）
-│   │   ├── parsers/comfyui_parser.py   # PNG meta 解析（workflow/prompt 图）
-│   │   ├── services/
-│   │   │   ├── scanner.py   # 递归扫描、sha 去重、缩略图、建绝对路径 Folder
-│   │   │   ├── meta_service.py  # 解析结果落库 + 标签
-│   │   │   └── watcher.py   # 后台增量扫描 + 同步版本号
-│   │   └── routers/         # images/folders/tags/aggregate/settings/fs/sync
-│   ├── tests/               # pytest
-│   ├── pyproject.toml       # uv 管理依赖
-│   └── uv.lock
-├── frontend/                # 无构建静态前端（HTML+CSS+JS+Alpine.js）
-│   ├── gallery.html / settings.html / image.html / index.html
-│   ├── api.js               # 前端 API 层（优先后端，离线回退 mock）
-│   ├── app.js               # 公共脚本：导航注入、明暗主题、高亮
-│   └── style.css
+ArtMirror/                       # 仓库根即 ComfyUI 插件（clone 放入 custom_nodes/ArtMirror 解压即用）
+├── __init__.py                  # 插件入口：NODE_CLASS_MAPPINGS / WEB_DIRECTORY / 路由注册
+├── web/artmirror-tab.js         # 侧边栏「图库」tab 扩展
+├── requirements.txt             # 插件加载时自动安装依赖（comfyui/install_deps.py）
+├── artmirror/                   # 核心包（真源，直接开发）
+│   ├── main.py                  # 应用工厂 create_app()：双启动器统一入口
+│   ├── models.py                # SQLModel 全部表模型
+│   ├── database.py              # SQLite engine（懒创建 + reset_engine 重建绑定）
+│   ├── config.py                # 环境配置（data_dir / llm_* / frontend_dir，可运行时覆盖）
+│   ├── parsers/comfyui_parser.py   # PNG meta 解析（workflow/prompt 图）
+│   ├── services/                # scanner / watcher / llm / meta_service
+│   └── routers/                 # images/folders/tags/aggregate/settings/fs/sync
+├── comfyui/                     # 插件集成层（ComfyUI 适配，与核心分层）
+│   ├── embed.py                 # 进程内后台线程运行 FastAPI（临时端口）
+│   ├── routes.py                # PromptServer 路由注册 + /artmirror/* 反代
+│   ├── paths.py                 # ComfyUI 路径解析（user/output 目录）
+│   └── install_deps.py          # 加载时自动检测并安装缺失依赖（解压即用）
+├── launchers/web/main.py        # web 端辅助启动器（uvicorn 入口：data/ + :8000）
+├── frontend/                    # 前端（唯一一份，零构建；双端共用）
+├── scripts/build_plugin.py      # 打包单文件 zip（分发给小白）
+├── tests/                       # pytest（tests/ 核心 + tests/plugins/ 插件集成）
+├── pyproject.toml               # uv 管理依赖（editable 安装 artmirror）
 └── README.md
 ```
+
+> **核心约定：仓库根即插件，改 `artmirror/` 或 `frontend/` 即双端生效，无任何构建/同步步骤。**
 
 ## 技术栈与关键约定
 
@@ -41,17 +44,17 @@ ArtMirror/
 
 ## 常用命令
 
-在 `backend/` 目录下执行：
+在仓库根目录下执行：
 
 ```bash
 # 安装/同步依赖（首次）
 uv sync
 
-# 运行测试（11 例）
+# 运行测试
 uv run pytest -q
 
 # 启动服务（API + 前端托管）
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
 
 # 前端无需独立服务，浏览器访问：
 #   http://127.0.0.1:8000/gallery.html  图库
@@ -70,12 +73,30 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 1. 修改后端或前端文件后，**立即重启后端服务**（否则改动不生效）：
    ```bash
    lsof -ti:8000 | xargs kill -9 2>/dev/null; sleep 1
-   cd backend && (uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/am.log 2>&1 &)
+   (uv run uvicorn launchers.web.main:app --host 127.0.0.1 --port 8000 >/tmp/am.log 2>&1 &)
    ```
 2. 确认可访问：`curl -s http://127.0.0.1:8000/api/health`
-3. 后端逻辑改动跑单测：`uv run pytest -q`
-4. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
-5. 修改提交到 **dev** 分支（当前工作分支）。
+3. 后端逻辑改动跑单测：`uv run pytest -q`（tests/ 核心 + tests/plugins/ 插件集成）
+4. **仓库根即插件**：改 `artmirror/` 或 `frontend/` 即插件端同步生效，无构建步骤；发布 zip 可选：
+   `uv run python scripts/build_plugin.py`（生成 build/ArtMirror-comfyui-plugin.zip）
+5. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
+6. 修改提交到 **dev** 分支（当前工作分支）。
+
+## 插件独立仓库（comfyui-gallery）
+
+仓库根即插件（`__init__.py` + `web/` + `requirements.txt` + `artmirror/`），
+可直接作为 ComfyUI 插件安装。另设独立插件仓库
+`https://github.com/ShenZiLi/comfyui-gallery`（remote 名 `gallery`）供 ComfyUI 侧
+安装，内容为主仓库的**镜像**，不保留独立提交。
+
+**每次推送主仓库 GitHub 后，可选同步插件仓库（镜像覆盖）：**
+
+```bash
+git push -f gallery <分支>:main
+```
+
+> 小白分发：`uv run python scripts/build_plugin.py` 生成单文件 zip，解压到
+> `custom_nodes/ArtMirror` 重启即用（依赖由 ComfyUI 自动安装）。
 
 ## 数据与目录
 
@@ -85,4 +106,4 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 部署 / 自启动
 
-个人单机工具，直接 `uv run uvicorn` 即可；无需容器/进程管理。若需后台常驻，可封装 `backend/run.sh` 或交给本 AGENTS 规则中的重启命令。
+个人单机工具，直接 `uv run uvicorn` 即可；无需容器/进程管理。若需后台常驻，可封装 `run.sh` 或交给本 AGENTS 规则中的重启命令。

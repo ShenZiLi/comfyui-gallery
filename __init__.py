@@ -1,0 +1,64 @@
+"""ArtMirror：画镜 ComfyUI 图库插件。
+
+本仓库根目录即 ComfyUI 自定义节点包（custom node）——
+clone 后直接放入 ComfyUI/custom_nodes/ArtMirror 重启即用：
+  - WEB_DIRECTORY 注册侧边栏「图库」tab（web/artmirror-tab.js）
+  - requirements.txt 由 ComfyUI 启动时自动安装依赖
+  - 核心后端复用根目录 artmirror/ 包，随 ComfyUI 进程内启动（临时端口）
+  - /artmirror/* 反向代理由 comfy_routes.py 注册到 ComfyUI PromptServer
+"""
+import logging
+import sys
+from pathlib import Path
+
+log = logging.getLogger("artmirror.plugin")
+
+# 本地包引导：ComfyUI 0.33+ 的 load_custom_node 不把 custom node 目录加入 sys.path，
+# 需显式注入，否则 artmirror / artmirror_embed 等本地包绝对导入失败。
+_plugin_dir = str(Path(__file__).resolve().parent)
+if _plugin_dir not in sys.path:
+    sys.path.insert(0, _plugin_dir)
+
+# 前端扩展目录（WEB_DIRECTORY 仅服务 .js，HTML 前端由后端路由托管）
+WEB_DIRECTORY = "web"
+
+
+class ArtMirrorLauncher:
+    """占位节点：使包被 ComfyUI 识别为自定义节点包（NODE_CLASS_MAPPINGS 非空）。"""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {}}
+
+    RETURN_TYPES = ()
+    FUNCTION = "noop"
+    CATEGORY = "ArtMirror"
+
+    def noop(self):
+        return ()
+
+
+NODE_CLASS_MAPPINGS = {"ArtMirrorLauncher": ArtMirrorLauncher}
+NODE_DISPLAY_NAME_MAPPINGS = {"ArtMirrorLauncher": "ArtMirror 图库"}
+
+
+def _register_routes():
+    """挂载 /artmirror/* 路由（懒加载：仅 ComfyUI 环境可用时）。"""
+    try:
+        # 先确保依赖（uvicorn/fastapi/sqlmodel 等）已装，缺则自动 pip 安装，
+        # 否则 comfyui.routes → embed 导入失败 → 路由不注册 → 图库 tab 白屏。
+        from .comfyui import install_deps
+        install_deps.ensure()
+        from .comfyui import routes as _routes
+        _routes.register_proxy_routes()
+    except ImportError as exc:
+        # 依赖缺失（uvicorn/fastapi/sqlmodel 等）或 comfyui.routes 导入失败时，
+        # 路由不注册 → 图库 tab 白屏。必须显式告警，不能静默吞掉。
+        log.warning("ArtMirror 路由未挂载，图库 tab 将无法加载（%s）。"
+                    "请确认依赖已安装：pip install -r requirements.txt", exc)
+    except Exception:  # noqa: BLE001
+        # ComfyUI 环境内的真实异常需暴露，避免掩盖 bug
+        log.warning("ArtMirror 路由挂载失败", exc_info=True)
+
+
+_register_routes()
