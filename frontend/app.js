@@ -70,6 +70,14 @@
     setTimeout(function () { location.href = url; }, 180);
   }
 
+  // 从浏览器 bfcache（前进/后退缓存）恢复时，清除离开前可能残留的淡出类。
+  // go() 会把 body 加上 am-page-out(opacity:0) 再跳转，页面被以离场态缓存；
+  // 返回时（如图库"返回图库"走 history.back()）body 仍保持 opacity:0，导致白屏。
+  // bfcache 恢复不会重跑脚本，须在全局 pageshow 中统一清除。
+  window.addEventListener("pageshow", function (ev) {
+    if (ev.persisted && document.body) document.body.classList.remove("am-page-out");
+  });
+
   // 星级（人工评分）
   function starHTML(rating, interactive, onClick) {
     var stars = "";

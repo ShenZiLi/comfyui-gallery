@@ -80,7 +80,7 @@ uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
 4. **仓库根即插件**：改 `artmirror/` 或 `frontend/` 即插件端同步生效，无构建步骤；发布 zip 可选：
    `uv run python scripts/build_plugin.py`（生成 build/ArtMirror-comfyui-plugin.zip）
 5. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
-6. 修改提交到 **dev** 分支（当前工作分支）。
+6. **每次变更完成后，立即提交 git**：提交到 **dev** 分支（当前工作分支），不要在变更过程中累积多次修改才一次性提交。
 
 ## 插件独立仓库（comfyui-gallery）
 
