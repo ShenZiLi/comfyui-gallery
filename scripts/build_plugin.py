@@ -20,7 +20,7 @@ _EXCLUDE_DIRS = {
     ".git", ".idea", ".trae", ".workbuddy", "__pycache__", ".pytest_cache",
     ".venv", "data", "test_data", "build", "docs", "tests", "scripts",
 }
-_EXCLUDE_FILES = {".DS_Store", "start.ps1", "启动.bat"}
+_EXCLUDE_FILES = {".DS_Store", "start.ps1", "启动Web端-Win.bat"}
 
 
 def main() -> int:

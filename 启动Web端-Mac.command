@@ -1,6 +1,6 @@
 #!/bin/bash
 # 画镜 ArtMirror 一键启动（macOS）
-# 双击本文件（start.command）或终端执行：bash start.command
+# 双击本文件（启动Web端-Mac.command）或终端执行：bash 启动Web端-Mac.command
 set -e
 cd "$(dirname "$0")"
 
