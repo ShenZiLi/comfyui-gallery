@@ -1,7 +1,7 @@
 [project]
 name = "artmirror"
 version = "0.1.0"
-description = "画镜 ArtMirror — ComfyUI 图片/提示词资产管理工具"
+description = "画镜 ArtMirror — ComfyUI 图片/提示词资产管理工具（仓库根即插件，解压即用）"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -26,13 +26,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/artmirror"]
+packages = ["artmirror", "launchers"]
 
 [tool.uv]
-# 默认 package 模式：uv sync 会以 src layout editable 安装 artmirror，
-# 双启动器与测试均直接 import artmirror 真源。
+# 默认 package 模式：uv sync 会 editable 安装 artmirror，开发/测试直接 import 真源。
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src", "comfyui-plugin"]
+pythonpath = ["."]

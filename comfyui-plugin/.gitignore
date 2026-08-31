@@ -1,7 +1,0 @@
-__pycache__/
-*.py[cod]
-.venv/
-.pytest_cache/
-
-# 离线依赖包（仅 --bundle-deps 发布时生成，不入库）
-_deps/

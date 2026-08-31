@@ -10,13 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def _resolve_default_frontend_dir() -> str:
-    """默认前端目录：兼容仓库 src-layout（仓库根/frontend）与
-    插件自包含产物（插件根/static）两种布局。"""
-    here = Path(__file__).resolve().parent
-    for cand in (here.parent.parent / "frontend", here.parent / "static"):
-        if cand.is_dir():
-            return str(cand)
-    return str(here.parent / "static")
+    """默认前端目录：仓库根即插件，前端固定为根目录 frontend/。"""
+    return str(Path(__file__).resolve().parent.parent / "frontend")
 
 
 class Settings(BaseSettings):
@@ -24,8 +19,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="AM_", env_file=".env", extra="ignore")
 
-    # 本地数据目录（SQLite 库、缩略图等）。默认与仓库根同级的 data 目录。
-    data_dir: str = str(Path(__file__).resolve().parent.parent.parent / "data")
+    # 本地数据目录（SQLite 库、缩略图等）。默认与仓库根同级（根/data）。
+    data_dir: str = str(Path(__file__).resolve().parent.parent / "data")
 
     # 扫描根目录：可配置单个本地图片目录（预留多根）。
     scan_root: str | None = None

@@ -1,30 +1,16 @@
 """在 ComfyUI 进程内以后台线程运行 ArtMirror FastAPI（临时端口）。
 
-插件端启动器：不复制任何核心代码，直接复用仓库真源 src/artmirror。
-发布为自包含产物时（scripts/build_plugin.py），artmirror 包随插件目录
-分发，同样可直接导入。
+插件端启动器：仓库根即插件，直接复用根目录 artmirror/ 核心包与 frontend/ 前端，
+无任何代码副本。
 """
 import logging
-import sys
 import threading
 import time
 from pathlib import Path
 
 import uvicorn
 
-try:
-    from . import comfy_paths
-except ImportError:  # 顶层导入（pytest）时回退绝对导入
-    import comfy_paths
-
-# 真源引导：优先已安装/随插件的 artmirror 包；开发模式（未安装）时注入仓库 src/
-try:
-    import artmirror  # noqa: F401
-except ImportError:
-    _src = Path(__file__).resolve().parent.parent / "src"
-    if str(_src) not in sys.path:
-        sys.path.insert(0, str(_src))
-
+import comfy_paths
 from artmirror.config import settings
 from artmirror.database import get_engine, reset_engine
 from artmirror.main import create_app
@@ -39,11 +25,8 @@ def resolve_data_dir() -> str:
 
 
 def resolve_frontend_dir() -> str:
-    """自包含产物用插件内 static/；开发模式回退仓库 frontend/。"""
-    local = Path(__file__).resolve().parent / "static"
-    if local.is_dir():
-        return str(local)
-    return str(Path(__file__).resolve().parent.parent / "frontend")
+    """仓库根即插件：前端即根目录 frontend/（web 端与插件端共用同一份）。"""
+    return str(Path(__file__).resolve().parent / "frontend")
 
 
 def _prepare() -> None:

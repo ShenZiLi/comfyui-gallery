@@ -1,93 +1,50 @@
-"""从真源同步 ComfyUI 插件产物（插件端为主，web 端为辅）。
+"""把整个仓库打包为可「解压即用」的 ComfyUI 插件 zip。
 
-设计：插件端「解压即用」——comfyui-plugin/ 自带核心产物并随 git 入库，
-用户 clone/下载后直接拷到 custom_nodes 即可，无需先构建。
-依赖由 ComfyUI 启动时按插件内 requirements.txt 自动安装（标准机制）。
+仓库根即插件包（__init__.py + web/ + requirements.txt），clone 后直接放入
+custom_nodes/ArtMirror 即可；本脚本仅为分发给小白用户提供单文件 zip。
 
-两种模式：
-  python scripts/build_plugin.py                 # inplace：同步核心产物到 comfyui-plugin/（日常开发后提交）
-  python scripts/build_plugin.py --out 目录       # 发布：生成完整自包含插件包（骨架 + 产物，可选 --bundle-deps）
-  python scripts/build_plugin.py --out 目录 --bundle-deps [--python 3.12]   # 离线包：_deps/ 一并打包
+用法：
+    python scripts/build_plugin.py [输出.zip]
+默认输出：build/ArtMirror-comfyui-plugin.zip
+
+排除：开发/运行数据（.git、.venv、data、test_data、docs、tests、构建产物等）。
 """
-import argparse
-import shutil
-import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PLUGIN = REPO / "comfyui-plugin"
-SRC = REPO / "src" / "artmirror"
-FRONTEND = REPO / "frontend"
-REQUIREMENTS = REPO / "requirements.txt"
 
-# 发布包中不随产物分发的部分
-_SKIP = {"tests"}
-_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "_deps")
-
-
-def _sync_core(target: Path) -> None:
-    """把真源核心包与前端同步为插件内产物（artmirror/ + static/）。"""
-    for src, dst in ((SRC, target / "artmirror"), (FRONTEND, target / "static")):
-        if dst.exists():
-            shutil.rmtree(dst)
-        shutil.copytree(src, dst, ignore=_IGNORE)
-
-
-def _vendor_dependencies(target: Path, python_spec: str | None) -> None:
-    """vendoring 运行时依赖到产物 _deps/（离线包用）。
-
-    _deps 含编译型包（pydantic-core 等），必须与 ComfyUI 的 Python 版本匹配，
-    由 --python 指定（默认当前解释器）。
-    """
-    deps = target / "_deps"
-    deps.mkdir(exist_ok=True)
-    print("vendoring 依赖到 _deps/（首次较慢，需联网）…")
-    cmd = ["uv", "pip", "install", "--target", str(deps), "-r", str(REQUIREMENTS)]
-    if python_spec:
-        cmd += ["--python", python_spec]
-    subprocess.run(cmd, check=True)
+# 打包时排除的目录与文件（插件运行不需要）
+_EXCLUDE_DIRS = {
+    ".git", ".idea", ".trae", ".workbuddy", "__pycache__", ".pytest_cache",
+    ".venv", "data", "test_data", "build", "docs", "tests", "scripts",
+}
+_EXCLUDE_FILES = {".DS_Store", "start.ps1", "启动.bat"}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="从真源生成 ComfyUI 插件产物")
-    parser.add_argument(
-        "--out", default=None,
-        help="发布模式：输出完整自包含插件包到该目录",
-    )
-    parser.add_argument(
-        "--bundle-deps", action="store_true",
-        help="发布模式下同时 vendoring 依赖到 _deps/（离线解压即用，包体 ~47M）",
-    )
-    parser.add_argument(
-        "--python", default=None,
-        help="目标 ComfyUI 环境的 Python（如 3.12 或解释器路径），用于 _deps vendoring",
-    )
-    args = parser.parse_args()
+    out = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "build" / "ArtMirror-comfyui-plugin.zip"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists():
+        out.unlink()
 
-    if args.out:
-        # 发布模式：完整自包含插件包
-        target = Path(args.out)
-        if target.exists():
-            shutil.rmtree(target)
-        target.mkdir(parents=True)
-        for item in PLUGIN.iterdir():
-            if item.name in _SKIP:
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for item in sorted(REPO.iterdir()):
+            if item.name in _EXCLUDE_DIRS or item.name in _EXCLUDE_FILES:
                 continue
-            dst = target / item.name
-            if item.is_dir():
-                shutil.copytree(item, dst, ignore=_IGNORE)
-            else:
-                shutil.copy2(item, dst)
-        # 产物已随插件目录入库，直接继承；再同步一次确保与真源一致
-        _sync_core(target)
-        if args.bundle_deps:
-            _vendor_dependencies(target, args.python)
-        print(f"插件发布包已生成: {target}")
-    else:
-        # inplace 模式：同步核心产物到插件目录（日常开发后提交）
-        _sync_core(PLUGIN)
-        print(f"已同步核心产物到 {PLUGIN}/（artmirror/ + static/，可提交）")
+            paths = sorted(item.rglob("*")) if item.is_dir() else [item]
+            for p in paths:
+                if not p.is_file():
+                    continue
+                if any(part in _EXCLUDE_DIRS or part in _EXCLUDE_FILES for part in p.parts):
+                    continue
+                if p.name == ".DS_Store":
+                    continue
+                zf.write(p, p.relative_to(REPO))
+
+    size = out.stat().st_size / 1024 / 1024
+    print(f"插件 zip 已生成: {out}（{size:.1f} MB，解压后放入 custom_nodes/ArtMirror 重启即用）")
     return 0
 
 

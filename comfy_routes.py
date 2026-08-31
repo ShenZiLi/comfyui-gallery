@@ -1,14 +1,14 @@
-"""ComfyUI PromptServer 路由：/artmirror/* → 反向代理到进程内 ArtMirror。"""
+"""ComfyUI PromptServer 路由：/artmirror/* → 反向代理到进程内 ArtMirror。
+
+模块名避免与 ComfyUI 根目录的 server.py 冲突（同名会导致 sys.path 命中歧义）。
+"""
 from aiohttp import web
 
-try:
-    from . import artmirror_embed, proxy
-except ImportError:  # 顶层导入（pytest/独立验证）时回退绝对导入
-    import artmirror_embed
-    import proxy
+import artmirror_embed
+import proxy
 
 try:
-    from server import PromptServer
+    from server import PromptServer  # ComfyUI 主程序已先 import，sys.modules 复用
     _HAVE_COMFY = True
 except Exception:  # noqa: BLE001
     PromptServer = None
