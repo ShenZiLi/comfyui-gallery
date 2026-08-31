@@ -60,7 +60,7 @@ $logOut = Join-Path $dataDir "server.log"
 $logErr = Join-Path $dataDir "server.err.log"
 $proc = $null
 try {
-    $proc = Start-Process -FilePath $venvPy -ArgumentList "-m","uvicorn","artmirror.main:app","--host","0.0.0.0","--port","$Port" `
+    $proc = Start-Process -FilePath $venvPy -ArgumentList "-m","uvicorn","launchers.web.main:app","--host","0.0.0.0","--port","$Port" `
         -WorkingDirectory $Root `
         -RedirectStandardOutput $logOut -RedirectStandardError $logErr -PassThru
 

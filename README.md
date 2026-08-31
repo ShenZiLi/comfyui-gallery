@@ -113,6 +113,25 @@
 
 ***
 
+## Web 端（可选，辅助使用）
+
+不装 ComfyUI 时，仓库也可作为独立 Web 工具运行（浏览 / 管理任意本地图片目录，功能一致，数据独立于插件）。
+
+| 平台 | 启动方式 |
+| --- | --- |
+| macOS | 双击 `start.command`（首次自动装依赖，完成后打开浏览器） |
+| Windows | 双击 `启动.bat`（自动装依赖，完成后打开浏览器） |
+
+手动启动（需已装 [uv](https://docs.astral.sh/uv/)）：
+
+```bash
+uv sync
+uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
+# 访问 http://127.0.0.1:8000/gallery.html
+```
+
+Web 端数据落仓库根 `data/`（SQLite + 缩略图），清空数据 = 删 `data/artmirror.db` 与 `data/thumbs/`。
+
 ## 功能介绍
 
 以下截图均来自运行中的实例。
