@@ -476,7 +476,7 @@ body.am-selecting { user-select: none; }
   color: var(--text-3); opacity: .38; transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 .src-tab:hover { opacity: .8; }
-.src-tab:active { transform: scale(.94); }
+.src-tab:active { transform: scale(.88); transition-timing-function: cubic-bezier(.2, .9, .3, 1.4); }
 /* 有数据：字体以品牌色高亮 */
 .src-tab.has { opacity: 1; }
 .src-tab.has.origin { color: var(--brand); }
@@ -674,8 +674,8 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 @keyframes sheen { from { background-position: 200% 0 } to { background-position: 0 0 } }
 
 /* 聚合组「展开/收起」：成员网格软性显现，避免瞬间弹出（偶发交互） */
-.member-grid { animation: member-in var(--dur-fast) var(--ease-out); }
+.member-grid { animation: member-in var(--dur-med) cubic-bezier(.22, 1, .36, 1); }
 @keyframes member-in {
-  from { opacity: 0; transform: translateY(-6px) scale(.99); }
+  from { opacity: 0; transform: translateY(-12px) scale(.985); }
   to   { opacity: 1; transform: none; }
 }
