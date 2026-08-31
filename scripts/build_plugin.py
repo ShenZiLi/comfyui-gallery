@@ -1,14 +1,17 @@
-"""从真源生成自包含 ComfyUI 插件产物（发布用，替代旧 sync 脚本）。
+"""从真源同步 ComfyUI 插件产物（插件端为主，web 端为辅）。
 
-旧方案靠 sync_*.py 在工作区维护 artmirror_app/ 与 static/ 两份副本；
-新架构中插件端是薄启动器，直接复用真源 src/artmirror + frontend/，
-发布时才通过本脚本生成自包含产物（可拷贝进 ComfyUI custom_nodes）。
+设计：插件端「解压即用」——comfyui-plugin/ 自带核心产物并随 git 入库，
+用户 clone/下载后直接拷到 custom_nodes 即可，无需先构建。
+依赖由 ComfyUI 启动时按插件内 requirements.txt 自动安装（标准机制）。
 
-用法：
-    python scripts/build_plugin.py [目标目录]
-默认输出：build/ComfyUI-ArtMirror/（已被 .gitignore 忽略，属构建产物）
+两种模式：
+  python scripts/build_plugin.py                 # inplace：同步核心产物到 comfyui-plugin/（日常开发后提交）
+  python scripts/build_plugin.py --out 目录       # 发布：生成完整自包含插件包（骨架 + 产物，可选 --bundle-deps）
+  python scripts/build_plugin.py --out 目录 --bundle-deps [--python 3.12]   # 离线包：_deps/ 一并打包
 """
+import argparse
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,33 +19,75 @@ REPO = Path(__file__).resolve().parent.parent
 PLUGIN = REPO / "comfyui-plugin"
 SRC = REPO / "src" / "artmirror"
 FRONTEND = REPO / "frontend"
+REQUIREMENTS = REPO / "requirements.txt"
 
-# 插件骨架中不随产物分发的部分
-_SKIP = {"tests", "sync_all.py", "sync_backend.py", "sync_frontend.py"}
-_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache")
+# 发布包中不随产物分发的部分
+_SKIP = {"tests"}
+_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "_deps")
+
+
+def _sync_core(target: Path) -> None:
+    """把真源核心包与前端同步为插件内产物（artmirror/ + static/）。"""
+    for src, dst in ((SRC, target / "artmirror"), (FRONTEND, target / "static")):
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst, ignore=_IGNORE)
+
+
+def _vendor_dependencies(target: Path, python_spec: str | None) -> None:
+    """vendoring 运行时依赖到产物 _deps/（离线包用）。
+
+    _deps 含编译型包（pydantic-core 等），必须与 ComfyUI 的 Python 版本匹配，
+    由 --python 指定（默认当前解释器）。
+    """
+    deps = target / "_deps"
+    deps.mkdir(exist_ok=True)
+    print("vendoring 依赖到 _deps/（首次较慢，需联网）…")
+    cmd = ["uv", "pip", "install", "--target", str(deps), "-r", str(REQUIREMENTS)]
+    if python_spec:
+        cmd += ["--python", python_spec]
+    subprocess.run(cmd, check=True)
 
 
 def main() -> int:
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "build" / "ComfyUI-ArtMirror"
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
+    parser = argparse.ArgumentParser(description="从真源生成 ComfyUI 插件产物")
+    parser.add_argument(
+        "--out", default=None,
+        help="发布模式：输出完整自包含插件包到该目录",
+    )
+    parser.add_argument(
+        "--bundle-deps", action="store_true",
+        help="发布模式下同时 vendoring 依赖到 _deps/（离线解压即用，包体 ~47M）",
+    )
+    parser.add_argument(
+        "--python", default=None,
+        help="目标 ComfyUI 环境的 Python（如 3.12 或解释器路径），用于 _deps vendoring",
+    )
+    args = parser.parse_args()
 
-    # 1. 插件骨架（启动器 + 代理 + ComfyUI 集成，排除测试与旧同步脚本）
-    for item in PLUGIN.iterdir():
-        if item.name in _SKIP:
-            continue
-        dst = target / item.name
-        if item.is_dir():
-            shutil.copytree(item, dst, ignore=_IGNORE)
-        else:
-            shutil.copy2(item, dst)
-
-    # 2. 真源核心包 + 前端（产物内自包含，嵌入环境无需安装 artmirror 包）
-    shutil.copytree(SRC, target / "artmirror", ignore=_IGNORE)
-    shutil.copytree(FRONTEND, target / "static", ignore=_IGNORE)
-
-    print(f"插件产物已生成: {target}")
+    if args.out:
+        # 发布模式：完整自包含插件包
+        target = Path(args.out)
+        if target.exists():
+            shutil.rmtree(target)
+        target.mkdir(parents=True)
+        for item in PLUGIN.iterdir():
+            if item.name in _SKIP:
+                continue
+            dst = target / item.name
+            if item.is_dir():
+                shutil.copytree(item, dst, ignore=_IGNORE)
+            else:
+                shutil.copy2(item, dst)
+        # 产物已随插件目录入库，直接继承；再同步一次确保与真源一致
+        _sync_core(target)
+        if args.bundle_deps:
+            _vendor_dependencies(target, args.python)
+        print(f"插件发布包已生成: {target}")
+    else:
+        # inplace 模式：同步核心产物到插件目录（日常开发后提交）
+        _sync_core(PLUGIN)
+        print(f"已同步核心产物到 {PLUGIN}/（artmirror/ + static/，可提交）")
     return 0
 
 

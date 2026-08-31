@@ -2,8 +2,6 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-_deps/
 
-# 自包含产物副本（发布用，由 scripts/build_plugin.py 生成到 build/，勿提交、勿手改）
-artmirror_app/
-static/
+# 离线依赖包（仅 --bundle-deps 发布时生成，不入库）
+_deps/

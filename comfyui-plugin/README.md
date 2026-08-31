@@ -37,13 +37,23 @@
      git clone https://github.com/ShenZiLi/comfyui-gallery.git ComfyUI-ArtMirror
      ```
 
-   * **直接拷贝**：将 `comfyui-plugin/` 目录整体拷为 `custom_nodes/ComfyUI-ArtMirror`
+   * **直接拷贝**：本插件目录**自包含**（已内置核心 `artmirror/` 与前端 `static/`），
+     整体拷为 `custom_nodes/ComfyUI-ArtMirror` 即可 —— **解压即用**
 
-2. 安装依赖：
+2. 依赖说明：
 
-   * 插件已内置本地依赖（`_deps/`），**多数情况无需额外安装**
+   * 插件自带 `requirements.txt`，**ComfyUI 启动时会自动安装**（标准机制，首次联网约 1-3 分钟），多数情况无需手动处理
 
-   * 若 ComfyUI 运行环境缺少依赖，可在插件目录用 ComfyUI 的 Python 环境按 `pyproject.toml` 的 `[project].dependencies` 安装（`fastapi`、`uvicorn`、`sqlmodel`、`pillow`、`httpx` 等）
+   * 若自动安装失败，可在插件目录用 ComfyUI 的 Python 环境手动安装：
+     ```bash
+     pip install -r requirements.txt
+     ```
+     （依赖：`fastapi`、`uvicorn`、`sqlmodel`、`pillow`、`httpx` 等）
+
+   * 需要**完全离线**的安装包（不依赖 ComfyUI 联网装依赖）时，可用主仓库的 `build_plugin.py` 生成带 `_deps/` 的发布包（注意 `_deps` 编译型包须与 ComfyUI 的 Python 版本匹配，用 `--python` 指定）：
+     ```bash
+     uv run python scripts/build_plugin.py --out build/ComfyUI-ArtMirror --bundle-deps --python 3.12
+     ```
 
 3. 完全重启 ComfyUI（Desktop 或网页版），使插件被加载
 

@@ -68,23 +68,24 @@ uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
    ```
 2. 确认可访问：`curl -s http://127.0.0.1:8000/api/health`
 3. 后端逻辑改动跑单测：`uv run pytest -q`
-4. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
-5. 修改提交到 **dev** 分支（当前工作分支）。
+4. **改过 `src/artmirror/` 或 `frontend/` 后，必须同步插件产物并提交**（插件端为主，解压即用依赖它）：
+   ```bash
+   uv run python scripts/build_plugin.py   # 同步 comfyui-plugin/{artmirror,static}
+   ```
+5. 前端改动**不使用自动化浏览器验证**（修改完毕后不要使用浏览器验证）；如需要由用户自行在浏览器强刷（`Cmd+Shift+R`）核对。
+6. 修改提交到 **dev** 分支（当前工作分支）。
 
 ## 插件独立仓库（comfyui-gallery）
 
-插件代码随主仓库 `comfyui-plugin/` 维护（**薄启动器**，复用 `src/artmirror` 真源，无副本）。
-发布时经 `scripts/build_plugin.py` 生成自包含产物后，镜像推送到独立插件仓库
-`https://github.com/ShenZiLi/comfyui-gallery`（ComfyUI 侧安装用插件仓库，remote 名 `gallery`）。
-它是主仓库的**构建产物镜像**，不保留独立提交。
+插件代码随主仓库 `comfyui-plugin/` 维护（**自包含**：启动器 + 产物 `artmirror/` + 前端 `static/`，
+产物由 `scripts/build_plugin.py` 从真源同步，勿手改）。
+发布时镜像推送到独立插件仓库 `https://github.com/ShenZiLi/comfyui-gallery`
+（ComfyUI 侧安装用插件仓库，remote 名 `gallery`）。它是主仓库的**镜像产物**，不保留独立提交。
 
 **每次推送主仓库 GitHub 后，必须同步更新插件仓库：**
 
-1. 生成自包含插件产物（含核心包 + 前端）：
-   ```bash
-   python scripts/build_plugin.py build/ComfyUI-ArtMirror
-   ```
-2. 在插件仓库工作目录用最新产物整体替换，提交并 force 推送（镜像覆盖）：
+1. 确保插件产物已同步（改过真源时）：`uv run python scripts/build_plugin.py`
+2. 在插件仓库工作目录用最新 `comfyui-plugin/` 内容整体替换，提交并 force 推送（镜像覆盖）：
    ```bash
    git push -f gallery <插件分支>:main
    ```

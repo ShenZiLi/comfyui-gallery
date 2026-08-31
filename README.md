@@ -24,8 +24,10 @@
 
 ![ComfyUI 插件-侧边栏图库 tab](docs/screenshots/plugin.png)
 
-- **安装方式**：将 `comfyui-plugin` 目录拷入 `custom_nodes/`（或 `git clone` 独立仓库）后重启 ComfyUI
-- **依赖**：内置 `_deps/` 本地依赖自给，无需额外 pip 安装；前端扩展由 `WEB_DIRECTORY` 注册
+- **安装方式**：将 `comfyui-plugin` 目录整体拷入 `custom_nodes/ComfyUI-ArtMirror`（或 `git clone` 独立仓库）后重启 ComfyUI —— **解压即用**
+- **依赖**：插件自带 `requirements.txt`，ComfyUI 启动时自动安装（标准机制，无需手动 pip）；前端扩展由 `WEB_DIRECTORY` 注册
+- **自包含**：插件目录已内置核心代码（`artmirror/`）与前端（`static/`），不依赖主仓库，clone 后即可用
+- **开发联动**：插件产物由主仓库真源生成——改 `src/artmirror` 或 `frontend/` 后运行 `uv run python scripts/build_plugin.py` 同步插件产物再提交（详见 AGENTS.md）
 - **使用**：侧边栏点开「图库」tab，首次打开自动启动后端并扫描 ComfyUI 输出目录
 - **发布**：可经 `git subtree split` 拆为独立仓库发布到 Comfy Registry（详见 `comfyui-plugin/README.md`）
 
@@ -99,7 +101,10 @@ ArtMirror/                       # 单一真源：一次开发，双端（web / 
 │   └── routers/                 # images / folders / tags / aggregate / settings / fs / sync
 ├── launchers/                   # 双启动器（各端薄壳，只装环境差异）
 │   └── web/main.py              # web 端：uvicorn 入口（data/ + :8000）
-├── comfyui-plugin/              # 插件端：进程内启动器 + /artmirror/* 反代 + 侧边栏 tab
+├── comfyui-plugin/              # 插件端（自包含，解压即用；产物由 build_plugin 同步入库）
+│   ├── artmirror/               # 核心产物（由 src/artmirror 同步，勿手改）
+│   ├── static/                  # 前端产物（由 frontend/ 同步，勿手改）
+│   ├── requirements.txt         # ComfyUI 启动时自动安装依赖
 │   ├── artmirror_embed.py       # 进程内后台线程运行 FastAPI（临时端口）
 │   ├── proxy.py                 # /artmirror/* 反向代理（透传 query string）
 │   ├── comfy_paths.py           # ComfyUI 路径解析（user/output 目录）
@@ -115,10 +120,10 @@ ArtMirror/                       # 单一真源：一次开发，双端（web / 
 └── docs/                        # 功能清单 / 设计文档 / 截图
 ```
 
-> 双端复用方式：web 端经 `launchers/web/main.py` 以默认 `data/` + `frontend/` 启动；
-> 插件端经 `comfyui-plugin/artmirror_embed.py` 复用同一 `src/artmirror`，仅注入
-> `ComfyUI/user/artmirror/` 数据目录与临时端口。发布插件时运行
-> `python scripts/build_plugin.py` 生成自包含产物（核心 + 前端打包进插件目录）。
+> 双端关系（插件端为主，web 端为辅）：核心代码唯一真源在 `src/artmirror` + `frontend/`；
+> 改真源后运行 `uv run python scripts/build_plugin.py` 同步插件产物（`comfyui-plugin/artmirror` + `static`）并提交。
+> 插件端自包含、解压即用（依赖由 ComfyUI 按 `requirements.txt` 自动安装）；
+> web 端经 `launchers/web/main.py` 直接跑真源（`data/` + `:8000`）。
 
 ## 前端页面
 
