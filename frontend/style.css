@@ -642,8 +642,8 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 /* ===== 设置 ===== */
 .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 
-/* ===== 图片详情左右空白翻页（方案 D·边缘条形钮） ===== */
-/* 仅宽屏有侧边留白时显示热区（不覆盖居中图片），悬停变指针并浮现边缘条形按钮 */
+/* ===== 图片详情左右空白翻页（圆形毛玻璃钮） ===== */
+/* 仅宽屏有侧边留白时显示热区（不覆盖居中图片），悬停浮现圆形毛玻璃钮 */
 .nav-zone {
   position: fixed; top: 0; bottom: 0; z-index: 12;
   width: calc((100vw - 1280px) / 2);
@@ -652,23 +652,30 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 }
 .nav-zone.prev { left: 0; }
 .nav-zone.next { right: 0; }
-/* 边缘长条形按钮：竖向渐变半透明 + 微毛玻璃 */
-.nav-zone > span {
-  width: 52px; height: 88px; border-radius: 26px;
+/* 圆形毛玻璃按钮：默认低可见度提升可发现性，悬停补强 + 箭头滑向画面 */
+.nav-zone .nav-btn {
+  width: 46px; height: 46px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 26px; line-height: 1; color: #fff; cursor: pointer;
-  background: linear-gradient(180deg, rgba(20, 30, 52, .55), rgba(20, 30, 52, .34));
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, .26);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 6px 18px rgba(0, 0, 0, .22);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+  color: var(--text-2); cursor: pointer;
+  background: rgba(255, 255, 255, .66);
+  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, .7);
+  box-shadow: 0 4px 16px rgba(16, 24, 40, .14), inset 0 1px 0 rgba(255, 255, 255, .6);
+  opacity: .55; transform: scale(1);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
-.nav-zone:hover > span { opacity: 1; transform: scale(1.05); }
-.nav-zone:active > span { transform: scale(.95); }
+.nav-zone:hover .nav-btn { opacity: 1; transform: scale(1.1); color: var(--brand); background: #fff; }
+.nav-zone:active .nav-btn { transform: scale(.94); }
+.nav-zone .nav-btn svg { transition: transform var(--dur-fast) var(--ease-out); }
+.nav-zone.prev:hover .nav-btn svg { transform: translateX(-2px); }
+.nav-zone.next:hover .nav-btn svg { transform: translateX(2px); }
+/* 暗色主题下的毛玻璃钮 */
+html[data-theme="dark"] .nav-zone .nav-btn { background: rgba(30, 38, 54, .6); border-color: rgba(255, 255, 255, .16); color: var(--text-2); box-shadow: 0 4px 16px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .12); }
+html[data-theme="dark"] .nav-zone:hover .nav-btn { background: rgba(45, 56, 80, .85); color: #fff; }
 /* 无留白（窄屏）时隐藏热区，避免覆盖图片 */
 @media (max-width: 1380px) { .nav-zone { display: none; } }
-@media (prefers-reduced-motion: reduce) { .nav-zone > span { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .nav-zone .nav-btn, .nav-zone .nav-btn svg { transition: none; } }
 
 /* 详情页左右翻页动效（方案 D·滑动景深）：上一张从左滑入、下一张从右滑入，带远→近缩放 */
 .detail-layout.am-pg-left { animation: pg-slide-left .32s cubic-bezier(.16, 1, .3, 1); }

@@ -22,9 +22,13 @@
 <div id="topnav"></div>
 
 <div class="page" x-data="Detail" x-init="init()" x-show="im">
-  <!-- 左右空白区域翻页：仅宽屏有侧边留白时显示，悬停变指针+箭头，不遮盖图片 -->
-  <div class="nav-zone prev" x-cloak x-show="canPrev()" @click="goPrev()" title="上一张"><span>&lsaquo;</span></div>
-  <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张"><span>&rsaquo;</span></div>
+  <!-- 左右空白区域翻页：仅宽屏有侧边留白时显示，悬停浮现圆形毛玻璃钮，不遮盖图片 -->
+  <div class="nav-zone prev" x-cloak x-show="canPrev()" @click="goPrev()" title="上一张">
+    <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span>
+  </div>
+  <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张">
+    <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
+  </div>
   <div class="detail-layout" :class="ratioClass()">
     <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
@@ -321,15 +325,18 @@
     activePrompt() { return (this.activePrompts()[0] || ""); },
     // ===== 提示词编辑 / 保存 =====
     editBtnVisible() {
-      if (!this.im) return false;
-      // 当前有正提示词或正显示译文时，允许编辑
-      return this.activePrompt() !== "" || (this.trOn && this.trSrc === this.im._src && this.trTexts.length > 0);
+      // 始终可编辑：原生为空也可进入编辑「新增提示词」
+      return !!this.im;
     },
     toggleEdit() {
       if (!this.im) return;
       if (this.editing) { this.saveEdit(); return; }
       this.editing = true;
       this._editWhat = (this.trOn && this.trSrc === this.im._src && this.trTexts.length > 0) ? "translation" : this.im._src;
+      // 当前源为空时，默认落回「原生」，便于为（原生无提示词的）图片新增原生提示词
+      if (this._editWhat !== "translation" && this.activePrompts().length === 0) {
+        this.im._src = "origin"; this._editWhat = "origin";
+      }
       this.editText = this._editingSourceText();
     },
     cancelEdit() {
