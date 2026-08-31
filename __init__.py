@@ -45,6 +45,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {"ArtMirrorLauncher": "ArtMirror 图库"}
 def _register_routes():
     """挂载 /artmirror/* 路由（懒加载：仅 ComfyUI 环境可用时）。"""
     try:
+        # 先确保依赖（uvicorn/fastapi/sqlmodel 等）已装，缺则自动 pip 安装，
+        # 否则 comfyui.routes → embed 导入失败 → 路由不注册 → 图库 tab 白屏。
+        from .comfyui import install_deps
+        install_deps.ensure()
         from .comfyui import routes as _routes
         _routes.register_proxy_routes()
     except ImportError as exc:

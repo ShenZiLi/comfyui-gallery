@@ -8,7 +8,7 @@ ComfyUI 图片/提示词资产管理工具：浏览、管理、检索本地 Comf
 ArtMirror/                       # 仓库根即 ComfyUI 插件（clone 放入 custom_nodes/ArtMirror 解压即用）
 ├── __init__.py                  # 插件入口：NODE_CLASS_MAPPINGS / WEB_DIRECTORY / 路由注册
 ├── web/artmirror-tab.js         # 侧边栏「图库」tab 扩展
-├── requirements.txt             # ComfyUI 启动时自动安装依赖
+├── requirements.txt             # 插件加载时自动安装依赖（comfyui/install_deps.py）
 ├── artmirror/                   # 核心包（真源，直接开发）
 │   ├── main.py                  # 应用工厂 create_app()：双启动器统一入口
 │   ├── models.py                # SQLModel 全部表模型
@@ -20,7 +20,8 @@ ArtMirror/                       # 仓库根即 ComfyUI 插件（clone 放入 cu
 ├── comfyui/                     # 插件集成层（ComfyUI 适配，与核心分层）
 │   ├── embed.py                 # 进程内后台线程运行 FastAPI（临时端口）
 │   ├── routes.py                # PromptServer 路由注册 + /artmirror/* 反代
-│   └── paths.py                 # ComfyUI 路径解析（user/output 目录）
+│   ├── paths.py                 # ComfyUI 路径解析（user/output 目录）
+│   └── install_deps.py          # 加载时自动检测并安装缺失依赖（解压即用）
 ├── launchers/web/main.py        # web 端辅助启动器（uvicorn 入口：data/ + :8000）
 ├── frontend/                    # 前端（唯一一份，零构建；双端共用）
 ├── scripts/build_plugin.py      # 打包单文件 zip（分发给小白）
