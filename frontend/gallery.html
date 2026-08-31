@@ -1262,6 +1262,18 @@
           images: this.images, total: this.total, hasMore: this.hasMore,
           groups: this.groups, groupTotal: this.groupTotal, groupHasMore: this.groupHasMore
         }));
+        // 记录当前视图的图片顺序与所点图索引，供详情页「左右空白翻页」用
+        if (this.mode !== "aggregate" && this.images.length) {
+          var idx = -1;
+          for (var i = 0; i < this.images.length; i++) {
+            if (String(this.images[i].id) === String(id)) { idx = i; break; }
+          }
+          if (idx >= 0) {
+            sessionStorage.setItem("am_nav", JSON.stringify({
+              ids: this.images.map(function (x) { return x.id; }), index: idx
+            }));
+          }
+        }
       } catch (e) {}
       App.go("image.html?id=" + id);
     },

@@ -22,6 +22,9 @@
 <div id="topnav"></div>
 
 <div class="page" x-data="Detail" x-init="init()" x-show="im">
+  <!-- 左右空白区域翻页：仅宽屏有侧边留白时显示，悬停变指针+箭头，不遮盖图片 -->
+  <div class="nav-zone prev" x-cloak x-show="canPrev()" @click="goPrev()" title="上一张"><span>&lsaquo;</span></div>
+  <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张"><span>&rsaquo;</span></div>
   <div class="detail-layout" :class="ratioClass()">
     <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
@@ -183,15 +186,52 @@
     delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trTexts: [],
     trIng: false,
+    navIds: [], navIdx: -1, curId: null,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
+      // 读取图库传入的浏览顺序（图库 open 时写入 am_nav），用于左右翻页
+      try {
+        var nav = JSON.parse(sessionStorage.getItem("am_nav") || "null");
+        if (nav && Array.isArray(nav.ids) && nav.ids.length) {
+          this.navIds = nav.ids.map(function (x) { return Number(x); });
+          this.navIdx = this.navIds.indexOf(Number(id));
+        }
+      } catch (e) {}
+      this._load(id);
+    },
+    // 加载指定图片：更新视图与 URL（replaceState 让刷新/前进后退不丢上下文）
+    _load(id) {
       var self = this;
+      this.curId = Number(id);
+      this.navIdx = this.navIds.indexOf(this.curId);
+      if (Number(new URLSearchParams(location.search).get("id")) !== this.curId) {
+        history.replaceState(null, "", "?id=" + this.curId);
+      }
+      // 切图后清空瞬态交互状态
+      this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
+      this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
+      this.delTarget = null; this.showModal = false;
+      var panel = document.querySelector(".detail-layout");
+      if (panel) { panel.classList.remove("am-rise-out"); void panel.offsetWidth; panel.classList.add("am-rise-out"); }
       Api.getImage(id).then(function (image) {
         self.im = image;
         image._src = (image.prompt && image.prompt !== "") ? "origin" : "reverse";
       });
     },
+    // 左右翻页：左=上一张，右=下一张；到边界给出提示
+    goPrev() {
+      var i = this.navIds.indexOf(this.curId);
+      if (i <= 0) { App.toast("已是第一张"); return; }
+      this._load(this.navIds[i - 1]);
+    },
+    goNext() {
+      var i = this.navIds.indexOf(this.curId);
+      if (i < 0 || i >= this.navIds.length - 1) { App.toast("已是最后一张"); return; }
+      this._load(this.navIds[i + 1]);
+    },
+    canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
+    canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3); },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
