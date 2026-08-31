@@ -211,7 +211,7 @@
       this._load(id);
     },
     // 加载指定图片：更新视图与 URL（replaceState 让刷新/前进后退不丢上下文）
-    _load(id) {
+    _load(id, dir) {
       var self = this;
       this.curId = Number(id);
       this.navIdx = this.navIds.indexOf(this.curId);
@@ -222,23 +222,29 @@
       this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
       this.delTarget = null; this.showModal = false;
+      // 翻页动效（方案 D·滑动景深）：上一张从左滑入、下一张从右滑入
       var panel = document.querySelector(".detail-layout");
-      if (panel) { panel.classList.remove("am-rise-out"); void panel.offsetWidth; panel.classList.add("am-rise-out"); }
+      if (panel) {
+        panel.classList.remove("am-pg-left", "am-pg-right");
+        void panel.offsetWidth;
+        if (dir === -1) panel.classList.add("am-pg-left");
+        else if (dir === 1) panel.classList.add("am-pg-right");
+      }
       Api.getImage(id).then(function (image) {
         self.im = image;
         image._src = (image.prompt && image.prompt !== "") ? "origin" : "reverse";
       });
     },
-    // 左右翻页：左=上一张，右=下一张；到边界给出提示
+    // 左右翻页：左=上一张（右→左滑动），右=下一张（左→右滑动）；到边界给出提示
     goPrev() {
       var i = this.navIds.indexOf(this.curId);
       if (i <= 0) { App.toast("已是第一张"); return; }
-      this._load(this.navIds[i - 1]);
+      this._load(this.navIds[i - 1], -1);
     },
     goNext() {
       var i = this.navIds.indexOf(this.curId);
       if (i < 0 || i >= this.navIds.length - 1) { App.toast("已是最后一张"); return; }
-      this._load(this.navIds[i + 1]);
+      this._load(this.navIds[i + 1], 1);
     },
     canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
     canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },

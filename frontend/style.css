@@ -642,8 +642,8 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 /* ===== 设置 ===== */
 .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 
-/* ===== 图片详情左右空白翻页 ===== */
-/* 仅宽屏有侧边留白时显示热区（不覆盖居中图片），悬停变指针并浮现箭头 */
+/* ===== 图片详情左右空白翻页（方案 D·边缘条形钮） ===== */
+/* 仅宽屏有侧边留白时显示热区（不覆盖居中图片），悬停变指针并浮现边缘条形按钮 */
 .nav-zone {
   position: fixed; top: 0; bottom: 0; z-index: 12;
   width: calc((100vw - 1280px) / 2);
@@ -652,20 +652,29 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 }
 .nav-zone.prev { left: 0; }
 .nav-zone.next { right: 0; }
+/* 边缘长条形按钮：竖向渐变半透明 + 微毛玻璃 */
 .nav-zone > span {
-  width: 38px; height: 38px; border-radius: 50%;
+  width: 52px; height: 88px; border-radius: 26px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 26px; line-height: 1; color: var(--text-3);
-  background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow);
-  opacity: 0; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+  font-size: 26px; line-height: 1; color: #fff; cursor: pointer;
+  background: linear-gradient(180deg, rgba(20, 30, 52, .55), rgba(20, 30, 52, .34));
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, .26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 6px 18px rgba(0, 0, 0, .22);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
-.nav-zone:hover > span { opacity: 1; transform: scale(1.06); }
+.nav-zone:hover > span { opacity: 1; transform: scale(1.05); }
+.nav-zone:active > span { transform: scale(.95); }
 /* 无留白（窄屏）时隐藏热区，避免覆盖图片 */
 @media (max-width: 1380px) { .nav-zone { display: none; } }
 @media (prefers-reduced-motion: reduce) { .nav-zone > span { transition: none; } }
 
-/* 详情页左右翻页：切换布局时软性淡入（复用 rise-in 关键帧） */
-.detail-layout.am-rise-out { animation: rise-in var(--dur-med) var(--ease-out); }
+/* 详情页左右翻页动效（方案 D·滑动景深）：上一张从左滑入、下一张从右滑入，带远→近缩放 */
+.detail-layout.am-pg-left { animation: pg-slide-left .32s cubic-bezier(.16, 1, .3, 1); }
+.detail-layout.am-pg-right { animation: pg-slide-right .32s cubic-bezier(.16, 1, .3, 1); }
+@keyframes pg-slide-left { from { opacity: 0; transform: translateX(-46px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes pg-slide-right { from { opacity: 0; transform: translateX(46px) scale(.97); } to { opacity: 1; transform: none; } }
 .progress { height: 8px; background: #eceef2; border-radius: 999px; overflow: hidden; margin-top: 8px; }
 .progress > i { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width .3s; }
 .muted { color: var(--text-3); font-size: 12px; }
