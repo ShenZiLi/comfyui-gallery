@@ -354,7 +354,7 @@
     folderOpen: false, sortOpen: false,
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _flipFrom: null,
+    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _waveIn: false,
     selIds: [], batchDelCount: 0,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
@@ -560,58 +560,33 @@
       if (this.sort === "manual") return "按人工评分";
       return "按时间";
     },
-    // 排序切换（方案 A·弹性错落 FLIP）：记录旧位快照后重排
+    // 排序切换（方案 B·波浪推移）：切换后按新序逐列波浪淡入
     doSort(k) {
       this.sortOpen = false;
       this.sort = k;
       var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this._flipFrom = reduced ? null : this._snapCards();
+      this._waveIn = !reduced;
       this.loadImages();
     },
-    // 抓取当前平铺/沉浸卡片位置快照（按 data-id 映射旧的 left/top，viewport 坐标系）
-    _snapCards() {
-      if (this.mode === "aggregate") return null;
-      var map = {}, has = false;
-      document.querySelectorAll(".masonry .img-card").forEach(function (el) {
-        var id = el.getAttribute("data-id"); if (!id) return;
-        var r = el.getBoundingClientRect();
-        map[id] = { x: r.left, y: r.top }; has = true;
-      });
-      return has ? map : null;
-    },
-    // FLIP 弹性错落：新列表渲染后，把保留卡片先移回旧位，再弹性滑到新位（按列微错落）
-    // 修复「从左上角进入」：锁定 transform-origin 为 center，并对未就绪的 0,0 起点做防御
-    _flipCards(from) {
+    // 新列表渲染后：给卡片叠加波浪入场（按列错落），播放完清除类
+    _waveStart() {
       var self = this;
+      this._waveIn = false;
       this._afterRender(function () {
-        var box = document.querySelector(".masonry");
-        if (!box) { self._flipFrom = null; return; }
-        void box.offsetHeight; // 确保布局已落位后再测量新位
         var cards = document.querySelectorAll(".masonry .img-card");
-        // 第一遍：将保留卡片设回旧位置（无过渡），锁定起点
-        cards.forEach(function (c) {
-          var id = c.getAttribute("data-id"); if (!id || !from[id]) return;
-          var r = c.getBoundingClientRect();
-          // 防御：新位未就绪（0,0）时跳过该卡，避免从左上角冲入
-          if (r.left === 0 && r.top === 0) return;
-          c.style.transformOrigin = "center";
-          c.style.transition = "none";
-          c.style.transform = "translate(" + (from[id].x - r.left) + "px, " + (from[id].y - r.top) + "px)";
-        });
-        void document.body.offsetWidth; // 锁起点
-        // 第二遍：清除 transform，弹性滑到新位，按列微错落
+        if (!cards.length) return;
+        var cols = self.currentCols();
         cards.forEach(function (c, i) {
-          var id = c.getAttribute("data-id"); if (!id || !from[id]) return;
-          var delay = Math.min(i % 4, 4) * 45;
-          c.style.transition = "transform .26s cubic-bezier(.22,1,.36,1) " + delay + "ms, opacity .2s ease";
-          c.style.transform = "";
+          var delay = (i % cols) * 40;
+          c.classList.add("am-wave-in");
+          c.style.animationDelay = delay + "ms";
         });
         setTimeout(function () {
           document.querySelectorAll(".masonry .img-card").forEach(function (c) {
-            c.style.transition = ""; c.style.transform = ""; c.style.transformOrigin = "";
+            c.classList.remove("am-wave-in");
+            c.style.animationDelay = "";
           });
-          self._flipFrom = null;
-        }, 380);
+        }, 400);
       });
     },
     fmtSize: App.fmtSize,
@@ -815,8 +790,8 @@
           if (self._restoreScroll) {
             self._afterRender(function () { self._resumeScroll(); });
           }
-          // 排序切换：新列表渲染后对保留卡片做 FLIP 弹性错落位移
-          if (self._flipFrom) self._flipCards(self._flipFrom);
+          // 排序切换：新列表渲染后做波浪推移入场
+          if (self._waveIn) self._waveStart();
         });
     },
     loadMore() {
