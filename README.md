@@ -140,7 +140,7 @@ Web 端数据落仓库根 `data/`（SQLite + 缩略图），清空数据 = 删 `
 
 图库主页：顶部工具栏（导入 / 目录筛选 / 视图切换 / 排序 / 搜索 / 缩放），左栏目录树，主区域为卡片网格，卡片含缩略图、尺寸、文件大小、模型标签、AI 评分、提示词与操作入口。
 
-![图库平铺视图](docs/screenshots/gallery-flat.webp)
+![图库平铺视图](docs/screenshots/flat.png)
 
 * **三种预览模式**
 
@@ -174,17 +174,16 @@ Web 端数据落仓库根 `data/`（SQLite + 缩略图），清空数据 = 删 `
 
 点击卡片进入详情：左侧原图大图，右侧信息栏含提示词、模型与采样参数、评分。
 
-![图片详情页](docs/screenshots/image-detail.webp)
-
 * **提示词**：原生 / 反推 / AI 三源切换、多段展示、点击段落直接复制、中英互译
 
 * **模型与参数**：主模型 / LoRA / VAE 标签、steps / cfg / sampler / scheduler / seed、预览 / 导出工作流（可拖回 ComfyUI 复现）
 
 * **评分**：人工星级（1–5）+ AI 多维度评分（0–100 并附依据）
 
+  ![图片详情页](docs/screenshots/image-detail.png)
+
 ### ✨ AI 增强
 
-![提示词中英翻译](docs/screenshots/image-translate.webp)
 
 * **中英互译**：AI 互译并持久化，已有译文直接切换、不重复请求
 
@@ -192,13 +191,12 @@ Web 端数据落仓库根 `data/`（SQLite + 缩略图），清空数据 = 删 `
 
 * **AI 评分**：视觉模型打分并给出依据，可在设置页自定义评分提示词
 
-![AI 评分](docs/screenshots/image-rating.webp)
+![AI 评分](docs/screenshots/image.png)
 
 ### ⚙️ 设置
 
 配置中心：扫描目录、已扫描文件夹管理、导入保存目录、大模型三角色配置与连通性测试、AI 提示词自定义。
 
-![设置-图片目录](docs/screenshots/settings-dirs.webp)
 
 * **目录管理**：注册 / 移除扫描根；扫描后文件夹 chips 展示，可隐藏 / 恢复
 
@@ -208,9 +206,7 @@ Web 端数据落仓库根 `data/`（SQLite + 缩略图），清空数据 = 删 `
 
 * **AI 提示词**：反推 / 评分 / 互译 / 工作流解析四组提示词可自定义
 
-![设置-大模型](docs/screenshots/settings-llm.webp)
-
-![设置-AI 提示词](docs/screenshots/settings-prompts.webp)
+![设置](docs/screenshots/settings.png)
 
 ***
 
