@@ -354,7 +354,7 @@
     folderOpen: false, sortOpen: false,
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _flipFrom: null,
+    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null,
     selIds: [], batchDelCount: 0,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
@@ -560,52 +560,44 @@
       if (this.sort === "manual") return "按人工评分";
       return "按时间";
     },
-    // 排序切换：记录当前卡片位置快照后重新拉取，新列表渲染后进行 FLIP 弹性错落位移
+    // 排序切换：用 View Transitions 重排图片列表（方案 C）
     doSort(k) {
+      var self = this;
       this.sortOpen = false;
       this.sort = k;
       var reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      this._flipFrom = reduced ? null : this._snapCards();
-      this.loadImages();
+      if (document.startViewTransition && !reduced && this.mode !== "aggregate") {
+        document.startViewTransition(function () { return self._loadSortedImages(); });
+      } else {
+        this.loadImages(); // 降级：直排瞬切（不支持 VT / 减弱动态 / 聚合模式）
+      }
     },
-    // 抓取当前平铺/沉浸卡片位置快照（按 data-id 映射到旧的 left/top）
-    _snapCards() {
-      if (this.mode === "aggregate") return null;
-      var map = {}, has = false;
-      document.querySelectorAll(".masonry .img-card").forEach(function (el) {
-        var id = el.getAttribute("data-id"); if (!id) return;
-        var r = el.getBoundingClientRect();
-        map[id] = { x: r.left, y: r.top }; has = true;
-      });
-      return has ? map : null;
-    },
-    // FLIP 弹性错落：新列表渲染后，把仍存在的卡片先移到旧位置，再弹性滑回新位置
-    _flipCards(from) {
-      var self = this;
-      this._afterRender(function () {
-        var cards = document.querySelectorAll(".masonry .img-card");
-        // 第一遍：将保留卡片设回旧位置（无过渡），锁定动画起点
-        cards.forEach(function (c) {
-          var id = c.getAttribute("data-id"); if (!id || !from[id]) return;
-          var r = c.getBoundingClientRect();
-          c.style.transition = "none";
-          c.style.transform = "translate(" + (from[id].x - r.left) + "px, " + (from[id].y - r.top) + "px)";
-        });
-        void document.body.offsetWidth; // 强制回流，锁定起点
-        // 第二遍：清除 transform，弹性滑到新位置，并按列微错落
-        cards.forEach(function (c, i) {
-          var id = c.getAttribute("data-id"); if (!id || !from[id]) return;
-          var delay = Math.min(i % 4, 4) * 45;
-          c.style.transition = "transform .26s cubic-bezier(.22,1,.36,1) " + delay + "ms, opacity .2s ease";
-          c.style.transform = "";
-        });
-        setTimeout(function () {
-          document.querySelectorAll(".masonry .img-card").forEach(function (c) {
-            c.style.transition = ""; c.style.transform = "";
+    // 排序专用拉取：等 Alpine 渲染完新列表再结束转场，让 View Transitions 取到新旧两帧做交叉淡变重排
+    _loadSortedImages() {
+      var self = this, seq = ++this._reqSeq;
+      this.loading = true;
+      return Api.listImages({ folderId: this.currentFolder || null, tag: this.selectedTag, q: this.q,
+                              sort: this.sort, limit: this.limit, offset: 0 })
+        .then(function (page) {
+          if (seq !== self._reqSeq) return;
+          self.clearSel();
+          self._initCards(page.items);
+          self.images = page.items;
+          self.total = page.total;
+          self.hasMore = page.hasMore;
+          self.summary = "已显示 " + page.items.length + " / 共 " + page.total + " 张";
+          self._imagesFolder = self.currentFolder;
+          // 等 Alpine 渲染新 DOM 后再结束转场，保证新快照就绪
+          return new Promise(function (res) {
+            self._afterRender(function () {
+              self.loading = false;
+              self._rearm("list");
+              if (self.hiRes) self._observeHiRes();
+              res();
+            });
           });
-          self._flipFrom = null;
-        }, 380);
-      });
+        })
+        .catch(function () { self.loading = false; });
     },
     fmtSize: App.fmtSize,
     // 当前模式的列数（平铺/沉浸/聚合独立记录）
@@ -808,8 +800,6 @@
           if (self._restoreScroll) {
             self._afterRender(function () { self._resumeScroll(); });
           }
-          // 排序切换：新列表渲染后对保留卡片做 FLIP 弹性错落位移
-          if (self._flipFrom) self._flipCards(self._flipFrom);
         });
     },
     loadMore() {
