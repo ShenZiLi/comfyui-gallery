@@ -7,10 +7,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.config import settings
-from app.database import get_session
-from app.models import ImageAsset, WorkflowMeta
-from app.routers import aggregate
+from artmirror.config import settings
+from artmirror.database import get_session
+from artmirror.models import ImageAsset, WorkflowMeta
+from artmirror.routers import aggregate
 
 
 def _setup(tmp: Path):

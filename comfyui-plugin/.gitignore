@@ -4,6 +4,6 @@ __pycache__/
 .pytest_cache/
 _deps/
 
-# 生成物副本：由 sync_backend.py / sync_frontend.py 从主仓库真源生成，勿提交、勿手改
+# 自包含产物副本（发布用，由 scripts/build_plugin.py 生成到 build/，勿提交、勿手改）
 artmirror_app/
 static/

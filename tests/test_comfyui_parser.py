@@ -4,7 +4,7 @@ import json
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from app.parsers.comfyui_parser import (
+from artmirror.parsers.comfyui_parser import (
     parse_bytes,
     parse_prompt_graph,
     extract_assets,

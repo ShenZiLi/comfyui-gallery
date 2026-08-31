@@ -13,7 +13,7 @@ from typing import Any, Optional
 import httpx
 from sqlmodel import Session, select
 
-from ..database import engine
+from ..database import get_engine
 from ..models import Setting
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def _role_config(session: Session, role: str) -> dict:
 def chat_text(prompt: str, session: Optional[Session] = None) -> str:
     """调用「文本」角色模型，返回回复文本。"""
     if session is None:
-        with Session(engine) as s:
+        with Session(get_engine()) as s:
             return _chat(s, prompt)
     return _chat(session, prompt)
 
@@ -146,7 +146,7 @@ def analyze_workflow(workflow_text: str, session: Session) -> dict:
 def chat_vision(image_data_b64: str, prompt: str, session: Optional[Session] = None) -> str:
     """调用「视觉」角色模型，传入 base64 图片做图文理解。"""
     if session is None:
-        with Session(engine) as s:
+        with Session(get_engine()) as s:
             return _vi(s, image_data_b64, prompt)
     return _vi(session, image_data_b64, prompt)
 

@@ -1,7 +1,7 @@
 """数据库迁移测试（查询性能索引）。"""
 from sqlmodel import SQLModel, create_engine
 
-from app import database
+from artmirror import database
 
 
 def test_ensure_indexes_creates_all_and_idempotent():

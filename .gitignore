@@ -19,11 +19,14 @@ data/
 # ---- 测试验收数据 ----
 test_data/
 
+# ---- 构建产物（build_plugin.py 生成的自包含插件）----
+build/
+
 # ---- IDE / 编辑器 ----
 .idea/
 .vscode/
 *.swp
 *.swn
-
+.workbuddy
 # ---- 系统 ----
 .DS_Store

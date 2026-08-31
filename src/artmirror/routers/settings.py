@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from sqlmodel import Session, select
 
 from ..config import settings as env_settings
-from ..database import engine, get_session
+from ..database import get_engine, get_session
 from ..models import Setting
 from ..services import scanner, watcher
 
@@ -64,7 +64,7 @@ def _role_vendor_config(session: Session, role: str, vendor: str) -> dict:
 def _background_scan(root: str) -> None:
     """后台扫描单个根目录（独立会话），有变动则递增同步版本号。"""
     try:
-        with Session(engine) as session:
+        with Session(get_engine()) as session:
             stats = scanner.scan(session, Path(root))
             if stats.new or stats.updated or stats.removed:
                 watcher.bump()

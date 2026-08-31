@@ -41,13 +41,13 @@ def test_start_singleton():
 
 
 def test_resolve_paths():
-    """resolve_data_dir 指向 user/artmirror；resolve_frontend_dir 指向插件内 static。"""
+    """resolve_data_dir 指向 user/artmirror；resolve_frontend_dir 返回可用前端目录。"""
     with tempfile.TemporaryDirectory() as td:
         comfy_paths.set_paths(str(Path(td) / "user"), str(Path(td) / "out"))
         data = artmirror_embed.resolve_data_dir()
         assert data == str(Path(td) / "user" / "artmirror")
         fe = artmirror_embed.resolve_frontend_dir()
-        assert fe.endswith("static")
+        assert Path(fe).is_dir()
 
 
 def test_data_dir_override_effective():

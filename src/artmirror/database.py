@@ -13,10 +13,34 @@ from .config import settings
 logger = logging.getLogger(__name__)
 
 # SQLite 需 check_same_thread=False，便于后台线程访问；timeout 让并发写入等待而非报“database is locked”。
-engine = create_engine(
-    f"sqlite:///{settings.db_path}",
-    connect_args={"check_same_thread": False, "timeout": 30},
-)
+# engine 改为懒创建：按当前 settings.db_path 绑定，双启动器切换 data_dir 后经 reset_engine() 重建。
+_engine = None
+
+
+def _create_engine():
+    return create_engine(
+        f"sqlite:///{settings.db_path}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+
+
+def get_engine():
+    """获取（懒创建）当前配置绑定的 engine。"""
+    global _engine
+    if _engine is None:
+        _engine = _create_engine()
+    return _engine
+
+
+def reset_engine() -> None:
+    """重建 engine 绑定（启动器切换 data_dir 后调用，确保连接新库；幂等）。"""
+    global _engine
+    if _engine is not None:
+        try:
+            _engine.dispose()
+        except Exception:  # noqa: BLE001
+            pass
+    _engine = None
 
 # 引入所有模型以注册到 SQLModel.metadata（models 顶部统一导出）。
 from . import models  # noqa: E402,F401
@@ -68,6 +92,7 @@ def init_db() -> None:
     """创建数据表与运行目录（幂等）。"""
     settings.ensure_dirs()
     _migrate_sqlite()
+    engine = get_engine()
     SQLModel.metadata.create_all(engine)
     with engine.begin() as conn:
         _ensure_indexes(conn)
@@ -75,5 +100,5 @@ def init_db() -> None:
 
 def get_session():
     """FastAPI 依赖：提供数据库会话。"""
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         yield session

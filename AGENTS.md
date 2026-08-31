@@ -5,27 +5,21 @@ ComfyUI 图片/提示词资产管理工具：浏览、管理、检索本地 Comf
 ## 项目结构
 
 ```
-ArtMirror/
-├── backend/                 # Python + FastAPI 后端（单进程 = API + 前端静态托管）
-│   ├── app/
-│   │   ├── main.py          # 应用入口：启动 watcher、托管静态、NoCache 静态
-│   │   ├── models.py        # SQLModel 全部表模型
-│   │   ├── database.py      # SQLite engine（check_same_thread=False, timeout=30）
-│   │   ├── config.py        # 环境配置（data_dir / llm_* / frontend_dir）
-│   │   ├── parsers/comfyui_parser.py   # PNG meta 解析（workflow/prompt 图）
-│   │   ├── services/
-│   │   │   ├── scanner.py   # 递归扫描、sha 去重、缩略图、建绝对路径 Folder
-│   │   │   ├── meta_service.py  # 解析结果落库 + 标签
-│   │   │   └── watcher.py   # 后台增量扫描 + 同步版本号
-│   │   └── routers/         # images/folders/tags/aggregate/settings/fs/sync
-│   ├── tests/               # pytest
-│   ├── pyproject.toml       # uv 管理依赖
-│   └── uv.lock
-├── frontend/                # 无构建静态前端（HTML+CSS+JS+Alpine.js）
-│   ├── gallery.html / settings.html / image.html / index.html
-│   ├── api.js               # 前端 API 层（优先后端，离线回退 mock）
-│   ├── app.js               # 公共脚本：导航注入、明暗主题、高亮
-│   └── style.css
+ArtMirror/                       # 单一真源：一次开发，双端（web / ComfyUI 插件）复用
+├── src/artmirror/               # 核心包（与运行形态无关）
+│   ├── main.py                  # 应用工厂 create_app()：双启动器统一入口
+│   ├── models.py                # SQLModel 全部表模型
+│   ├── database.py              # SQLite engine（懒创建 + reset_engine 重建绑定）
+│   ├── config.py                # 环境配置（data_dir / llm_* / frontend_dir，可运行时覆盖）
+│   ├── parsers/comfyui_parser.py   # PNG meta 解析（workflow/prompt 图）
+│   ├── services/                # scanner / watcher / llm / meta_service
+│   └── routers/                 # images/folders/tags/aggregate/settings/fs/sync
+├── launchers/web/main.py        # web 端启动器（uvicorn 入口：data/ + :8000）
+├── comfyui-plugin/              # 插件端启动器（embed/proxy/comfy_paths/server/web-tab）
+├── frontend/                    # 无构建静态前端（唯一一份）
+├── scripts/build_plugin.py      # 从真源生成自包含插件产物（发布用）
+├── tests/                       # 核心包 pytest
+├── pyproject.toml               # uv 管理依赖（src layout，editable 安装）
 └── README.md
 ```
 
@@ -41,17 +35,17 @@ ArtMirror/
 
 ## 常用命令
 
-在 `backend/` 目录下执行：
+在仓库根目录下执行：
 
 ```bash
 # 安装/同步依赖（首次）
 uv sync
 
-# 运行测试（11 例）
+# 运行测试
 uv run pytest -q
 
 # 启动服务（API + 前端托管）
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
 
 # 前端无需独立服务，浏览器访问：
 #   http://127.0.0.1:8000/gallery.html  图库
@@ -70,7 +64,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 1. 修改后端或前端文件后，**立即重启后端服务**（否则改动不生效）：
    ```bash
    lsof -ti:8000 | xargs kill -9 2>/dev/null; sleep 1
-   cd backend && (uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/am.log 2>&1 &)
+   (uv run uvicorn launchers.web.main:app --host 127.0.0.1 --port 8000 >/tmp/am.log 2>&1 &)
    ```
 2. 确认可访问：`curl -s http://127.0.0.1:8000/api/health`
 3. 后端逻辑改动跑单测：`uv run pytest -q`
@@ -79,25 +73,23 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 插件独立仓库（comfyui-gallery）
 
-插件代码除随主仓库 `comfyui-plugin/` 维护外，**单独推送一份到独立仓库 `https://github.com/ShenZiLi/comfyui-gallery`**（ComfyUI 侧安装用的独立插件仓库，remote 名 `gallery`）。它是主仓库插件代码的**镜像产物**，不保留独立提交。
+插件代码随主仓库 `comfyui-plugin/` 维护（**薄启动器**，复用 `src/artmirror` 真源，无副本）。
+发布时经 `scripts/build_plugin.py` 生成自包含产物后，镜像推送到独立插件仓库
+`https://github.com/ShenZiLi/comfyui-gallery`（ComfyUI 侧安装用插件仓库，remote 名 `gallery`）。
+它是主仓库的**构建产物镜像**，不保留独立提交。
 
-**每次推送主仓库 GitHub 后，必须同步二次推送插件仓库：**
+**每次推送主仓库 GitHub 后，必须同步更新插件仓库：**
 
-1. 生成最新副本：`python comfyui-plugin/sync_all.py`（backend/app → artmirror_app/，frontend/ → static/）
-2. 重建自包含插件分支（含副本，`.gitignore` 忽略的文件 subtree split 不含，故用「临时提交 → split → 回退」纳入）：
+1. 生成自包含插件产物（含核心包 + 前端）：
    ```bash
-   git branch -D comfyui-gallery 2>/dev/null      # 重建旧分支
-   git add -f comfyui-plugin/artmirror_app comfyui-plugin/static
-   git commit -m "tmp: 暂存副本以生成自包含插件分支（随后回退）"
-   git subtree split --prefix=comfyui-plugin -b comfyui-gallery
-   git reset --soft HEAD~1 && git reset           # 回退临时提交（不推送主仓库）
+   python scripts/build_plugin.py build/ComfyUI-ArtMirror
    ```
-3. 推送到插件仓库（force：镜像覆盖，不保留独立提交）：
+2. 在插件仓库工作目录用最新产物整体替换，提交并 force 推送（镜像覆盖）：
    ```bash
-   git push -f gallery comfyui-gallery:main
+   git push -f gallery <插件分支>:main
    ```
 
-> 新克隆插件仓库后，副本（artmirror_app/、static/）已随仓库携带，可直接部署到 ComfyUI `custom_nodes/`，无需再同步。
+> 新克隆插件仓库后，产物（artmirror/、static/）已随仓库携带，可直接部署到 ComfyUI `custom_nodes/`，无需再同步。
 
 ## 数据与目录
 
@@ -107,4 +99,4 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 部署 / 自启动
 
-个人单机工具，直接 `uv run uvicorn` 即可；无需容器/进程管理。若需后台常驻，可封装 `backend/run.sh` 或交给本 AGENTS 规则中的重启命令。
+个人单机工具，直接 `uv run uvicorn` 即可；无需容器/进程管理。若需后台常驻，可封装 `run.sh` 或交给本 AGENTS 规则中的重启命令。

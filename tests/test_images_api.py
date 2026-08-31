@@ -10,13 +10,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.config import settings
-from app.database import get_session
-from app.models import (
+from artmirror.config import settings
+from artmirror.database import get_session
+from artmirror.models import (
     ImageAsset, ImageTag, PromptTranslation, RatingRecord, ReversePrompt, Tag, WorkflowMeta,
 )
-from app.routers import images
-from app.routers.images import to_card, to_cards
+from artmirror.routers import images
+from artmirror.routers.images import to_card, to_cards
 
 
 def _setup(tmp: Path):

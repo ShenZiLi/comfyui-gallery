@@ -8,7 +8,7 @@ import threading
 
 from sqlmodel import Session
 
-from ..database import engine
+from ..database import get_engine
 from . import scanner
 
 SYNC_INTERVAL = 20.0  # 秒：降低频率，避免常驻占用与阻塞用户操作
@@ -41,7 +41,7 @@ def _loop() -> None:
     while not _stop_event.is_set():
         if _scanning.acquire(blocking=False):  # 上一次扫描未结束则跳过本轮
             try:
-                with Session(engine) as session:
+                with Session(get_engine()) as session:
                     roots = scanner.get_scan_roots(session)
                     if roots:
                         stats = scanner.scan_all(session, roots)

@@ -12,9 +12,9 @@ from PIL.PngImagePlugin import PngInfo
 from sqlalchemy.pool import NullPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.config import settings
-from app.models import Folder, ImageAsset, Tag, WorkflowMeta
-from app.services import scanner
+from artmirror.config import settings
+from artmirror.models import Folder, ImageAsset, Tag, WorkflowMeta
+from artmirror.services import scanner
 
 GRAPH = {
     "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "m.safetensors"}},

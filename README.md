@@ -40,14 +40,11 @@
 ### 安装与启动
 
 ```bash
-# 1. 进入后端目录
-cd backend
-
-# 2. 安装/同步依赖（首次）
+# 1. 安装/同步依赖（首次）
 uv sync
 
-# 3. 启动服务（API + 前端托管）
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+# 2. 启动服务（API + 前端托管）
+uv run uvicorn launchers.web.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### 访问
@@ -91,26 +88,37 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ## 目录结构
 
 ```
-ArtMirror/
-├── backend/                 # Python + FastAPI 后端（API + 前端静态托管）
-│   ├── app/
-│   │   ├── main.py          # 应用入口：启动 watcher、托管静态、NoCache 静态
-│   │   ├── models.py        # SQLModel 全部表模型
-│   │   ├── database.py      # SQLite engine + 迁移 + 索引
-│   │   ├── config.py        # 环境配置（data_dir / llm_* / frontend_dir）
-│   │   ├── parsers/         # ComfyUI PNG meta 解析
-│   │   ├── services/        # scanner / watcher / llm / meta_service
-│   │   └── routers/         # images / folders / tags / aggregate / settings / fs / sync
-│   ├── tests/               # pytest
-│   ├── pyproject.toml       # uv 管理依赖
-│   └── uv.lock
-├── frontend/                # 无构建静态前端
+ArtMirror/                       # 单一真源：一次开发，双端（web / ComfyUI 插件）复用
+├── src/artmirror/               # 核心包（与运行形态无关）
+│   ├── main.py                  # 应用工厂 create_app()：启动 watcher、托管静态、NoCache 静态
+│   ├── models.py                # SQLModel 全部表模型
+│   ├── database.py              # SQLite engine（懒创建 + reset_engine 重建绑定）
+│   ├── config.py                # 环境配置（data_dir / llm_* / frontend_dir，可运行时覆盖）
+│   ├── parsers/                 # ComfyUI PNG meta 解析
+│   ├── services/                # scanner / watcher / llm / meta_service
+│   └── routers/                 # images / folders / tags / aggregate / settings / fs / sync
+├── launchers/                   # 双启动器（各端薄壳，只装环境差异）
+│   └── web/main.py              # web 端：uvicorn 入口（data/ + :8000）
+├── comfyui-plugin/              # 插件端：进程内启动器 + /artmirror/* 反代 + 侧边栏 tab
+│   ├── artmirror_embed.py       # 进程内后台线程运行 FastAPI（临时端口）
+│   ├── proxy.py                 # /artmirror/* 反向代理（透传 query string）
+│   ├── comfy_paths.py           # ComfyUI 路径解析（user/output 目录）
+│   ├── server.py                # ComfyUI PromptServer 路由注册
+│   └── web/artmirror-tab.js     # 侧边栏「图库」tab 扩展
+├── frontend/                    # 无构建静态前端（唯一一份）
 │   ├── gallery.html / settings.html / image.html / index.html
 │   ├── api.js / app.js / style.css / mock-data.js
 │   └── vendor/alpine.min.js
-├── docs/                    # 功能清单 / 设计文档 / 截图
-└── README.md
+├── scripts/build_plugin.py      # 从真源生成自包含插件产物（发布用）
+├── tests/                       # 核心包 pytest
+├── pyproject.toml               # uv 管理依赖（src layout，editable 安装）
+└── docs/                        # 功能清单 / 设计文档 / 截图
 ```
+
+> 双端复用方式：web 端经 `launchers/web/main.py` 以默认 `data/` + `frontend/` 启动；
+> 插件端经 `comfyui-plugin/artmirror_embed.py` 复用同一 `src/artmirror`，仅注入
+> `ComfyUI/user/artmirror/` 数据目录与临时端口。发布插件时运行
+> `python scripts/build_plugin.py` 生成自包含产物（核心 + 前端打包进插件目录）。
 
 ## 前端页面
 

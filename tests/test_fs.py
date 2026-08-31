@@ -2,7 +2,7 @@
 import tempfile
 from pathlib import Path
 
-from app.routers import fs
+from artmirror.routers import fs
 
 
 def test_fs_roots():

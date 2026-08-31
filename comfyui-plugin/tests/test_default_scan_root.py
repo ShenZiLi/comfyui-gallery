@@ -21,26 +21,17 @@ def _setup(td):
     user = td / "user"; out = td / "out"; out.mkdir()
     comfy_paths.set_paths(str(user), str(out))
 
-    from artmirror_app.config import settings
-    artmirror_embed._configure(settings)
+    from artmirror.config import settings
+    settings.configure(
+        data_dir=artmirror_embed.resolve_data_dir(),
+        frontend_dir=artmirror_embed.resolve_frontend_dir(),
+    )
     settings.ensure_dirs()
 
-    from artmirror_app import database as db
-    artmirror_embed._rebind_engine(settings)
+    from artmirror import database as db
+    db.reset_engine()
     db.init_db()
     return db
-
-
-def _ensure_default_scan_root(db):
-    """调用 ensure_default_scan_root（内部会重建引擎），并 dispose 被替换的旧引擎。
-
-    ensure_default_scan_root 自洽地 _rebind_engine，替换后的新引擎由调用方
-    在用例收尾 dispose；这里补 dispose 旧引擎，避免其连接池占用 SQLite 句柄，
-    导致 Windows 临时目录清理失败。
-    """
-    prev = db.engine
-    artmirror_embed.ensure_default_scan_root()
-    prev.dispose()
 
 
 def test_default_scan_root_added():
@@ -48,18 +39,16 @@ def test_default_scan_root_added():
         db = _setup(td)
         out = Path(td) / "out"
 
-        from artmirror_app.services import scanner
+        from artmirror.services import scanner
         with next(db.get_session()) as session:
             assert list(scanner.get_scan_roots(session)) == []
 
-        _ensure_default_scan_root(db)
+        artmirror_embed.ensure_default_scan_root()
 
         with next(db.get_session()) as session:
             roots = list(scanner.get_scan_roots(session))
             assert len(roots) == 1
             assert Path(roots[0]).resolve() == out.resolve()
-
-        db.engine.dispose()
 
 
 def test_default_scan_root_keeps_existing():
@@ -68,18 +57,16 @@ def test_default_scan_root_keeps_existing():
         db = _setup(td)
         existing = Path(td) / "existing"; existing.mkdir()
 
-        from artmirror_app.services import scanner
+        from artmirror.services import scanner
         with next(db.get_session()) as session:
             scanner.save_scan_roots(session, [str(existing)])
 
-        _ensure_default_scan_root(db)
+        artmirror_embed.ensure_default_scan_root()
 
         with next(db.get_session()) as session:
             roots = list(scanner.get_scan_roots(session))
             assert len(roots) == 1
             assert Path(roots[0]).resolve() == existing.resolve()
-
-        db.engine.dispose()
 
 
 def test_default_scan_root_skips_missing_output():
@@ -88,18 +75,19 @@ def test_default_scan_root_skips_missing_output():
         td = Path(td)
         comfy_paths.set_paths(str(td / "user"), str(td / "missing_out"))  # out 不存在
 
-        from artmirror_app.config import settings
-        artmirror_embed._configure(settings)
+        from artmirror.config import settings
+        settings.configure(
+            data_dir=artmirror_embed.resolve_data_dir(),
+            frontend_dir=artmirror_embed.resolve_frontend_dir(),
+        )
         settings.ensure_dirs()
 
-        from artmirror_app import database as db
-        artmirror_embed._rebind_engine(settings)
+        from artmirror import database as db
+        db.reset_engine()
         db.init_db()
 
-        _ensure_default_scan_root(db)
+        artmirror_embed.ensure_default_scan_root()
 
-        from artmirror_app.services import scanner
+        from artmirror.services import scanner
         with next(db.get_session()) as session:
             assert list(scanner.get_scan_roots(session)) == []
-
-        db.engine.dispose()

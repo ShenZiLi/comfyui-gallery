@@ -1,5 +1,11 @@
-"""在 ComfyUI 进程内以后台线程运行 ArtMirror FastAPI（临时端口）。"""
+"""在 ComfyUI 进程内以后台线程运行 ArtMirror FastAPI（临时端口）。
+
+插件端启动器：不复制任何核心代码，直接复用仓库真源 src/artmirror。
+发布为自包含产物时（scripts/build_plugin.py），artmirror 包随插件目录
+分发，同样可直接导入。
+"""
 import logging
+import sys
 import threading
 import time
 from pathlib import Path
@@ -11,6 +17,18 @@ try:
 except ImportError:  # 顶层导入（pytest）时回退绝对导入
     import comfy_paths
 
+# 真源引导：优先已安装/随插件的 artmirror 包；开发模式（未安装）时注入仓库 src/
+try:
+    import artmirror  # noqa: F401
+except ImportError:
+    _src = Path(__file__).resolve().parent.parent / "src"
+    if str(_src) not in sys.path:
+        sys.path.insert(0, str(_src))
+
+from artmirror.config import settings
+from artmirror.database import get_engine, reset_engine
+from artmirror.main import create_app
+
 log = logging.getLogger("artmirror.embed")
 
 _state = {"lock": threading.Lock(), "server": None, "port": None}
@@ -21,35 +39,18 @@ def resolve_data_dir() -> str:
 
 
 def resolve_frontend_dir() -> str:
-    return str(Path(__file__).resolve().parent / "static")
+    """自包含产物用插件内 static/；开发模式回退仓库 frontend/。"""
+    local = Path(__file__).resolve().parent / "static"
+    if local.is_dir():
+        return str(local)
+    return str(Path(__file__).resolve().parent.parent / "frontend")
 
 
-def _configure(settings) -> None:
-    settings.data_dir = resolve_data_dir()
-    settings.frontend_dir = resolve_frontend_dir()
-    Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
-    Path(settings.frontend_dir).mkdir(parents=True, exist_ok=True)
-
-
-def _rebind_engine(settings) -> None:
-    """将 artmirror_app.database.engine 重建绑定到当前 db_path。
-
-    database.py 的 engine 在模块首次导入时即按当时的 data_dir 绑定；进程内
-    stop 后再次 start()（或更换用户目录）时模块已缓存、不会重跑，需重建绑定，
-    否则引擎仍指向旧库，data_dir 覆盖不生效。
-    """
-    from sqlmodel import create_engine
-
-    from artmirror_app import database as db
-
-    try:
-        db.engine.dispose()
-    except Exception:  # noqa: BLE001
-        pass
-    db.engine = create_engine(
-        f"sqlite:///{settings.db_path}",
-        connect_args={"check_same_thread": False, "timeout": 30},
-    )
+def _prepare() -> None:
+    """按插件环境覆盖配置并重建 engine 绑定。"""
+    settings.configure(data_dir=resolve_data_dir(), frontend_dir=resolve_frontend_dir())
+    settings.ensure_dirs()
+    reset_engine()
 
 
 def start() -> int | None:
@@ -58,21 +59,10 @@ def start() -> int | None:
         if _state["port"] is not None:
             return _state["port"]
         try:
-            # 先配置 settings（覆盖 data_dir/frontend_dir），再导入 app_main——
-            # artmirror_app.database 的 engine 与 main 的 StaticFiles 挂载均在导入期绑定，
-            # 必须先配置后导入，否则覆盖不生效（DB 落在默认 data/、前端指向默认 frontend/）。
-            from artmirror_app.config import settings
-
-            _configure(settings)
-            settings.ensure_dirs()
-
-            # 重建引擎绑定：确保 database.engine 指向当前 db_path（首次导入或复用）。
-            _rebind_engine(settings)
-
-            from artmirror_app import main as app_main
-
+            _prepare()
+            app = create_app()
             server = uvicorn.Server(
-                uvicorn.Config(app_main.app, host="127.0.0.1", port=0,
+                uvicorn.Config(app, host="127.0.0.1", port=0,
                                log_config=None, access_log=False)
             )
             thread = threading.Thread(target=server.run, daemon=True, name="artmirror")
@@ -111,8 +101,7 @@ def stop() -> None:
     # 释放 SQLite 句柄：不 dispose 时引擎连接池持有 artmirror.db，
     # Windows 上会导致文件被占用，无法删除/覆盖。
     try:
-        from artmirror_app.database import engine as db_engine
-        db_engine.dispose()
+        get_engine().dispose()
     except Exception:  # noqa: BLE001
         pass
 
@@ -120,12 +109,9 @@ def stop() -> None:
 def ensure_default_scan_root() -> None:
     """空库时将 ComfyUI 输出目录注册为扫描根（有根则不动）。"""
     try:
-        from artmirror_app.config import settings
-        _configure(settings)
-        _rebind_engine(settings)
-        settings.ensure_dirs()
-        from artmirror_app.database import get_session
-        from artmirror_app.services import scanner
+        _prepare()
+        from artmirror.database import get_session
+        from artmirror.services import scanner
         with next(get_session()) as session:
             roots = list(scanner.get_scan_roots(session))
             if roots:
