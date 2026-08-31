@@ -406,6 +406,8 @@ body.am-selecting { user-select: none; }
   .dropdown-menu, .modal-mask, .modal, .modal-x, .detail-layout, .empty { animation: none !important; transition: none !important; }
   .star:hover, .theme-toggle:hover svg { transform: none !important; transition: none !important; }
   .progress > i { animation: none !important; }
+  .src-tab:active { transform: none !important; transition: none !important; }
+  .member-grid { animation: none !important; transition: none !important; }
 }
 
 .img-card { overflow: hidden; container-type: inline-size; }
@@ -471,9 +473,10 @@ body.am-selecting { user-select: none; }
 .src-tab {
   font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 999px;
   border: none; background: transparent; cursor: pointer; white-space: nowrap;
-  color: var(--text-3); opacity: .38; transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+  color: var(--text-3); opacity: .38; transition: opacity var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 .src-tab:hover { opacity: .8; }
+.src-tab:active { transform: scale(.94); }
 /* 有数据：字体以品牌色高亮 */
 .src-tab.has { opacity: 1; }
 .src-tab.has.origin { color: var(--brand); }
@@ -669,3 +672,10 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
   animation: sheen 1.6s var(--ease-in-out) infinite;
 }
 @keyframes sheen { from { background-position: 200% 0 } to { background-position: 0 0 } }
+
+/* 聚合组「展开/收起」：成员网格软性显现，避免瞬间弹出（偶发交互） */
+.member-grid { animation: member-in var(--dur-fast) var(--ease-out); }
+@keyframes member-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.99); }
+  to   { opacity: 1; transform: none; }
+}
