@@ -49,7 +49,7 @@
 /* 页面间跳转淡入淡出：加载时淡入；离开前加 am-page-out 淡出 */
 body { animation: am-page-in .28s ease-out; }
 @keyframes am-page-in { from { opacity: 0 } to { opacity: 1 } }
-body.am-page-out { animation: none; opacity: 0; transition: opacity .18s ease-in; }
+body.am-page-out { animation: none; opacity: 0; transition: opacity var(--dur-fast) var(--ease-in); }
 @media (prefers-reduced-motion: reduce) { body { animation: none; } }
 
 /* 暗色模式变量覆盖 */
@@ -218,7 +218,9 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
 .am-toast {
   position: fixed; left: 50%; top: 72px; transform: translate(-50%, -12px);
   background: rgba(0,0,0,.78); color: #fff; font-size: 13px; padding: 7px 16px;
-  border-radius: 999px; opacity: 0; pointer-events: none; transition: .18s ease; z-index: 9999;
+  border-radius: 999px; opacity: 0; pointer-events: none;
+  transition: transform var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out);
+  z-index: 9999;
 }
 .am-toast.show { opacity: 1; transform: translate(-50%, 0); }
 html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #111; }
@@ -538,7 +540,6 @@ html[data-theme="dark"] .stars .off { color: #3a4251; }
 html[data-theme="dark"] .group-card .cover-row { scrollbar-color: #3a4251 transparent; }
 html[data-theme="dark"] .group-card .cover-row::-webkit-scrollbar-thumb { background: #3a4251; }
 .group-card .cover-row img { width: 68px; height: 68px; object-fit: cover; border-radius: 8px; flex: none; cursor: pointer; transition: transform var(--dur-med) var(--ease-out); }
-.group-card .cover-row img:hover { transform: scale(1.05); }
 .group-card .g-title { display: flex; align-items: baseline; gap: 8px; padding: 12px 12px 0; }
 .group-card .g-title h4 { margin: 0; font-size: 14px; font-weight: normal; }
 .group-card .g-title .copy-prompt { cursor: pointer; }
@@ -550,7 +551,6 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 .sample-prompts { max-height: 84px; overflow: hidden; font-size: 12px; color: var(--text-3); }
 .member-grid { columns: 4 140px; column-gap: 8px; margin-top: 10px; }
 .member-grid img { width: 100%; height: auto; display: block; object-fit: contain; margin-bottom: 8px; border-radius: 8px; cursor: pointer; transition: transform var(--dur-med) var(--ease-out); }
-.member-grid img:hover { transform: scale(1.03); }
 
 /* 维度分组折叠 */
 .acc { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
@@ -657,13 +657,11 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
   to   { opacity: 1; transform: none; }
 }
 
-/* 详情页人工评分星星：悬停轻微放大反馈 */
+/* 详情页人工评分星星：悬停轻微放大反馈（仅精确指针设备，触屏不触发粘滞放大） */
 .star { transition: transform var(--dur-fast) var(--ease-out); }
-.star:hover { transform: scale(1.25); }
 
-/* 明暗切换按钮图标：悬停轻微旋转，提升按钮活度 */
+/* 明暗切换按钮图标：悬停轻微旋转，提升按钮活度（触屏不触发） */
 .theme-toggle svg { transition: transform var(--dur-slow) var(--ease-out); }
-.theme-toggle:hover svg { transform: rotate(20deg); }
 
 /* 扫描进度条：品牌色流动高光，反馈扫描进行中（宽度过渡保留） */
 .progress > i {
@@ -678,4 +676,12 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 @keyframes member-in {
   from { opacity: 0; transform: translateY(-12px) scale(.985); }
   to   { opacity: 1; transform: none; }
+}
+
+/* 悬停型动效（放大/旋转）仅对具备精确指针的设备生效，避免触屏点按误触粘滞 */
+@media (hover: hover) and (pointer: fine) {
+  .star:hover { transform: scale(1.25); }
+  .theme-toggle:hover svg { transform: rotate(20deg); }
+  .group-card .cover-row img:hover { transform: scale(1.05); }
+  .member-grid img:hover { transform: scale(1.03); }
 }
