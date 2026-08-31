@@ -17,9 +17,10 @@ ArtMirror/                       # 仓库根即 ComfyUI 插件（clone 放入 cu
 │   ├── parsers/comfyui_parser.py   # PNG meta 解析（workflow/prompt 图）
 │   ├── services/                # scanner / watcher / llm / meta_service
 │   └── routers/                 # images/folders/tags/aggregate/settings/fs/sync
-├── artmirror_embed.py           # 插件端：进程内后台线程运行 FastAPI（临时端口）
-├── comfy_routes.py              # ComfyUI PromptServer 路由注册（/artmirror/* 反代）
-├── proxy.py / comfy_paths.py    # 反代 / ComfyUI 路径解析
+├── comfyui/                     # 插件集成层（ComfyUI 适配，与核心分层）
+│   ├── embed.py                 # 进程内后台线程运行 FastAPI（临时端口）
+│   ├── routes.py                # PromptServer 路由注册 + /artmirror/* 反代
+│   └── paths.py                 # ComfyUI 路径解析（user/output 目录）
 ├── launchers/web/main.py        # web 端辅助启动器（uvicorn 入口：data/ + :8000）
 ├── frontend/                    # 前端（唯一一份，零构建；双端共用）
 ├── scripts/build_plugin.py      # 打包单文件 zip（分发给小白）

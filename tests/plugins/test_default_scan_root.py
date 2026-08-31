@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-import artmirror_embed
-import comfy_paths
+from comfyui import embed as artmirror_embed
+from comfyui import paths as comfy_paths
 
 
 @pytest.fixture(autouse=True)

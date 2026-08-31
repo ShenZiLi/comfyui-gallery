@@ -3,8 +3,8 @@ import asyncio
 
 from aiohttp.test_utils import make_mocked_request
 
-import artmirror_embed
-import comfy_routes as server
+from comfyui import embed as artmirror_embed
+from comfyui import routes as server
 
 
 class _FakeRouteTable:

@@ -45,10 +45,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {"ArtMirrorLauncher": "ArtMirror 图库"}
 def _register_routes():
     """挂载 /artmirror/* 路由（懒加载：仅 ComfyUI 环境可用时）。"""
     try:
-        import comfy_routes as _routes
+        from .comfyui import routes as _routes
         _routes.register_proxy_routes()
     except ImportError:
-        # 非 ComfyUI 环境（comfy_routes 模块不可用）属预期，静默跳过
+        # 非 ComfyUI 环境（comfyui.routes 模块不可用）属预期，静默跳过
         log.debug("ArtMirror 路由未挂载（非 ComfyUI 环境）")
     except Exception:  # noqa: BLE001
         # ComfyUI 环境内的真实异常需暴露，避免掩盖 bug

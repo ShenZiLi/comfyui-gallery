@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-import comfy_paths
+from comfyui import paths as comfy_paths
 
 
 @pytest.fixture(autouse=True)

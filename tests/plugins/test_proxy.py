@@ -7,9 +7,9 @@ from pathlib import Path
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-import artmirror_embed
-import comfy_paths
-import comfy_routes as proxy
+from comfyui import embed as artmirror_embed
+from comfyui import paths as comfy_paths
+from comfyui import routes as proxy
 
 
 def _make_app() -> web.Application:

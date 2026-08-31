@@ -10,7 +10,7 @@ from pathlib import Path
 
 import uvicorn
 
-import comfy_paths
+from . import paths as comfy_paths
 from artmirror.config import settings
 from artmirror.database import get_engine, reset_engine
 from artmirror.main import create_app
@@ -26,7 +26,7 @@ def resolve_data_dir() -> str:
 
 def resolve_frontend_dir() -> str:
     """仓库根即插件：前端即根目录 frontend/（web 端与插件端共用同一份）。"""
-    return str(Path(__file__).resolve().parent / "frontend")
+    return str(Path(__file__).resolve().parent.parent / "frontend")
 
 
 def _prepare() -> None:

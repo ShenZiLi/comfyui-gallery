@@ -9,7 +9,7 @@ import logging
 import aiohttp
 from aiohttp import web
 
-import artmirror_embed
+from . import embed as artmirror_embed
 
 log = logging.getLogger("artmirror.proxy")
 
