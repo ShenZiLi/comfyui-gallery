@@ -482,6 +482,8 @@ body.am-selecting { user-select: none; }
 .prompt-header .ph-left { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .prompt-header .ph-icons { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
 .toggle-prompt { color: var(--brand); font-size: 12px; cursor: pointer; background: none; border: none; padding: 0; }
+/* 提示词编辑框：多段提示词编辑用 */
+.edit-prompt { background: var(--bg); font-size: 12.5px; line-height: 1.65; color: var(--text); border-radius: 8px; }
 
 /* 提示词来源标签（原生/反推/AI）：字体颜色=有没有数据，背景色=当前是否选中 */
 .src-tabs { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; row-gap: 2px; }

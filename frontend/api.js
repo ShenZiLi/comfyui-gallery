@@ -96,6 +96,12 @@
       });
     },
 
+    updatePrompt: function (id, data) {
+      return req("api/images/" + id + "/prompt", { method: "POST", body: data }).catch(function (e) {
+        throw e;
+      });
+    },
+
     deleteImage: function (id) {
       return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
         throw e;
