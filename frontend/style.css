@@ -689,7 +689,7 @@ html[data-theme="dark"] .nav-zone:hover .nav-btn { background: rgba(45, 56, 80, 
 
 /* 图片详情放大镜（4 倍，跟随鼠标）：固定层圆形取景，进出图/开关用过渡丝滑过渡 */
 .magnifier {
-  position: fixed; z-index: 45; width: 280px; height: 280px; border-radius: 50%;
+  position: fixed; z-index: 45; width: 500px; height: 500px; border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, .96);
   box-shadow:
     0 0 0 9999px rgba(15, 23, 42, .28),
