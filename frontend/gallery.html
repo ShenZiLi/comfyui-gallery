@@ -98,9 +98,13 @@
       <span class="nav-spacer"></span>
 
       <div class="searchbox gallery-search">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
-               @keyup.debounce.300ms="search()" />
+        <div class="search-input-wrap" :class="{open: searchOpen}">
+          <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
+                 x-ref="gsearch" @keyup.debounce.300ms="search()" @keydown.escape="closeSearch()" />
+        </div>
+        <button class="search-btn" :class="{open: searchOpen}" @click="toggleSearch()" aria-label="搜索">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+        </button>
       </div>
       <span class="muted summary" x-text="summary"></span>
     </div>
@@ -357,6 +361,7 @@
   window.Gallery = {
     folders: [], images: [], groups: [], groupCount: 0, tags: [], q: "", mode: "flat", currentFolder: "",
     folderOpen: false, sortOpen: false,
+    searchOpen: false,
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
     delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _waveIn: false,
@@ -715,6 +720,18 @@
         if (el) el.classList.remove("am-fade-in");
       }, 360);
     },
+    // 折叠搜索栏：点击放大镜展开/收起，展开后聚焦输入框；Esc 收起
+    toggleSearch() {
+      this.searchOpen = !this.searchOpen;
+      if (this.searchOpen) {
+        var self = this;
+        this.$nextTick(function () {
+          var i = self.$refs.gsearch;
+          if (i) i.focus();
+        });
+      }
+    },
+    closeSearch() { this.searchOpen = false; },
     // 搜索：原结果先淡出，加载完成后新结果淡入
     search() {
       var self = this;

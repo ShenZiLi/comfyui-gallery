@@ -237,9 +237,48 @@ html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #1
 
 /* ===== 输入检索 ===== */
 .searchbox { position: relative; width: 280px; min-width: 240px; flex: 0 0 auto; }
-/* 图库搜索框：缩小为原 60% 宽（280→168px） */
-.searchbox.gallery-search { width: 168px; min-width: 168px; }
+/* 图库搜索栏：默认折叠为右侧一个放大镜图标，点击后输入框从右向左 Q 弹展开 */
+.searchbox.gallery-search {
+  position: relative; width: auto; min-width: 0; margin-right: 2px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 0;
+}
+/* 放大镜图标钮（右侧，始终可见） */
+.searchbox.gallery-search .search-btn {
+  position: relative; z-index: 1; flex: none;
+  width: 30px; height: 30px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-3); cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.searchbox.gallery-search .search-btn:hover { color: var(--brand); background: var(--brand-weak); }
+.searchbox.gallery-search .search-btn:active { transform: scale(.92); }
+.searchbox.gallery-search .search-btn.open { color: var(--brand); background: var(--brand-weak); }
+/* 输入区：折叠时占零宽，展开时弹性弹出（scaleX 从右往左 + 过冲 Q 弹） */
+.searchbox.gallery-search .search-input-wrap {
+  width: 0; overflow: hidden; opacity: 0; transform: scaleX(0);
+  transform-origin: right center; pointer-events: none;
+  transition: width var(--dur-med) var(--ease-out), opacity var(--dur-fast) var(--ease-out), transform var(--dur-med) var(--ease-out);
+}
+.searchbox.gallery-search .search-input-wrap.open {
+  width: 160px; opacity: 1; pointer-events: auto;
+  animation: search-pop .42s cubic-bezier(.34, 1.56, .64, 1);
+}
+.searchbox.gallery-search .search-input-wrap input {
+  width: 160px; box-sizing: border-box; padding: 6px 10px 6px 12px;
+  border-radius: 8px; font-size: 13px;
+}
+@keyframes search-pop {
+  0%   { opacity: 0; transform: scaleX(0); }
+  55%  { opacity: 1; transform: scaleX(1.07); }
+  100% { opacity: 1; transform: scaleX(1); }
+}
 .searchbox input { padding-left: 30px; }
+@media (prefers-reduced-motion: reduce) {
+  .searchbox.gallery-search .search-input-wrap,
+  .searchbox.gallery-search .search-input-wrap.open,
+  .searchbox.gallery-search .search-btn,
+  .searchbox.gallery-search .search-btn:active { transition: none !important; animation: none !important; }
+}
 /* 固定统计文案宽度，避免模式切换时文案长度变化推动搜索框左右漂移 */
 .toolbar .summary { flex: 0 0 auto; width: 140px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .search-icon {
