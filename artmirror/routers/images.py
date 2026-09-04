@@ -122,7 +122,9 @@ def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
             "aiPrompt": meta.ai_prompt if meta else "",
             "reversePrompt": reverse.text if reverse else None,
             "tags": tags_by[im.id],
-            "thumb": f"api/images/{im.id}/thumb",
+            # thumb 按 id 寻址但配了 immutable 长缓存；同一 id 的图内容可变（覆盖/重新导入），
+            # 故 URL 需带内容版本（sha256 前 8 位），换图后 URL 变化才能绕过浏览器缓存拿到新缩略图
+            "thumb": f"api/images/{im.id}/thumb?v={im.sha256[:8]}" if im.sha256 else f"api/images/{im.id}/thumb",
         })
     return cards
 
