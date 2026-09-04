@@ -734,9 +734,9 @@ body.am-pv-open { overflow: hidden; }
   background: rgba(10, 14, 20, .62);
   -webkit-backdrop-filter: blur(10px) saturate(120%); backdrop-filter: blur(10px) saturate(120%);
 }
-/* 舞台卡片：深色底、大圆角、深邃投影，居中叠加（modal 保持中心 transform-origin） */
+/* 舞台卡片：深色底、大圆角、深邃投影，占据窗口 90%，居中叠加（modal 保持中心 transform-origin） */
 .pv-window {
-  position: relative; width: min(94vw, 1400px); height: min(88vh, 860px);
+  position: relative; width: 90vw; height: 90vh;
   border-radius: 18px; overflow: hidden;
   background: #0c0f14;
   border: 1px solid rgba(255, 255, 255, .1);
@@ -779,9 +779,13 @@ body.am-pv-open { overflow: hidden; }
 .pv-stage img {
   max-width: 100%; max-height: 100%; object-fit: contain;
   transform-origin: center center; will-change: transform;
+  /* 缩放（滚轮）平滑过渡：可中断、按逐帧重定位；拖拽平移时关闭保证跟手零延迟 */
+  transition: transform var(--dur-med) var(--ease-out);
 }
+.pv-stage.pv-drag img { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .pv, .pv.open, .pv-mask, .pv-window, .pv.open .pv-window, .pv-close { transition: none !important; }
+  .pv-stage img { transition: none !important; }
 }
 .progress > i { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width .3s; }
 .muted { color: var(--text-3); font-size: 12px; }
