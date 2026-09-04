@@ -94,9 +94,14 @@ def test_single_compress_overwrite():
         assert resp.status_code == 200
         data = resp.json()
         assert data["saved"] is True
-        assert data["new_file"] == str(src)
+        assert str(Path(data["new_file"]).suffix) == ".jpg"
         assert Path(data["new_file"]).is_file()
         assert Path(data["new_file"]).stat().st_size < original
+        # 覆盖后 DB 记录应立即指向新的 .jpg 文件
+        with Session(engine) as s:
+            im = s.get(ImageAsset, image_id)
+        assert im.abs_path == data["new_file"]
+        assert im.file_name == Path(data["new_file"]).name
 
 
 def test_batch_compress_raw_array_body():

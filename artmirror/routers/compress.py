@@ -84,25 +84,34 @@ def _compress_one(session: Session, im: ImageAsset) -> dict:
         }
 
     if mode == "overwrite":
-        # 先写临时文件确保能落盘 → 再备份原图到废纸篓 → 最后同卷原子替换，
-        # 避免写入失败导致原图丢失（数据丢失窗口）。
-        tmp = src.with_name(src.stem + ".comp.tmp")
+        # 输出统一 .jpg：先写临时文件 → 备份原图到废纸篓 → 同卷原子替换为目标 .jpg
+        target = src.with_suffix(".jpg")
+        tmp = target.with_name(target.stem + ".comp.tmp")
         try:
             tmp.write_bytes(data)
             _move_to_trash(src)
-            os.replace(tmp, src)
+            os.replace(tmp, target)
         except Exception:  # noqa: BLE001
             # 任一环节失败：尽量保证原图完好（仅当原路径已丢失且临时文件在时回填）
-            if tmp.exists() and not src.exists():
+            if tmp.exists() and not target.exists():
                 try:
-                    os.replace(tmp, src)
+                    os.replace(tmp, target)
                 except Exception:  # noqa: BLE001
                     pass
             raise
+        # 覆盖后立刻更新 DB 记录：名称/路径/大小，前端可即时展示
+        im.file_name = target.name
+        im.abs_path = str(target)
+        if target.is_file():
+            im.file_size = target.stat().st_size
+        session.add(im)
+        session.commit()
         watcher.bump()
         return {
             "id": im.id, "original": old, "compressed": len(data),
-            "saved": True, "new_file": str(src), "reason": "",
+            "saved": True, "new_file": str(target),
+            "name": target.name, "fileSize": target.stat().st_size if target.is_file() else len(data),
+            "reason": "",
         }
 
     # 默认 new：写入导入目录并注册为扫描根，后台扫描使其重新入库

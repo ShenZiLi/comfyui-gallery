@@ -296,6 +296,11 @@
       Api.compressImage(this.im.id).then(function (r) {
         self.compressing = false;
         if (r && r.saved) {
+          // 覆盖原图：立刻更新名称/大小，并强制详情大图重新加载覆盖后的 .jpg
+          if (r.name) self.im.name = r.name;
+          if (r.fileSize != null) self.im.fileSize = r.fileSize;
+          var img = document.querySelector(".detail-image img");
+          if (img) img.setAttribute("src", "api/images/" + self.im.id + "/file?v=" + Date.now());
           App.toast("压缩成功：原 " + App.fmtSize(r.original) + " → " + App.fmtSize(r.compressed));
         } else {
           App.toast((r && r.reason) || "压缩未生效");
