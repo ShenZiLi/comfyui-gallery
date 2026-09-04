@@ -689,7 +689,7 @@ html[data-theme="dark"] .nav-zone:hover .nav-btn { background: rgba(45, 56, 80, 
 
 /* 图片详情放大镜（4 倍，跟随鼠标）：固定层圆形取景，默认隐藏 */
 .magnifier {
-  position: fixed; z-index: 45; width: 240px; height: 240px; border-radius: 50%;
+  position: fixed; z-index: 45; width: 280px; height: 280px; border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, .96);
   box-shadow:
     0 0 0 9999px rgba(15, 23, 42, .28),
@@ -703,12 +703,6 @@ html[data-theme="dark"] .nav-zone:hover .nav-btn { background: rgba(45, 56, 80, 
 @keyframes magnifier-in {
   from { opacity: 0; transform: scale(.9); }
   to   { opacity: 1; transform: scale(1); }
-}
-/* 中心准星：极淡，辅助定位观察点 */
-.magnifier::after {
-  content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px;
-  border-radius: 50%; border: 1px solid rgba(15, 23, 42, .28);
-  transform: translate(-50%, -50%);
 }
 /* 放大镜开启时隐藏原生鼠标指针（由取景框代替） */
 .loupe-cursor { cursor: none; }
