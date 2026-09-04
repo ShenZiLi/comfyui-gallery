@@ -11,7 +11,7 @@ from starlette.responses import Response
 
 from .config import settings
 from .database import init_db, get_session, reset_engine
-from .routers import aggregate, folders, fs, images, settings as settings_router, sync, tags
+from .routers import aggregate, compress, folders, fs, images, settings as settings_router, sync, tags
 from .services import watcher, meta_service
 
 
@@ -52,6 +52,7 @@ def create_app(data_dir: str | None = None, frontend_dir: str | None = None) -> 
         settings_router.router,
         fs.router,
         sync.router,
+        compress.router,
     ):
         app.include_router(r)
 

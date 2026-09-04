@@ -36,6 +36,25 @@ def _set(session: Session, key: str, value: str) -> None:
         row.value = value
 
 
+def _compress_quality(session: Session) -> int:
+    """读取 JPG 压缩质量（1–100，默认 80）。"""
+    raw = _get(session, "compress_quality")
+    try:
+        q = int(raw or 80)
+    except (TypeError, ValueError):
+        q = 80
+    return max(1, min(100, q))
+
+
+def _compress_quality_from(value) -> int:
+    """把前端传来的质量值归一化到 1–100，非法时用默认 80。"""
+    try:
+        q = int(value)
+    except (TypeError, ValueError):
+        q = 80
+    return max(1, min(100, q))
+
+
 def _role_config(session: Session, role: str) -> dict:
     """读取某个模型角色的配置。"""
     cfg = {}
@@ -147,6 +166,8 @@ def get_settings(session: Session = Depends(get_session)):
         "importDir": _get(session, "import_dir"),
         "prompts": prompts,
         "prompt_defaults": prompt_defaults,
+        "compressMode": _get(session, "compress_mode") or "new",
+        "compressQuality": _compress_quality(session),
     }
 
 
@@ -181,6 +202,10 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                 scanner.save_scan_roots(session, [str(r) for r in roots])
         else:
             _set(session, "import_dir", "")
+    if body.get("compressMode") is not None:
+        _set(session, "compress_mode", "new" if str(body["compressMode"]).strip() == "new" else "overwrite")
+    if body.get("compressQuality") is not None:
+        _set(session, "compress_quality", str(_compress_quality_from(body["compressQuality"])))
     session.commit()
 
     result = {"saved": True}

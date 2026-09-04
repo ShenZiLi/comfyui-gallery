@@ -29,6 +29,8 @@
   <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张">
     <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
   </div>
+  <!-- 放大镜（4 倍）：跟随鼠标，放大图片细节 -->
+  <div class="magnifier" aria-hidden="true"></div>
   <div class="detail-layout" :class="ratioClass()">
     <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
@@ -37,7 +39,13 @@
           <span x-text="im.name" :data-tip="im.absPath || im.path" @click="copy(im.absPath || im.path)"
                 style="font-weight:600;font-size:13px;cursor:pointer;user-select:none"></span>
           <span class="muted" x-text="fmt(im)" style="font-size:12px"></span>
+          <button class="btn sm" @click="compress()" :disabled="compressing">
+            <span x-text="compressing ? '压缩中…' : '压缩'"></span>
+          </button>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+            <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜 / 双击图片预览" @click="toggleMagnify()">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+            </button>
             <button class="icon-btn" data-tip="复制图片" @click="copyImage()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
             </button>
@@ -51,7 +59,7 @@
           </div>
         </div>
       </div>
-      <div style="position:relative">
+      <div style="position:relative" :class="{loupe-cursor: magnify}" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()" @click="magnifyClick()" @dblclick="openPreview()">
         <img :src="'api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
     </div>
@@ -158,6 +166,21 @@
     </div>
   </div>
 
+  <!-- 图片预览弹窗（双击大图触发）：拖拽平移 / 滚轮缩放 / 右上角关闭 -->
+  <div class="pv" :class="{open: previewOpen}" x-cloak @keydown.escape.window="closePreview()">
+    <div class="pv-mask" @click="closePreview()"></div>
+    <div class="pv-window">
+      <button class="pv-close" @click="closePreview()" aria-label="关闭预览" title="关闭">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+      <div class="pv-stage" :class="{'pv-drag': pvDragging}"
+           @pointerdown="pvDown($event)" @pointermove="pvMove($event)" @pointerup="pvUp($event)" @pointercancel="pvUp($event)"
+           @wheel.prevent="pvWheel($event)" @dblclick="closePreview()" @touch-action.passive="true">
+        <img :src="'api/images/'+curId+'/file'" :alt="(im && im.name) || ''" draggable="false" :style="pvStyle()" />
+      </div>
+    </div>
+  </div>
+
   <!-- 删除二次确认弹窗 -->
   <div class="modal-mask" x-show="delTarget" x-cloak @keydown.escape.window="delTarget=null">
     <div class="modal" style="max-width:400px">
@@ -199,8 +222,12 @@
     delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trTexts: [],
     trIng: false, trLang: "",
+    compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
     navIds: [], navIdx: -1, curId: null,
+    magnify: false,
+    previewOpen: false, pvScale: 1, pvX: 0, pvY: 0,
+    pvDragging: false, pvSX: 0, pvSY: 0, pvBX: 0, pvBY: 0,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
@@ -225,6 +252,7 @@
       // 切图后清空瞬态交互状态
       this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
+      this.compressing = false;
       this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
@@ -257,7 +285,7 @@
     },
     canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
     canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
-    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3); },
+    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.fileSize); },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
       var im = this.im; if (!im) return "portrait";
@@ -283,6 +311,96 @@
       var a = document.createElement("a");
       a.href = "api/images/" + im.id + "/file";
       a.download = im.name || "image.png"; a.click();
+    },
+    compress() {
+      var self = this;
+      if (!this.im || this.compressing) return;
+      this.compressing = true;
+      Api.compressImage(this.im.id).then(function (r) {
+        self.compressing = false;
+        if (r && r.saved) {
+          // 覆盖原图：立刻更新名称/大小，并强制详情大图重新加载覆盖后的 .jpg
+          if (r.name) self.im.name = r.name;
+          if (r.fileSize != null) self.im.fileSize = r.fileSize;
+          var img = document.querySelector(".detail-image img");
+          if (img) img.setAttribute("src", "api/images/" + self.im.id + "/file?v=" + Date.now());
+          App.toast("压缩成功：原 " + App.fmtSize(r.original) + " → " + App.fmtSize(r.compressed));
+        } else {
+          App.toast((r && r.reason) || "压缩未生效");
+        }
+      }).catch(function (e) {
+        self.compressing = false;
+        App.toast("压缩失败：" + ((e && e.message) || e));
+      });
+    },
+    // ===== 放大镜（4 倍，跟随鼠标） =====
+    toggleMagnify() {
+      this.magnify = !this.magnify;
+      document.body.classList.toggle("am-loupe", this.magnify);
+      if (!this.magnify) this.magnifyHide();
+    },
+    magnifyClick() {
+      // 放大镜状态下点击图片：自动退出放大镜
+      if (this.magnify) this.toggleMagnify();
+    },
+    magnifyMove(e) {
+      if (!this.magnify) return;
+      var img = document.querySelector(".detail-image img");
+      var mag = document.querySelector(".magnifier");
+      if (!img || !mag || !this.curId) return;
+      var rect = img.getBoundingClientRect();
+      var ux = e.clientX - rect.left, uy = e.clientY - rect.top;
+      if (ux < 0 || uy < 0 || ux > rect.width || uy > rect.height) return;
+      var L = (mag.offsetWidth) || 240, ZOOM = 4;
+      mag.style.backgroundImage = "url('api/images/" + this.curId + "/file')";
+      mag.style.backgroundSize = (rect.width * ZOOM) + "px " + (rect.height * ZOOM) + "px";
+      mag.style.backgroundPosition = (L / 2 - ZOOM * ux) + "px " + (L / 2 - ZOOM * uy) + "px";
+      var left = e.clientX + 26 - L / 2, top = e.clientY + 26 - L / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - L - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
+      mag.style.left = left + "px";
+      mag.style.top = top + "px";
+    },
+    magnifyShow() {
+      if (!this.magnify) return;
+      var mag = document.querySelector(".magnifier");
+      if (mag) mag.classList.add("on");
+    },
+    magnifyHide() {
+      var mag = document.querySelector(".magnifier");
+      if (mag) mag.classList.remove("on");
+    },
+    // ===== 图片预览弹窗（双击大图触发）：拖拽平移 / 滚轮缩放 =====
+    openPreview() {
+      this.pvScale = 1; this.pvX = 0; this.pvY = 0; this.pvDragging = false;
+      this.previewOpen = true;
+      document.body.classList.add("am-pv-open");
+    },
+    closePreview() {
+      this.previewOpen = false; this.pvDragging = false;
+      document.body.classList.remove("am-pv-open");
+    },
+    pvStyle() {
+      return "transform: translate(" + this.pvX + "px, " + this.pvY + "px) scale(" + this.pvScale + ")";
+    },
+    pvDown(e) {
+      if (e.button !== 0) return;
+      this.pvDragging = true;
+      this.pvSX = e.clientX; this.pvSY = e.clientY;
+      this.pvBX = this.pvX; this.pvBY = this.pvY;
+      if (e.currentTarget && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    },
+    pvMove(e) {
+      if (!this.pvDragging) return;
+      this.pvX = this.pvBX + (e.clientX - this.pvSX);
+      this.pvY = this.pvBY + (e.clientY - this.pvSY);
+    },
+    pvUp() { this.pvDragging = false; },
+    pvWheel(e) {
+      var d = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      this.pvScale = Math.max(1, Math.min(8, this.pvScale * d));
+      if (this.pvScale === 1) { this.pvX = 0; this.pvY = 0; }
     },
     goGallery() {
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航

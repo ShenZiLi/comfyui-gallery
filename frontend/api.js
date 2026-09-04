@@ -15,7 +15,8 @@
     return fetch(path, init).then(function (r) {
       if (!r.ok) {
         return r.json().catch(function () { return {}; }).then(function (body) {
-          var msg = (body && body.detail) || ("HTTP " + r.status);
+          var msg = body && body.detail;
+          if (typeof msg !== "string") msg = msg ? JSON.stringify(msg) : ("HTTP " + r.status);
           throw new Error(msg);
         });
       }
@@ -102,6 +103,18 @@
       });
     },
 
+    compressImage: function (id) {
+      return req("api/images/" + id + "/compress", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+
+    batchCompress: function (ids) {
+      return req("api/images/batch-compress", { method: "POST", body: ids }).catch(function (e) {
+        throw e;
+      });
+    },
+
     deleteImage: function (id) {
       return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
         throw e;
@@ -179,7 +192,7 @@
     getSettings: function () {
       return req("api/settings").catch(function () {
         Api._fallback = true;
-        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" } });
+        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" }, compressMode: "new", compressQuality: 80 });
       });
     },
 

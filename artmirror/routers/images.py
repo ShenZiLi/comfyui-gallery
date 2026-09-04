@@ -122,7 +122,9 @@ def to_cards(session: Session, images: list[ImageAsset]) -> list[dict]:
             "aiPrompt": meta.ai_prompt if meta else "",
             "reversePrompt": reverse.text if reverse else None,
             "tags": tags_by[im.id],
-            "thumb": f"api/images/{im.id}/thumb",
+            # thumb 按 id 寻址但配了 immutable 长缓存；同一 id 的图内容可变（覆盖/重新导入），
+            # 故 URL 需带内容版本（sha256 前 8 位），换图后 URL 变化才能绕过浏览器缓存拿到新缩略图
+            "thumb": f"api/images/{im.id}/thumb?v={im.sha256[:8]}" if im.sha256 else f"api/images/{im.id}/thumb",
         })
     return cards
 
@@ -275,11 +277,15 @@ def _filter_images(session: Session, folder_id, tag, q):
 
 
 def _order_for(sort: str) -> list:
-    """排序键列表：主键 + id 兜底，保证并列值下 offset 分页确定性。"""
+    """排序键列表：主键 + id 兜底，保证并列值下 offset 分页确定性。
+
+    time：按图片更新时间倒序。手动导入的单张图片为最新入库（update_time＝now），
+    在时间倒序下自然位于列表最前；以 id 兜底保证同一时刻并列时确定有序。
+    """
     if sort == "manual":
         return [ImageAsset.rating.desc().nullslast(), ImageAsset.id.desc()]
     if sort == "time":
-        return [ImageAsset.id.desc()]
+        return [ImageAsset.update_time.desc(), ImageAsset.id.desc()]
     return [ImageAsset.ai_rating.desc().nullslast(), ImageAsset.id.desc()]
 
 

@@ -77,6 +77,10 @@
         <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
         </button>
+        <button class="icon-btn" data-tip="批量压缩选中图片" x-show="mode!=='aggregate'" x-cloak
+                :class="{active: selCount()>0}" :disabled="selCount()===0" @click="batchCompress()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 3v4h4"/></svg>
+        </button>
         <!-- 批量删除（平铺/沉浸）：空白处拖动框选多图后可用 -->
         <button class="icon-btn danger batch-del-btn" data-tip="删除选中图片" x-show="mode!=='aggregate'" x-cloak
                 :class="{active: selCount()>0}" :disabled="selCount()===0" @click="reqBatchDelete()">
@@ -93,7 +97,7 @@
 
       <span class="nav-spacer"></span>
 
-      <div class="searchbox">
+      <div class="searchbox gallery-search">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         <input type="text" placeholder="搜索提示词 / 模型…" x-model="q"
                @keyup.debounce.300ms="search()" />
@@ -125,7 +129,8 @@
       <template x-for="im in images" :key="im.id">
         <div class="card img-card" :class="{'selected': isSel(im)}" :data-id="im.id">
           <div class="thumb-wrap" @click="open(im.id)">
-            <img :src="im.thumb" :alt="im.name" loading="lazy"
+            <img :src="im.thumb" :alt="im.name" loading="lazy" draggable="true"
+                 @dragstart="dragOut($event, im)"
                  :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
                  :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" />
           </div>
@@ -545,7 +550,6 @@
       else this.loadImages();
       Api.listFolders().then(function (f) { self.folders = f; });
       Api.listTags().then(function (t) { self.tags = t; });
-      App.toast("已刷新");
     },
     allTags() { return this.tags; },
     // 下拉框只显示有图片且未隐藏的目录（与设置页「已隐藏」同步）
@@ -943,6 +947,14 @@
       return this.groups.filter(g => g.title.toLowerCase().indexOf(q) >= 0);
     },
     mark(text) { return App.highlight(text, this.q ? [this.q] : []); },
+    // 拖拽图片到页面外（桌面/文件夹）：默认拖出的是 webp 缩略图，
+    // 这里通过 DownloadURL 把载荷指向原图文件，保证拖出得到的是原图。
+    dragOut(ev, im) {
+      if (!ev.dataTransfer) return;
+      var url = new URL("api/images/" + im.id + "/file", location.href).href;
+      ev.dataTransfer.setData("DownloadURL",
+        "application/octet-stream:" + (im.name || "image") + ":" + url);
+    },
     download(im) {
       var a = document.createElement("a");
       a.href = "api/images/" + im.id + "/file";
@@ -1044,6 +1056,28 @@
     reqBatchDelete() {
       if (this.mode === "aggregate" || !this.selIds.length) return;
       this.batchDelCount = this.selIds.length;
+    },
+    batchCompress() {
+      var ids = this.selIds.slice();
+      if (!ids.length) return;
+      var self = this;
+      App.toast("正在压缩 " + ids.length + " 张…");
+      Api.batchCompress(ids).then(function (r) {
+        var saved = (r && r.saved_count) || 0;
+        var total = (r && r.total) || ids.length;
+        // 汇总各成功条目的节省大小（original - compressed）
+        var savedBytes = 0;
+        (r && r.results || []).forEach(function (it) {
+          if (it && it.saved && it.original >= 0 && it.compressed >= 0) savedBytes += (it.original - it.compressed);
+        });
+        self.clearSel();
+        App.toast("压缩完成：成功 " + saved + " / " + total + " · 总节省 " + App.fmtSize(savedBytes));
+        // 存新图（compress_mode=new）会有新文件入库，存新图时刷新图库可见
+        if (saved && self.mode !== "aggregate") self.manualRefresh();
+      }).catch(function (e) {
+        self.clearSel();
+        App.toast("压缩失败：" + ((e && e.message) || e));
+      });
     },
     closeDel() { this.delTarget = null; this.batchDelCount = 0; },
     retryImport() {

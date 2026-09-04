@@ -75,6 +75,28 @@
       </div>
     </div>
 
+    <!-- JPG 有损压缩 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">JPG 压缩</h3>
+      <p class="muted">JPG 有损压缩，会丢失图片工作流信息</p>
+      <label class="field">
+        <span>压缩结果处理</span>
+        <select x-model="cfg.compressMode" @change="saveCompress()">
+          <option value="new">存为新图</option>
+          <option value="overwrite">覆盖原图</option>
+        </select>
+      </label>
+      <label class="field">
+        <span style="display:flex;justify-content:space-between;align-items:center">
+          <span>JPG 质量</span>
+          <b x-text="cfg.compressQuality"></b>
+        </span>
+        <input type="range" min="60" max="95" step="1" x-model="cfg.compressQuality"
+               @change="saveCompress()" style="width:100%" />
+        <span class="muted">质量越高体积越大画质越好；默认 80。透明区域会填为白色。</span>
+      </label>
+    </div>
+
     <!-- 大模型配置（按角色混搭厂商） -->
     <div class="card pad">
       <h3 style="margin-top:0">大模型</h3>
@@ -214,6 +236,8 @@
     cfg: {
       scanRoots: [],
       importDir: "",
+      compressMode: "new",
+      compressQuality: 80,
       prompts: { reverse: "", score: "", translate: "", analyze: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
@@ -250,6 +274,8 @@
       Api.getSettings().then(function (s) {
         self.cfg.scanRoots = s.scanRoots || [];
         self.cfg.importDir = s.importDir || "";
+        self.cfg.compressMode = s.compressMode || "new";
+        self.cfg.compressQuality = (s.compressQuality != null && s.compressQuality >= 1) ? s.compressQuality : 80;
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
         ["reverse", "score", "translate", "analyze"].forEach(function (k) {
@@ -431,6 +457,17 @@
       var v = (this.cfg.importDir || "").trim();
       Api.updateSettings({ importDir: v }).catch(function (e) {
         self.doneMsg = "保存失败：" + ((e && e.message) || e);
+      });
+    },
+
+    // ---- JPG 压缩设置 ----
+    saveCompress() {
+      var self = this;
+      Api.updateSettings({
+        compressMode: this.cfg.compressMode,
+        compressQuality: this.cfg.compressQuality,
+      }).catch(function (e) {
+        self.doneMsg = "压缩设置保存失败：" + ((e && e.message) || e);
       });
     },
 
