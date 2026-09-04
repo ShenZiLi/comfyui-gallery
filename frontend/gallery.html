@@ -1066,8 +1066,13 @@
       Api.batchCompress(ids).then(function (r) {
         var saved = (r && r.saved_count) || 0;
         var total = (r && r.total) || ids.length;
+        // 汇总各成功条目的节省大小（original - compressed）
+        var savedBytes = 0;
+        (r && r.results || []).forEach(function (it) {
+          if (it && it.saved && it.original >= 0 && it.compressed >= 0) savedBytes += (it.original - it.compressed);
+        });
         self.clearSel();
-        App.toast("压缩完成：成功 " + saved + " / " + total);
+        App.toast("压缩完成：成功 " + saved + " / " + total + " · 总节省 " + App.fmtSize(savedBytes));
         // 存新图（compress_mode=new）会有新文件入库，存新图时刷新图库可见
         if (saved && self.mode !== "aggregate") self.manualRefresh();
       }).catch(function (e) {
