@@ -108,6 +108,12 @@
       });
     },
 
+    batchCompress: function (ids) {
+      return req("api/images/batch-compress", { method: "POST", body: { ids: ids } }).catch(function (e) {
+        throw e;
+      });
+    },
+
     deleteImage: function (id) {
       return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
         throw e;

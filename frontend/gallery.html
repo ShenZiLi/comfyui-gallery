@@ -77,6 +77,10 @@
         <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
         </button>
+        <button class="icon-btn" data-tip="批量压缩选中图片" x-show="mode!=='aggregate'" x-cloak
+                :class="{active: selCount()>0}" :disabled="selCount()===0" @click="batchCompress()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><rect x="3" y="17" width="18" height="4" rx="1"/></svg>
+        </button>
         <!-- 批量删除（平铺/沉浸）：空白处拖动框选多图后可用 -->
         <button class="icon-btn danger batch-del-btn" data-tip="删除选中图片" x-show="mode!=='aggregate'" x-cloak
                 :class="{active: selCount()>0}" :disabled="selCount()===0" @click="reqBatchDelete()">
@@ -1053,6 +1057,23 @@
     reqBatchDelete() {
       if (this.mode === "aggregate" || !this.selIds.length) return;
       this.batchDelCount = this.selIds.length;
+    },
+    batchCompress() {
+      var ids = this.selIds.slice();
+      if (!ids.length) return;
+      var self = this;
+      App.toast("正在压缩 " + ids.length + " 张…");
+      Api.batchCompress(ids).then(function (r) {
+        var saved = (r && r.saved_count) || 0;
+        var total = (r && r.total) || ids.length;
+        self.clearSel();
+        App.toast("压缩完成：成功 " + saved + " / " + total);
+        // 存新图（compress_mode=new）会有新文件入库，存新图时刷新图库可见
+        if (saved && self.mode !== "aggregate") self.manualRefresh();
+      }).catch(function (e) {
+        self.clearSel();
+        App.toast("压缩失败：" + ((e && e.message) || e));
+      });
     },
     closeDel() { this.delTarget = null; this.batchDelCount = 0; },
     retryImport() {
