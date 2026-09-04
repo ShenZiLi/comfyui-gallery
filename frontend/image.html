@@ -43,7 +43,7 @@
             <span x-text="compressing ? '压缩中…' : '压缩'"></span>
           </button>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
-            <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜（4 倍）" @click="toggleMagnify()">
+            <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜 / 双击图片预览" @click="toggleMagnify()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
             </button>
             <button class="icon-btn" data-tip="复制图片" @click="copyImage()">
