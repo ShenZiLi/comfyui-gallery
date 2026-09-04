@@ -147,6 +147,8 @@ def get_settings(session: Session = Depends(get_session)):
         "importDir": _get(session, "import_dir"),
         "prompts": prompts,
         "prompt_defaults": prompt_defaults,
+        "compressMode": _get(session, "compress_mode") or "new",
+        "compressKeepMeta": _get(session, "compress_keep_meta") or "true",
     }
 
 
@@ -181,6 +183,10 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                 scanner.save_scan_roots(session, [str(r) for r in roots])
         else:
             _set(session, "import_dir", "")
+    if body.get("compressMode") is not None:
+        _set(session, "compress_mode", "new" if str(body["compressMode"]).strip() == "new" else "overwrite")
+    if body.get("compressKeepMeta") is not None:
+        _set(session, "compress_keep_meta", "true" if str(body["compressKeepMeta"]).lower() in ("true", "1") else "false")
     session.commit()
 
     result = {"saved": True}

@@ -75,6 +75,26 @@
       </div>
     </div>
 
+    <!-- PNG 无损压缩 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">PNG 无损压缩</h3>
+      <p class="muted">对图片执行 PNG 无损压缩，去掉多余压缩开销但保持画质不变，自动保存。</p>
+      <label class="field">
+        <span>压缩结果处理</span>
+        <select x-model="cfg.compressMode" @change="saveCompress()">
+          <option value="new">存为新图（入库展示）</option>
+          <option value="overwrite">覆盖原图</option>
+        </select>
+      </label>
+      <label class="field">
+        <span style="display:inline-flex;align-items:center;gap:8px">
+          <input type="checkbox" x-model="cfg.compressKeepMeta" style="width:auto" @change="saveCompress()" />
+          保留内嵌工作流信息（workflow / 提示词）
+        </span>
+        <span class="muted">关闭可压得更小，但会剥离文件内的工作流/提示词文本块（覆盖模式时尤需注意）。</span>
+      </label>
+    </div>
+
     <!-- 大模型配置（按角色混搭厂商） -->
     <div class="card pad">
       <h3 style="margin-top:0">大模型</h3>
@@ -214,6 +234,8 @@
     cfg: {
       scanRoots: [],
       importDir: "",
+      compressMode: "new",
+      compressKeepMeta: true,
       prompts: { reverse: "", score: "", translate: "", analyze: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
@@ -250,6 +272,8 @@
       Api.getSettings().then(function (s) {
         self.cfg.scanRoots = s.scanRoots || [];
         self.cfg.importDir = s.importDir || "";
+        self.cfg.compressMode = s.compressMode || "new";
+        self.cfg.compressKeepMeta = s.compressKeepMeta === "true" || s.compressKeepMeta === "1";
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
         ["reverse", "score", "translate", "analyze"].forEach(function (k) {
@@ -431,6 +455,17 @@
       var v = (this.cfg.importDir || "").trim();
       Api.updateSettings({ importDir: v }).catch(function (e) {
         self.doneMsg = "保存失败：" + ((e && e.message) || e);
+      });
+    },
+
+    // ---- PNG 无损压缩设置 ----
+    saveCompress() {
+      var self = this;
+      Api.updateSettings({
+        compressMode: this.cfg.compressMode,
+        compressKeepMeta: this.cfg.compressKeepMeta ? "true" : "false",
+      }).catch(function (e) {
+        self.doneMsg = "压缩设置保存失败：" + ((e && e.message) || e);
       });
     },
 
