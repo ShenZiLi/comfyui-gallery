@@ -29,6 +29,8 @@
   <div class="nav-zone next" x-cloak x-show="canNext()" @click="goNext()" title="下一张">
     <span class="nav-btn"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
   </div>
+  <!-- 放大镜（4 倍）：跟随鼠标，放大图片细节 -->
+  <div class="magnifier" aria-hidden="true"></div>
   <div class="detail-layout" :class="ratioClass()">
     <!-- 大图：用原图展示以保证清晰度（信息栏置顶） -->
     <div class="detail-image card">
@@ -41,6 +43,9 @@
             <span x-text="compressing ? '压缩中…' : '压缩'"></span>
           </button>
           <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+            <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜（4 倍）" @click="toggleMagnify()">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+            </button>
             <button class="icon-btn" data-tip="复制图片" @click="copyImage()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
             </button>
@@ -54,7 +59,7 @@
           </div>
         </div>
       </div>
-      <div style="position:relative">
+      <div style="position:relative;cursor:none" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()">
         <img :src="'api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
     </div>
@@ -205,6 +210,7 @@
     compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
     navIds: [], navIdx: -1, curId: null,
+    magnify: false,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
@@ -309,6 +315,39 @@
         self.compressing = false;
         App.toast("压缩失败：" + ((e && e.message) || e));
       });
+    },
+    // ===== 放大镜（4 倍，跟随鼠标） =====
+    toggleMagnify() {
+      this.magnify = !this.magnify;
+      if (!this.magnify) this.magnifyHide();
+    },
+    magnifyMove(e) {
+      if (!this.magnify) return;
+      var img = document.querySelector(".detail-image img");
+      var mag = document.querySelector(".magnifier");
+      if (!img || !mag || !this.curId) return;
+      var rect = img.getBoundingClientRect();
+      var ux = e.clientX - rect.left, uy = e.clientY - rect.top;
+      if (ux < 0 || uy < 0 || ux > rect.width || uy > rect.height) return;
+      var L = 190, ZOOM = 4;
+      mag.style.backgroundImage = "url('api/images/" + this.curId + "/file')";
+      mag.style.backgroundSize = (rect.width * ZOOM) + "px " + (rect.height * ZOOM) + "px";
+      mag.style.backgroundPosition = (L / 2 - ZOOM * ux) + "px " + (L / 2 - ZOOM * uy) + "px";
+      var left = e.clientX + 26 - L / 2, top = e.clientY + 26 - L / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - L - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
+      mag.style.left = left + "px";
+      mag.style.top = top + "px";
+      mag.style.display = "block";
+    },
+    magnifyShow() {
+      if (!this.magnify) return;
+      var mag = document.querySelector(".magnifier");
+      if (mag) mag.style.display = "block";
+    },
+    magnifyHide() {
+      var mag = document.querySelector(".magnifier");
+      if (mag) mag.style.display = "none";
     },
     goGallery() {
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航
