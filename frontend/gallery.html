@@ -605,34 +605,57 @@
     // 列数控制：放大=减列（更宽），缩小=加列（更窄），1-10 列并持久化；只影响当前模式
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
-    // ===== 放大镜（4 倍，跟随鼠标；与详情页共用 .magnifier 样式） =====
+    // ===== 放大镜（4 倍，全页跟随鼠标；与详情页共用 .magnifier 圆形窗口） =====
     toggleMagnify() {
       this.magnify = !this.magnify;
       document.body.classList.toggle("am-loupe", this.magnify);
-      if (!this.magnify) this.gallMagnifyHide();
+      if (this.magnify) { this._buildLoupe(); }
+      else { this.gallMagnifyHide(); this._clearLoupe(); }
+    },
+    // 构建整页缩放副本：克隆当前页面内容，放入圆形取景窗口（排除取景窗自身与浮层）
+    _buildLoupe() {
+      var mag = document.querySelector(".magnifier");
+      if (!mag) return;
+      var inner = mag.querySelector(".loupe-inner");
+      if (!inner) { inner = document.createElement("div"); inner.className = "loupe-inner"; mag.appendChild(inner); }
+      inner.innerHTML = "";
+      var clone = document.body.cloneNode(true);
+      clone.classList.remove("am-loupe");
+      // 剔除取景窗本身、气泡、框选盒等运行期浮层，避免无限递归/残留
+      clone.querySelectorAll(".magnifier, .am-tip-bubble, .am-select-box").forEach(function (n) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      });
+      inner.appendChild(clone);
+      var de = document.documentElement;
+      inner.style.width = Math.max(de.scrollWidth, window.innerWidth) + "px";
+      inner.style.height = Math.max(de.scrollHeight, window.innerHeight) + "px";
+    },
+    _clearLoupe() {
+      var mag = document.querySelector(".magnifier");
+      var inner = mag && mag.querySelector(".loupe-inner");
+      if (inner) inner.innerHTML = "";
     },
     gallMagnifyMove(e) {
       if (!this.magnify) return;
-      var img = e.target && e.target.closest ? e.target.closest(".thumb-wrap img, .cover-row img, .member-grid img") : null;
       var mag = document.querySelector(".magnifier");
-      if (!img || !mag) { this.gallMagnifyHide(); return; }
-      var rect = img.getBoundingClientRect();
-      var ux = e.clientX - rect.left, uy = e.clientY - rect.top;
-      if (rect.width <= 0 || rect.height <= 0 || ux < 0 || uy < 0 || ux > rect.width || uy > rect.height) {
-        this.gallMagnifyHide(); return;
-      }
-      var L = mag.offsetWidth || 240, ZOOM = 4;
-      // 优先用原图保证清晰度（缩略图高清替换后 currentSrc 即原图）
-      var src = img.getAttribute("data-orig") || img.currentSrc || img.src;
-      mag.style.backgroundImage = "url('" + src + "')";
-      mag.style.backgroundSize = (rect.width * ZOOM) + "px " + (rect.height * ZOOM) + "px";
-      mag.style.backgroundPosition = (L / 2 - ZOOM * ux) + "px " + (L / 2 - ZOOM * uy) + "px";
+      var inner = mag && mag.querySelector(".loupe-inner");
+      if (!mag || !inner) { this.gallMagnifyHide(); return; }
+      var L = mag.offsetWidth || 500, ZOOM = 4;
       var left = e.clientX + 26 - L / 2, top = e.clientY + 26 - L / 2;
       left = Math.max(8, Math.min(left, window.innerWidth - L - 8));
       top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
       mag.style.left = left + "px";
       mag.style.top = top + "px";
       mag.classList.add("on");
+      // inner 原点对齐视口左上（local = 屏幕坐标）；将光标下内容点映射到取景窗中心，4 倍缩放
+      var sx = window.pageXOffset || 0, sy = window.pageYOffset || 0;
+      var cx = left + L / 2, cy = top + L / 2;
+      var bl = mag.clientLeft || 0, bt = mag.clientTop || 0;
+      inner.style.left = (-(left + bl)) + "px";
+      inner.style.top = (-(top + bt)) + "px";
+      inner.style.transformOrigin = "0 0";
+      inner.style.transform =
+        "scale(" + ZOOM + ") translate(" + (cx - ZOOM * (e.clientX + sx)) + "px, " + (cy - ZOOM * (e.clientY + sy)) + "px)";
     },
     gallMagnifyHide() {
       var mag = document.querySelector(".magnifier");
