@@ -75,10 +75,10 @@
       </div>
     </div>
 
-    <!-- PNG 无损压缩 -->
+    <!-- JPG 有损压缩 -->
     <div class="card pad">
-      <h3 style="margin-top:0">PNG 无损压缩</h3>
-      <p class="muted">对图片执行 PNG 无损压缩，去掉多余压缩开销但保持画质不变，自动保存。</p>
+      <h3 style="margin-top:0">JPG 压缩</h3>
+      <p class="muted">将图片转为 JPG 有损压缩（透明区域以白色填充），体积明显下降、画质随质量可调，自动保存。</p>
       <label class="field">
         <span>压缩结果处理</span>
         <select x-model="cfg.compressMode" @change="saveCompress()">
@@ -87,11 +87,13 @@
         </select>
       </label>
       <label class="field">
-        <span style="display:inline-flex;align-items:center;gap:8px">
-          <input type="checkbox" x-model="cfg.compressKeepMeta" style="width:auto" @change="saveCompress()" />
-          保留内嵌工作流信息（workflow / 提示词）
+        <span style="display:flex;justify-content:space-between;align-items:center">
+          <span>JPG 质量</span>
+          <b x-text="cfg.compressQuality"></b>
         </span>
-        <span class="muted">关闭可压得更小，但会剥离文件内的工作流/提示词文本块（覆盖模式时尤需注意）。</span>
+        <input type="range" min="60" max="95" step="1" x-model="cfg.compressQuality"
+               @change="saveCompress()" style="width:100%" />
+        <span class="muted">质量越高体积越大画质越好；默认 80。透明区域会填为白色。</span>
       </label>
     </div>
 
@@ -235,7 +237,7 @@
       scanRoots: [],
       importDir: "",
       compressMode: "new",
-      compressKeepMeta: true,
+      compressQuality: 80,
       prompts: { reverse: "", score: "", translate: "", analyze: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
@@ -273,7 +275,7 @@
         self.cfg.scanRoots = s.scanRoots || [];
         self.cfg.importDir = s.importDir || "";
         self.cfg.compressMode = s.compressMode || "new";
-        self.cfg.compressKeepMeta = s.compressKeepMeta === "true" || s.compressKeepMeta === "1";
+        self.cfg.compressQuality = (s.compressQuality != null && s.compressQuality >= 1) ? s.compressQuality : 80;
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
         ["reverse", "score", "translate", "analyze"].forEach(function (k) {
@@ -458,12 +460,12 @@
       });
     },
 
-    // ---- PNG 无损压缩设置 ----
+    // ---- JPG 压缩设置 ----
     saveCompress() {
       var self = this;
       Api.updateSettings({
         compressMode: this.cfg.compressMode,
-        compressKeepMeta: this.cfg.compressKeepMeta ? "true" : "false",
+        compressQuality: this.cfg.compressQuality,
       }).catch(function (e) {
         self.doneMsg = "压缩设置保存失败：" + ((e && e.message) || e);
       });
