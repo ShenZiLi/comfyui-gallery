@@ -27,8 +27,8 @@ def _get(session: Session, key: str) -> str | None:
 
 
 def _import_dir(session: Session) -> Path:
-    """导入保存目录：优先配置项，未配则默认 data/import。"""
-    cfg = _get(session, "compress_import_dir")
+    """导入保存目录：优先设置页配置项 import_dir，未配则默认 data/import。"""
+    cfg = _get(session, "import_dir")
     if cfg:
         return Path(cfg)
     return Path(settings.data_dir) / "import"
