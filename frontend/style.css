@@ -237,6 +237,8 @@ html[data-theme="dark"] .am-toast { background: rgba(255,255,255,.85); color: #1
 
 /* ===== 输入检索 ===== */
 .searchbox { position: relative; width: 280px; min-width: 240px; flex: 0 0 auto; }
+/* 图库搜索框：缩小为原 60% 宽（280→168px） */
+.searchbox.gallery-search { width: 168px; min-width: 168px; }
 .searchbox input { padding-left: 30px; }
 /* 固定统计文案宽度，避免模式切换时文案长度变化推动搜索框左右漂移 */
 .toolbar .summary { flex: 0 0 auto; width: 140px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
