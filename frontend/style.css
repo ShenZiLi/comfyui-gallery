@@ -216,6 +216,7 @@ label.field > span { display: block; margin-bottom: 5px; color: var(--text-2); f
   transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 .icon-btn:hover { color: var(--brand); background: var(--brand-weak); }
+.icon-btn.active { color: var(--brand); background: var(--brand-weak); }
 .icon-btn:active { transform: scale(.92); }
 .icon-btn.spin svg { animation: am-spin 1s linear infinite; }
 @keyframes am-spin { to { transform: rotate(360deg); } }

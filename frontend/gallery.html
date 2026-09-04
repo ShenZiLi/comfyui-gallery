@@ -20,7 +20,9 @@
   <script defer src="vendor/alpine.min.js"></script>
 </head>
 <body>
-<div x-data="Gallery" x-init="init()">
+<div x-data="Gallery" x-init="init()" @mousemove="gallMagnifyMove($event)">
+  <!-- 放大镜（4 倍）：跟随鼠标预览图片细节，打开时全页隐藏鼠标指针 -->
+  <div class="magnifier" aria-hidden="true"></div>
   <!-- 顶部整体固定（满宽紧贴顶） -->
   <div class="sticky-head">
     <div id="topnav"></div>
@@ -76,6 +78,9 @@
         </button>
         <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
+        </button>
+        <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜" :aria-pressed="magnify" @click="toggleMagnify()">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
         <button class="icon-btn" data-tip="批量压缩选中图片" x-show="mode!=='aggregate'" x-cloak
                 :class="{active: selCount()>0}" :disabled="selCount()===0" @click="batchCompress()">
@@ -375,6 +380,7 @@
     _searchFade: false,
     hiRes: false, _hiIO: null,
     permModal: false, permMsg: "", permFiles: null,
+    magnify: false,
     init() {
       App.initNav("gallery");
       var self = this;
@@ -599,6 +605,39 @@
     // 列数控制：放大=减列（更宽），缩小=加列（更窄），1-10 列并持久化；只影响当前模式
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
+    // ===== 放大镜（4 倍，跟随鼠标；与详情页共用 .magnifier 样式） =====
+    toggleMagnify() {
+      this.magnify = !this.magnify;
+      document.body.classList.toggle("am-loupe", this.magnify);
+      if (!this.magnify) this.gallMagnifyHide();
+    },
+    gallMagnifyMove(e) {
+      if (!this.magnify) return;
+      var img = e.target && e.target.closest ? e.target.closest(".thumb-wrap img, .cover-row img, .member-grid img") : null;
+      var mag = document.querySelector(".magnifier");
+      if (!img || !mag) { this.gallMagnifyHide(); return; }
+      var rect = img.getBoundingClientRect();
+      var ux = e.clientX - rect.left, uy = e.clientY - rect.top;
+      if (rect.width <= 0 || rect.height <= 0 || ux < 0 || uy < 0 || ux > rect.width || uy > rect.height) {
+        this.gallMagnifyHide(); return;
+      }
+      var L = mag.offsetWidth || 240, ZOOM = 4;
+      // 优先用原图保证清晰度（缩略图高清替换后 currentSrc 即原图）
+      var src = img.getAttribute("data-orig") || img.currentSrc || img.src;
+      mag.style.backgroundImage = "url('" + src + "')";
+      mag.style.backgroundSize = (rect.width * ZOOM) + "px " + (rect.height * ZOOM) + "px";
+      mag.style.backgroundPosition = (L / 2 - ZOOM * ux) + "px " + (L / 2 - ZOOM * uy) + "px";
+      var left = e.clientX + 26 - L / 2, top = e.clientY + 26 - L / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - L - 8));
+      top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
+      mag.style.left = left + "px";
+      mag.style.top = top + "px";
+      mag.classList.add("on");
+    },
+    gallMagnifyHide() {
+      var mag = document.querySelector(".magnifier");
+      if (mag) mag.classList.remove("on");
+    },
     _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} this._updateHiRes(); },
     // 缩放转场（方案 C·弹性落地）：快闪遮重排 + 弹性回位
     _animateZoom(m, next) {
