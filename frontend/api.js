@@ -15,7 +15,8 @@
     return fetch(path, init).then(function (r) {
       if (!r.ok) {
         return r.json().catch(function () { return {}; }).then(function (body) {
-          var msg = (body && body.detail) || ("HTTP " + r.status);
+          var msg = body && body.detail;
+          if (typeof msg !== "string") msg = msg ? JSON.stringify(msg) : ("HTTP " + r.status);
           throw new Error(msg);
         });
       }
@@ -109,7 +110,7 @@
     },
 
     batchCompress: function (ids) {
-      return req("api/images/batch-compress", { method: "POST", body: { ids: ids } }).catch(function (e) {
+      return req("api/images/batch-compress", { method: "POST", body: ids }).catch(function (e) {
         throw e;
       });
     },

@@ -97,3 +97,21 @@ def test_single_compress_overwrite():
         assert data["new_file"] == str(src)
         assert Path(data["new_file"]).is_file()
         assert Path(data["new_file"]).stat().st_size < original
+
+
+def test_batch_compress_raw_array_body():
+    """批量接口 body 为裸数组（如 [id]），与前端 Api.batchCompress 用法一致。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            src = Path(td) / "batch.png"
+            _make_gradient_png(src)
+            image_id = _seed(s, src, mode="new")
+        resp = client.post("/api/images/batch-compress", json=[image_id])
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["saved_count"] == 1
+        assert data["results"][0]["saved"] is True
+        assert data["results"][0]["new_file"] and Path(data["results"][0]["new_file"]).is_file()
+        reset_engine()
