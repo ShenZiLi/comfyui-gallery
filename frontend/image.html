@@ -342,16 +342,15 @@
       top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
       mag.style.left = left + "px";
       mag.style.top = top + "px";
-      mag.style.display = "block";
     },
     magnifyShow() {
       if (!this.magnify) return;
       var mag = document.querySelector(".magnifier");
-      if (mag) mag.style.display = "block";
+      if (mag) mag.classList.add("on");
     },
     magnifyHide() {
       var mag = document.querySelector(".magnifier");
-      if (mag) mag.style.display = "none";
+      if (mag) mag.classList.remove("on");
     },
     goGallery() {
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航
