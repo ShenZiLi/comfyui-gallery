@@ -59,7 +59,7 @@
           </div>
         </div>
       </div>
-      <div style="position:relative;cursor:none" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()">
+      <div style="position:relative" :class="{loupe-cursor: magnify}" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()" @click="magnifyClick()">
         <img :src="'api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
     </div>
@@ -321,6 +321,10 @@
       this.magnify = !this.magnify;
       if (!this.magnify) this.magnifyHide();
     },
+    magnifyClick() {
+      // 放大镜状态下点击图片：自动退出放大镜
+      if (this.magnify) this.toggleMagnify();
+    },
     magnifyMove(e) {
       if (!this.magnify) return;
       var img = document.querySelector(".detail-image img");
@@ -329,7 +333,7 @@
       var rect = img.getBoundingClientRect();
       var ux = e.clientX - rect.left, uy = e.clientY - rect.top;
       if (ux < 0 || uy < 0 || ux > rect.width || uy > rect.height) return;
-      var L = 190, ZOOM = 4;
+      var L = (mag.offsetWidth) || 240, ZOOM = 4;
       mag.style.backgroundImage = "url('api/images/" + this.curId + "/file')";
       mag.style.backgroundSize = (rect.width * ZOOM) + "px " + (rect.height * ZOOM) + "px";
       mag.style.backgroundPosition = (L / 2 - ZOOM * ux) + "px " + (L / 2 - ZOOM * uy) + "px";
