@@ -47,9 +47,9 @@ def _setup(tmp: Path):
     return TestClient(app), engine
 
 
-def _seed(session: Session, png: Path, mode: str, keep_meta: str = "true") -> int:
+def _seed(session: Session, png: Path, mode: str, quality: int = 80) -> int:
     session.add(Setting(key="compress_mode", value=mode))
-    session.add(Setting(key="compress_keep_meta", value=keep_meta))
+    session.add(Setting(key="compress_quality", value=str(quality)))
     im = ImageAsset(
         file_name=png.name,
         file_path=str(png),

@@ -1,6 +1,6 @@
-"""图片 PNG 无损压缩路由（单张 + 批量）。
+"""图片转 JPG 有损压缩路由（单张 + 批量）。
 
-compress_mode=overwrite 时在原路径覆盖；=new（默认）时写入导入目录并注册为扫描根。
+compress_mode=overwrite 时在原路径覆盖为 .jpg；=new（默认）时写入导入目录并注册为扫描根。
 压缩后若不减小则跳过不写。
 """
 from __future__ import annotations
@@ -19,6 +19,8 @@ from ..services import compress as compress_svc, scanner, watcher
 from .images import _move_to_trash
 
 router = APIRouter(prefix="/api/images", tags=["compress"])
+
+ALLOWED_SRC_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
 def _get(session: Session, key: str) -> str | None:
@@ -52,27 +54,29 @@ def _background_scan(root: Path) -> None:
 
 
 def _unique_path(root: Path, stem: str) -> Path:
-    target = root / f"{stem}_compressed.png"
+    target = root / f"{stem}_compressed.jpg"
     i = 1
     while target.exists():
-        target = root / f"{stem}_compressed-{i}.png"
+        target = root / f"{stem}_compressed-{i}.jpg"
         i += 1
     return target
 
 
 def _compress_one(session: Session, im: ImageAsset) -> dict:
-    """压缩单张图片（可被后端浏览器直接从文件落盘复用；返回结果 dict）。"""
+    """压缩单张图片（JPG 有损，返回结果 dict）。"""
     mode = (_get(session, "compress_mode") or "new").strip()
-    keep = (_get(session, "compress_keep_meta") or "true") != "false"
+    quality = int(_get(session, "compress_quality") or 80)
+    if not 1 <= quality <= 100:
+        quality = 80
 
     src = Path(im.abs_path)
-    if src.suffix.lower() != ".png":
-        raise HTTPException(400, "仅支持 PNG 格式")
+    if src.suffix.lower() not in ALLOWED_SRC_EXTS:
+        raise HTTPException(400, "仅支持常见图片格式（png / jpg / webp / bmp）")
     if not src.is_file():
         raise HTTPException(404, "源文件不存在")
 
     old = src.stat().st_size
-    data = compress_svc.compress_png(src, keep_meta=keep)
+    data = compress_svc.to_jpg(src, quality=quality)
     if len(data) >= old:
         return {
             "id": im.id, "original": old, "compressed": len(data),

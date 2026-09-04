@@ -1,4 +1,4 @@
-"""PNG 压缩设置读写测试（GET/POST /api/settings 的 compressMode/compressKeepMeta）。
+"""JPG 压缩设置读写测试（GET/POST /api/settings 的 compressMode/compressQuality）。
 
 独立 SQLite 文件，仅挂载 settings 路由。
 """
@@ -40,13 +40,13 @@ def test_compress_settings_defaults():
         assert resp.status_code == 200
         data = resp.json()
         assert data["compressMode"] == "new"
-        assert data["compressKeepMeta"] == "true"
+        assert data["compressQuality"] == 80
 
 
 def test_compress_settings_roundtrip():
     with tempfile.TemporaryDirectory() as td:
         client, _ = _setup(Path(td))
-        resp = client.post("/api/settings", json={"compressMode": "overwrite", "compressKeepMeta": False})
+        resp = client.post("/api/settings", json={"compressMode": "overwrite", "compressQuality": 65})
         assert resp.status_code == 200
         assert resp.json()["saved"] is True
 
@@ -54,15 +54,19 @@ def test_compress_settings_roundtrip():
         assert resp.status_code == 200
         data = resp.json()
         assert data["compressMode"] == "overwrite"
-        assert data["compressKeepMeta"] == "false"
+        assert data["compressQuality"] == 65
 
 
 def test_compress_settings_normalize():
     with tempfile.TemporaryDirectory() as td:
         client, _ = _setup(Path(td))
-        # 非法 mode 归一化为 overwrite；KeepMeta 传 1 归一化为 true
-        client.post("/api/settings", json={"compressMode": "anything", "compressKeepMeta": 1})
+        # 非法 mode 归一化为 overwrite；质量越界收敛到 1-100，非法回默认 80
+        client.post("/api/settings", json={"compressMode": "anything", "compressQuality": 999})
         resp = client.get("/api/settings")
         data = resp.json()
         assert data["compressMode"] == "overwrite"
-        assert data["compressKeepMeta"] == "true"
+        assert data["compressQuality"] == 100
+
+        client.post("/api/settings", json={"compressQuality": "bad"})
+        resp = client.get("/api/settings")
+        assert resp.json()["compressQuality"] == 80
