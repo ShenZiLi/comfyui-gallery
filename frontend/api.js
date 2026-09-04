@@ -102,6 +102,12 @@
       });
     },
 
+    compressImage: function (id) {
+      return req("api/images/" + id + "/compress", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+
     deleteImage: function (id) {
       return req("api/images/" + id, { method: "DELETE" }).catch(function (e) {
         throw e;

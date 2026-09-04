@@ -47,6 +47,9 @@
             <button class="icon-btn danger" data-tip="删除" @click="reqDelete()">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
             </button>
+            <button class="btn sm" @click="compress()" :disabled="compressing">
+              <span x-text="compressing ? '压缩中…' : '压缩'"></span>
+            </button>
             <a class="btn sm" @click="goGallery()">返回图库</a>
           </div>
         </div>
@@ -199,6 +202,7 @@
     delTarget: null,
     pState: "", pErr: "", trOn: false, trSrc: "", trTexts: [],
     trIng: false, trLang: "",
+    compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
     navIds: [], navIdx: -1, curId: null,
     init() {
@@ -225,6 +229,7 @@
       // 切图后清空瞬态交互状态
       this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
+      this.compressing = false;
       this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
@@ -283,6 +288,22 @@
       var a = document.createElement("a");
       a.href = "api/images/" + im.id + "/file";
       a.download = im.name || "image.png"; a.click();
+    },
+    compress() {
+      var self = this;
+      if (!this.im || this.compressing) return;
+      this.compressing = true;
+      Api.compressImage(this.im.id).then(function (r) {
+        self.compressing = false;
+        if (r && r.saved) {
+          App.toast("压缩成功：原 " + App.fmtSize(r.original) + " → " + App.fmtSize(r.compressed));
+        } else {
+          App.toast((r && r.reason) || "压缩未生效");
+        }
+      }).catch(function (e) {
+        self.compressing = false;
+        App.toast("压缩失败：" + ((e && e.message) || e));
+      });
     },
     goGallery() {
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航
