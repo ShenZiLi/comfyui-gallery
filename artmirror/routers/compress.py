@@ -5,6 +5,7 @@ compress_mode=overwrite 时在原路径覆盖；=new（默认）时写入导入�
 """
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -130,6 +131,11 @@ def batch_compress(ids: list[int] = Body(...), session: Session = Depends(get_se
             res = {
                 "id": image_id, "original": 0, "compressed": 0,
                 "saved": False, "new_file": None, "reason": exc.detail,
+            }
+        except Exception as exc:  # noqa: BLE001
+            res = {
+                "id": image_id, "original": 0, "compressed": 0,
+                "saved": False, "new_file": None, "reason": str(exc),
             }
         if res["saved"]:
             saved_count += 1
