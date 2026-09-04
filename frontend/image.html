@@ -59,7 +59,7 @@
           </div>
         </div>
       </div>
-      <div style="position:relative" :class="{loupe-cursor: magnify}" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()" @click="magnifyClick()">
+      <div style="position:relative" :class="{loupe-cursor: magnify}" @mousemove="magnifyMove($event)" @mouseenter="magnifyShow()" @mouseleave="magnifyHide()" @click="magnifyClick()" @dblclick="openPreview()">
         <img :src="'api/images/'+im.id+'/file'" :alt="im.name" :width="im.width" :height="im.height" />
       </div>
     </div>
@@ -166,6 +166,27 @@
     </div>
   </div>
 
+  <!-- 图片预览弹窗（双击大图触发）：拖拽平移 / 滚轮缩放 / 右上角关闭 -->
+  <div class="pv" :class="{open: previewOpen}" x-cloak @keydown.escape.window="closePreview()">
+    <div class="pv-mask" @click="closePreview()"></div>
+    <div class="pv-window">
+      <div class="pv-bar">
+        <span class="pv-name" x-text="im && im.name"></span>
+        <span class="pv-zoom" x-show="pvScale>1" x-cloak x-text="Math.round(pvScale*100)+'%'"></span>
+        <span class="pv-hint" x-show="pvScale===1" x-cloak>拖拽平移 · 滚轮缩放 · 双击关闭</span>
+        <div class="pv-spacer"></div>
+        <button class="pv-close" @click="closePreview()" aria-label="关闭预览" title="关闭">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="pv-stage" :class="{'pv-drag': pvDragging}"
+           @pointerdown="pvDown($event)" @pointermove="pvMove($event)" @pointerup="pvUp($event)" @pointercancel="pvUp($event)"
+           @wheel.prevent="pvWheel($event)" @dblclick="closePreview()" @touch-action.passive="true">
+        <img :src="'api/images/'+curId+'/file'" :alt="(im && im.name) || ''" draggable="false" :style="pvStyle()" />
+      </div>
+    </div>
+  </div>
+
   <!-- 删除二次确认弹窗 -->
   <div class="modal-mask" x-show="delTarget" x-cloak @keydown.escape.window="delTarget=null">
     <div class="modal" style="max-width:400px">
@@ -211,6 +232,8 @@
     editing: false, editText: "", _editWhat: "", savingEdit: false,
     navIds: [], navIdx: -1, curId: null,
     magnify: false,
+    previewOpen: false, pvScale: 1, pvX: 0, pvY: 0,
+    pvDragging: false, pvSX: 0, pvSY: 0, pvBX: 0, pvBY: 0,
     init() {
       App.initNav("");
       var id = new URLSearchParams(location.search).get("id");
@@ -352,6 +375,38 @@
     magnifyHide() {
       var mag = document.querySelector(".magnifier");
       if (mag) mag.classList.remove("on");
+    },
+    // ===== 图片预览弹窗（双击大图触发）：拖拽平移 / 滚轮缩放 =====
+    openPreview() {
+      this.pvScale = 1; this.pvX = 0; this.pvY = 0; this.pvDragging = false;
+      this.previewOpen = true;
+      document.body.classList.add("am-pv-open");
+    },
+    closePreview() {
+      this.previewOpen = false; this.pvDragging = false;
+      document.body.classList.remove("am-pv-open");
+    },
+    pvStyle() {
+      return "transform: translate(" + this.pvX + "px, " + this.pvY + "px) scale(" + this.pvScale + ")";
+    },
+    pvDown(e) {
+      if (e.button !== 0) return;
+      this.pvDragging = true;
+      this.pvSX = e.clientX; this.pvSY = e.clientY;
+      this.pvBX = this.pvX; this.pvBY = this.pvY;
+      if (e.currentTarget && e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    },
+    pvMove(e) {
+      if (!this.pvDragging) return;
+      this.pvX = this.pvBX + (e.clientX - this.pvSX);
+      this.pvY = this.pvBY + (e.clientY - this.pvSY);
+    },
+    pvUp() { this.pvDragging = false; },
+    pvWheel(e) {
+      var d = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      this.pvScale = Math.max(1, Math.min(8, this.pvScale * d));
+      if (this.pvScale === 1) { this.pvX = 0; this.pvY = 0; }
     },
     goGallery() {
       // 优先走浏览器前进/后退缓存（bfcache）返回图库：秒回、不重新加载；否则淡出后全量导航

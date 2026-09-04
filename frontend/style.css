@@ -713,6 +713,76 @@ html[data-theme="dark"] .nav-zone:hover .nav-btn { background: rgba(45, 56, 80, 
 body.am-loupe, body.am-loupe * { cursor: none !important; }
 @media (prefers-reduced-motion: reduce) { .magnifier, .magnifier.on { transition: none; } }
 .progress { height: 8px; background: #eceef2; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+
+/* ===== 图片预览弹窗（双击大图触发）=====
+   深色舞台展示图片（明暗主题都出彩），顶部细条承载缩放提示与关闭钮，图片区域独立于顶条不受遮盖。
+   开/关用不对称过渡：入场稍缓(迅猛落地)、出场更快(平稳离场)，符合「快进慢出」克制动效。 */
+body.am-pv-open { overflow: hidden; }
+.pv {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--dur-fast) var(--ease-in-out), visibility 0s linear var(--dur-fast);
+}
+.pv.open {
+  opacity: 1; visibility: visible;
+  transition: opacity var(--dur-med) var(--ease-in-out);
+}
+/* 遮罩：柔和暗化 + 轻量毛玻璃，聚焦舞台 */
+.pv-mask {
+  position: absolute; inset: 0;
+  background: rgba(10, 14, 20, .62);
+  -webkit-backdrop-filter: blur(10px) saturate(120%); backdrop-filter: blur(10px) saturate(120%);
+}
+/* 舞台卡片：深色底、大圆角、深邃投影，居中叠加（modal 保持中心 transform-origin） */
+.pv-window {
+  position: relative; width: min(94vw, 1400px); height: min(88vh, 860px);
+  border-radius: 18px; overflow: hidden;
+  background: #0c0f14;
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .06);
+  opacity: 0; transform: translateY(16px) scale(.965);
+  transition: opacity var(--dur-fast) var(--ease-in), transform var(--dur-fast) var(--ease-in);
+}
+.pv.open .pv-window {
+  opacity: 1; transform: none;
+  transition: opacity var(--dur-slow) var(--ease-out), transform var(--dur-slow) var(--ease-out);
+}
+/* 顶部细条：渐隐渐变过渡到舞台，不遮挡图像（舞台从条下开始） */
+.pv-bar {
+  position: absolute; top: 0; left: 0; right: 0; height: 52px; z-index: 3;
+  display: flex; align-items: center; gap: 12px; padding: 0 12px 0 18px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .55), rgba(0, 0, 0, .22) 62%, transparent);
+  color: #fff; font-size: 13px; user-select: none;
+}
+.pv-name { font-weight: 600; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pv-zoom { font-size: 12px; opacity: .6; font-variant-numeric: tabular-nums; min-width: 44px; }
+.pv-hint { font-size: 12px; opacity: .55; margin-left: 6px; }
+.pv-spacer { flex: 1; }
+.pv-close {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .22); color: #fff;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.pv-close:hover { background: rgba(255, 255, 255, .22); border-color: rgba(255, 255, 255, .4); transform: rotate(90deg); }
+.pv-close:active { transform: scale(.92); }
+.pv-close:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* 舞台：拖拽平移 / 滚轮缩放，图片自由变换不越出圆角窗口 */
+.pv-stage {
+  position: absolute; inset: 52px 0 0 0;
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  cursor: grab; touch-action: none; -webkit-user-drag: none; user-select: none;
+}
+.pv-stage.pv-drag { cursor: grabbing; }
+.pv-stage img {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  transform-origin: center center; will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pv, .pv.open, .pv-mask, .pv-window, .pv.open .pv-window, .pv-close { transition: none !important; }
+}
 .progress > i { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width .3s; }
 .muted { color: var(--text-3); font-size: 12px; }
 .mt { margin-top: 12px; }
