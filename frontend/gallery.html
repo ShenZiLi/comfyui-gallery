@@ -20,9 +20,7 @@
   <script defer src="vendor/alpine.min.js"></script>
 </head>
 <body>
-<div x-data="Gallery" x-init="init()" @mousemove="gallMagnifyMove($event)">
-  <!-- 放大镜（4 倍）：跟随鼠标预览图片细节，打开时全页隐藏鼠标指针 -->
-  <div class="magnifier" aria-hidden="true"></div>
+<div x-data="Gallery" x-init="init()">
   <!-- 顶部整体固定（满宽紧贴顶） -->
   <div class="sticky-head">
     <div id="topnav"></div>
@@ -78,9 +76,6 @@
         </button>
         <button class="icon-btn" data-tip="缩小（增加列数）" :disabled="cols[mode]>=10" @click="zoomOut()">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/><path d="M8 11h6"/></svg>
-        </button>
-        <button class="icon-btn" :class="{active: magnify}" data-tip="放大镜" :aria-pressed="magnify" @click="toggleMagnify()">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
         </button>
         <button class="icon-btn" data-tip="批量压缩选中图片" x-show="mode!=='aggregate'" x-cloak
                 :class="{active: selCount()>0}" :disabled="selCount()===0" @click="batchCompress()">
@@ -380,7 +375,6 @@
     _searchFade: false,
     hiRes: false, _hiIO: null,
     permModal: false, permMsg: "", permFiles: null,
-    magnify: false,
     init() {
       App.initNav("gallery");
       var self = this;
@@ -605,62 +599,6 @@
     // 列数控制：放大=减列（更宽），缩小=加列（更窄），1-10 列并持久化；只影响当前模式
     zoomIn() { var m = this.mode; if (this.cols[m] > 1) this._animateZoom(m, this.cols[m] - 1); },
     zoomOut() { var m = this.mode; if (this.cols[m] < 10) this._animateZoom(m, this.cols[m] + 1); },
-    // ===== 放大镜（4 倍，全页跟随鼠标；与详情页共用 .magnifier 圆形窗口） =====
-    toggleMagnify() {
-      this.magnify = !this.magnify;
-      document.body.classList.toggle("am-loupe", this.magnify);
-      if (this.magnify) { this._buildLoupe(); }
-      else { this.gallMagnifyHide(); this._clearLoupe(); }
-    },
-    // 构建整页缩放副本：克隆当前页面内容，放入圆形取景窗口（排除取景窗自身与浮层）
-    _buildLoupe() {
-      var mag = document.querySelector(".magnifier");
-      if (!mag) return;
-      var inner = mag.querySelector(".loupe-inner");
-      if (!inner) { inner = document.createElement("div"); inner.className = "loupe-inner"; mag.appendChild(inner); }
-      inner.innerHTML = "";
-      var clone = document.body.cloneNode(true);
-      clone.classList.remove("am-loupe");
-      // 剔除取景窗本身、气泡、框选盒等运行期浮层，避免无限递归/残留
-      clone.querySelectorAll(".magnifier, .am-tip-bubble, .am-select-box").forEach(function (n) {
-        if (n.parentNode) n.parentNode.removeChild(n);
-      });
-      inner.appendChild(clone);
-      var de = document.documentElement;
-      inner.style.width = Math.max(de.scrollWidth, window.innerWidth) + "px";
-      inner.style.height = Math.max(de.scrollHeight, window.innerHeight) + "px";
-    },
-    _clearLoupe() {
-      var mag = document.querySelector(".magnifier");
-      var inner = mag && mag.querySelector(".loupe-inner");
-      if (inner) inner.innerHTML = "";
-    },
-    gallMagnifyMove(e) {
-      if (!this.magnify) return;
-      var mag = document.querySelector(".magnifier");
-      var inner = mag && mag.querySelector(".loupe-inner");
-      if (!mag || !inner) { this.gallMagnifyHide(); return; }
-      var L = mag.offsetWidth || 500, ZOOM = 4;
-      var left = e.clientX + 26 - L / 2, top = e.clientY + 26 - L / 2;
-      left = Math.max(8, Math.min(left, window.innerWidth - L - 8));
-      top = Math.max(8, Math.min(top, window.innerHeight - L - 8));
-      mag.style.left = left + "px";
-      mag.style.top = top + "px";
-      mag.classList.add("on");
-      // inner 原点对齐视口左上（local = 屏幕坐标）；将光标下内容点映射到取景窗中心，4 倍缩放
-      var sx = window.pageXOffset || 0, sy = window.pageYOffset || 0;
-      var cx = left + L / 2, cy = top + L / 2;
-      var bl = mag.clientLeft || 0, bt = mag.clientTop || 0;
-      inner.style.left = (-(left + bl)) + "px";
-      inner.style.top = (-(top + bt)) + "px";
-      inner.style.transformOrigin = "0 0";
-      inner.style.transform =
-        "scale(" + ZOOM + ") translate(" + (cx - ZOOM * (e.clientX + sx)) + "px, " + (cy - ZOOM * (e.clientY + sy)) + "px)";
-    },
-    gallMagnifyHide() {
-      var mag = document.querySelector(".magnifier");
-      if (mag) mag.classList.remove("on");
-    },
     _setCols(m, n) { this.cols[m] = n; try { localStorage.setItem("am-cols", JSON.stringify(this.cols)); } catch (e) {} this._updateHiRes(); },
     // 缩放转场（方案 C·弹性落地）：快闪遮重排 + 弹性回位
     _animateZoom(m, next) {
