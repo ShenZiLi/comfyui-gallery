@@ -257,7 +257,7 @@
     },
     canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
     canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
-    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.width * im.height * 3); },
+    fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.fileSize); },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
       var im = this.im; if (!im) return "portrait";

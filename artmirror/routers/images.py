@@ -275,11 +275,15 @@ def _filter_images(session: Session, folder_id, tag, q):
 
 
 def _order_for(sort: str) -> list:
-    """排序键列表：主键 + id 兜底，保证并列值下 offset 分页确定性。"""
+    """排序键列表：主键 + id 兜底，保证并列值下 offset 分页确定性。
+
+    time：按图片更新时间倒序。手动导入的单张图片为最新入库（update_time＝now），
+    在时间倒序下自然位于列表最前；以 id 兜底保证同一时刻并列时确定有序。
+    """
     if sort == "manual":
         return [ImageAsset.rating.desc().nullslast(), ImageAsset.id.desc()]
     if sort == "time":
-        return [ImageAsset.id.desc()]
+        return [ImageAsset.update_time.desc(), ImageAsset.id.desc()]
     return [ImageAsset.ai_rating.desc().nullslast(), ImageAsset.id.desc()]
 
 

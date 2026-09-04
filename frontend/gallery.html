@@ -125,7 +125,8 @@
       <template x-for="im in images" :key="im.id">
         <div class="card img-card" :class="{'selected': isSel(im)}" :data-id="im.id">
           <div class="thumb-wrap" @click="open(im.id)">
-            <img :src="im.thumb" :alt="im.name" loading="lazy"
+            <img :src="im.thumb" :alt="im.name" loading="lazy" draggable="true"
+                 @dragstart="dragOut($event, im)"
                  :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
                  :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" />
           </div>
@@ -943,6 +944,14 @@
       return this.groups.filter(g => g.title.toLowerCase().indexOf(q) >= 0);
     },
     mark(text) { return App.highlight(text, this.q ? [this.q] : []); },
+    // 拖拽图片到页面外（桌面/文件夹）：默认拖出的是 webp 缩略图，
+    // 这里通过 DownloadURL 把载荷指向原图文件，保证拖出得到的是原图。
+    dragOut(ev, im) {
+      if (!ev.dataTransfer) return;
+      var url = new URL("api/images/" + im.id + "/file", location.href).href;
+      ev.dataTransfer.setData("DownloadURL",
+        "application/octet-stream:" + (im.name || "image") + ":" + url);
+    },
     download(im) {
       var a = document.createElement("a");
       a.href = "api/images/" + im.id + "/file";
