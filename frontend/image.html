@@ -319,6 +319,7 @@
     // ===== 放大镜（4 倍，跟随鼠标） =====
     toggleMagnify() {
       this.magnify = !this.magnify;
+      document.body.classList.toggle("am-loupe", this.magnify);
       if (!this.magnify) this.magnifyHide();
     },
     magnifyClick() {
