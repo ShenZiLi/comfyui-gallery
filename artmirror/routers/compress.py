@@ -80,8 +80,22 @@ def _compress_one(session: Session, im: ImageAsset) -> dict:
         }
 
     if mode == "overwrite":
-        _move_to_trash(src)          # 先备份原文件到废纸篓
-        src.write_bytes(data)
+        # 先写临时文件确保能落盘 → 再备份原图到废纸篓 → 最后同卷原子替换，
+        # 避免写入失败导致原图丢失（数据丢失窗口）。
+        tmp = src.with_name(src.stem + ".comp.tmp")
+        try:
+            tmp.write_bytes(data)
+            _move_to_trash(src)
+            os.replace(tmp, src)
+        except Exception:  # noqa: BLE001
+            # 任一环节失败：尽量保证原图完好（仅当原路径已丢失且临时文件在时回填）
+            if tmp.exists() and not src.exists():
+                try:
+                    os.replace(tmp, src)
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
+        watcher.bump()
         return {
             "id": im.id, "original": old, "compressed": len(data),
             "saved": True, "new_file": str(src), "reason": "",
@@ -91,9 +105,9 @@ def _compress_one(session: Session, im: ImageAsset) -> dict:
     import_dir = _import_dir(session)
     import_dir.mkdir(parents=True, exist_ok=True)
     roots = scanner.get_scan_roots(session)
-    normalized = str(import_dir)
-    if normalized not in {str(p) for p in roots}:
-        scanner.save_scan_roots(session, [str(r) for r in roots] + [normalized])
+    key = str(import_dir.resolve())
+    if key not in {str(r.resolve()) for r in roots}:
+        scanner.save_scan_roots(session, [str(r) for r in roots] + [key])
     new_path = _unique_path(import_dir, src.stem)
     new_path.write_bytes(data)
     _background_scan(import_dir)
