@@ -545,6 +545,93 @@ def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     return {"text": text, "reversePrompt": text}
 
 
+@router.post("/{image_id}/auto-tag")
+def auto_tag_image(image_id: int, session: Session = Depends(get_session)):
+    """用文本模型从该图提示词提取属性标签并打标（category=attr，追加合并）。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+
+    # 取提示词：优先原生，回退反推
+    prompt = ""
+    meta = session.exec(
+        select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
+    ).first()
+    if meta and meta.prompt:
+        prompt = meta.prompt
+    if not prompt:
+        rev = _latest(session, ReversePrompt, im.id)
+        if rev and rev.text:
+            prompt = rev.text
+    if not prompt:
+        raise HTTPException(400, "该图无可分析的提示词")
+
+    try:
+        tags = llm.extract_prompt_tags(prompt, session)
+    except llm.LLMError as exc:
+        raise HTTPException(502, str(exc))
+    if not tags:
+        raise HTTPException(502, "文本模型未生成有效标签")
+
+    for name in tags:
+        meta_service._link(session, im.id, name, "attr")
+    session.commit()
+    return {"tags": _image_tags_of(session, im.id, "attr")}
+
+
+@router.post("/{image_id}/tags")
+def add_image_tag(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """手动为图片添加属性标签（category=attr）。名称去首尾空白后须非空。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    name = str((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "标签不能为空")
+    meta_service._link(session, im.id, name, "attr")
+    session.commit()
+    return {"saved": True, "tags": _image_tags_of(session, im.id, "attr")}
+
+
+@router.delete("/{image_id}/tags")
+def remove_image_tag(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """删除图片的某个属性标签关联。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    name = str((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "标签不能为空")
+    tag = session.exec(
+        select(Tag).where(Tag.name == name, Tag.category == "attr")
+    ).first()
+    if tag is None:
+        raise HTTPException(404, "标签不存在")
+    link = session.exec(
+        select(ImageTag).where(ImageTag.image_id == im.id, ImageTag.tag_id == tag.id)
+    ).first()
+    if link is not None:
+        session.delete(link)
+        tag.count = max(0, (tag.count or 0) - 1)
+        session.commit()
+    return {"saved": True, "tags": _image_tags_of(session, im.id, "attr")}
+
+
+def _image_tags_of(session: Session, image_id: int, category: str) -> list[dict]:
+    """返回某图指定类别的标签列表。"""
+    rows = session.exec(
+        select(Tag)
+        .join(ImageTag, ImageTag.tag_id == Tag.id)
+        .where(
+            ImageTag.image_id == image_id,
+            Tag.category == category,
+            Tag.is_deleted == 0,
+        )
+        .order_by(Tag.id)
+    ).all()
+    return [{"name": _basename(t.name), "category": t.category} for t in rows]
+
+
 @router.post("/{image_id}/prompt")
 def update_image_prompt(image_id: int, body: dict, session: Session = Depends(get_session)):
     """保存手编提示词：原生 / AI / 反推 或某源的中英译文。返回最新详情卡片。"""

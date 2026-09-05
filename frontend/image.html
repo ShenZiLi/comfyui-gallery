@@ -111,6 +111,17 @@
         <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
           <b>负向：</b><span class="prompt-clickable" @click.stop="copy(activeNegative())" x-text="activeNegative()"></span>
         </div>
+        <!-- 属性标签：双击改名 / × 删除 / ＋ 新增 -->
+        <div class="attr-tags mt">
+          <span class="muted" style="font-size:12px;margin-right:4px">属性</span>
+          <template x-for="t in attrTags()" :key="'t'+t.name">
+            <span class="chip attr">
+              <span class="attr-name" @dblclick.stop="renameTag(t)" x-text="t.name"></span>
+              <button class="attr-x" data-tip="删除" @click.stop="removeTag(t)">×</button>
+            </span>
+          </template>
+          <button class="chip attr add" data-tip="新增属性标签" @click.stop="addTag()">＋</button>
+        </div>
       </div>
 
       <!-- 模型 / 参数 -->
@@ -298,6 +309,48 @@
         }
       }
       return "";
+    },
+    // 属性标签
+    attrTags() { return ((this.im && this.im.tags) || []).filter(function (t) { return t.category === 'attr'; }); },
+    _refreshTags(tags) {
+      var cur = (this.im && this.im.tags) || [];
+      this.im.tags = cur.filter(function (t) { return t.category !== 'attr'; }).concat(tags || []);
+    },
+    addTag() {
+      var self = this;
+      var name = window.prompt("新增属性标签：");
+      name = (name || "").trim();
+      if (!name) { App.toast("标签不能为空"); return; }
+      Api.addImageTag(this.im.id, name).then(function (d) {
+        self._refreshTags(d && d.tags);
+        App.toast("已添加");
+      }).catch(function (e) {
+        App.toast((e && e.message) || "添加失败");
+      });
+    },
+    removeTag(t) {
+      var self = this;
+      Api.removeImageTag(this.im.id, t.name).then(function (d) {
+        self._refreshTags(d && d.tags);
+        App.toast("已删除");
+      }).catch(function (e) {
+        App.toast((e && e.message) || "删除失败");
+      });
+    },
+    renameTag(t) {
+      var self = this;
+      var name = window.prompt("修改标签：", t.name);
+      name = (name || "").trim();
+      if (!name) { App.toast("标签不能为空"); return; }
+      if (name === t.name) return;
+      Api.removeImageTag(this.im.id, t.name).then(function () {
+        return Api.addImageTag(self.im.id, name);
+      }).then(function (d) {
+        self._refreshTags(d && d.tags);
+        App.toast("已修改");
+      }).catch(function (e) {
+        App.toast((e && e.message) || "修改失败");
+      });
     },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {

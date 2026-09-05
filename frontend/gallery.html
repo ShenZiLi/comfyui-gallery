@@ -189,9 +189,9 @@
                         @click.stop="selectPrompt(im,'reverse')">
                       <span x-text="im._rParse ? '反推中' : '反推'"></span>
                     </button>
-                    <button class="src-tab ai" :class="{active: im._src==='ai', has: !!(im.aiPrompt)||isReparsing(im)}" data-tip="AI解析工作流提示词"
-                        @click.stop="selectPrompt(im,'ai')">
-                      <span x-text="isReparsing(im) ? '解析中' : 'AI'"></span>
+                    <button class="src-tab ai" :class="{active: im._src==='ai', has: attrTags(im).length}" data-tip="用提示词打属性标签"
+                        @click.stop="autoTag(im)">
+                      <span x-text="im._tagParse ? '打标中' : 'AI'"></span>
                     </button>
                   </span>
                 </span>
@@ -215,6 +215,11 @@
               </div>
               <div class="muted" style="font-size:11px;margin-top:4px" x-show="promptErr(im)">
                 <span x-text="promptErr(im)"></span>
+              </div>
+              <div class="prompt-tags" x-show="attrTags(im).length" style="margin-top:4px">
+                <template x-for="t in attrTags(im)" :key="'g'+im.id+t.name">
+                  <span class="chip attr" x-text="t.name"></span>
+                </template>
               </div>
             </div>
           </div>
@@ -1181,6 +1186,20 @@
       });
     },
     promptErr(im) { return (im && im._pErr) || ""; },
+    attrTags(im) { return ((im && im.tags) || []).filter(function (t) { return t.category === 'attr'; }); },
+    autoTag(im) {
+      var self = this;
+      if (im._tagParse) return;
+      im._tagParse = true; im._pErr = "";
+      Api.autoTag(im.id).then(function (d) {
+        im._tagParse = false;
+        if (d && Array.isArray(d.tags)) im.tags = (im.tags || []).filter(function (t) { return t.category !== 'attr'; }).concat(d.tags);
+        im._src = "ai";
+      }).catch(function (e) {
+        im._tagParse = false;
+        im._pErr = e && e.message ? e.message : "AI 打标失败";
+      });
+    },
     promptMore(im) {
       var t = this.activePrompt(im) || "";
       return t.length > 80 || (t.match(/\n/g) || []).length > 2 || this.activePrompts(im).length > 1;

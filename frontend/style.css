@@ -587,6 +587,16 @@ body.am-selecting { user-select: none; }
 .chip.folder-hide.dim { opacity: .38; text-decoration: line-through; }
 /* lora 权重后缀：等宽、弱化，追加在 chip 名称后 */
 .chip .lora-w { font-family: "SF Mono", ui-monospace, "Cascadia Code", monospace; font-size: 10px; opacity: .72; }
+/* 属性标签（attr）：暖琥珀系弱强调，与模型/LoRA 区分；含删除与新增样式 */
+.chip.attr { color: #a87a2b; border-color: color-mix(in srgb,#b98a34 40%,#fff); background: color-mix(in srgb,#b98a34 14%,#fff); }
+.chip.attr:hover { border-color: var(--brand); color: var(--brand); cursor: default; }
+.chip.attr .attr-x { border: none; background: none; color: inherit; font-size: 13px; line-height: 1;
+  margin-left: 3px; cursor: pointer; opacity: .55; padding: 0 1px; border-radius: 50%; }
+.chip.attr .attr-x:hover { opacity: 1; color: var(--danger); background: rgba(229,72,77,.14); }
+.chip.attr .attr-name { cursor: text; }
+.chip.attr.add { cursor: pointer; font-weight: 600; }
+.chip.attr.add:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-weak); }
+html[data-theme="dark"] .chip.attr { color: #f0b267; border-color: color-mix(in srgb,#b98a34 45%,#000); background: color-mix(in srgb,#b98a34 16%,#10141c); }
 html[data-theme="dark"] .chip.model { color: #9db1ff; border-color: color-mix(in srgb,var(--model) 45%,#000); background: color-mix(in srgb,var(--model) 16%,#10141c); }
 html[data-theme="dark"] .chip.lora { color: #c79ae8; border-color: color-mix(in srgb,var(--lora) 45%,#000); background: color-mix(in srgb,var(--lora) 16%,#10141c); }
 html[data-theme="dark"] .chip.vae { color: #7cc6f0; border-color: color-mix(in srgb,var(--vae) 40%,#000); background: color-mix(in srgb,var(--vae) 12%,#10141c); }

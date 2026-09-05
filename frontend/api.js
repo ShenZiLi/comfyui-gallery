@@ -132,6 +132,22 @@
       });
     },
 
+    autoTag: function (id) {
+      return req("api/images/" + id + "/auto-tag", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+    addImageTag: function (id, name) {
+      return req("api/images/" + id + "/tags", { method: "POST", body: { name: name } }).catch(function (e) {
+        throw e;
+      });
+    },
+    removeImageTag: function (id, name) {
+      return req("api/images/" + id + "/tags", { method: "DELETE", body: { name: name } }).catch(function (e) {
+        throw e;
+      });
+    },
+
     setRating: function (id, score) {
       return req("api/images/" + id + "/rating", { method: "POST", body: { score: score } }).catch(function (e) {
         throw e;

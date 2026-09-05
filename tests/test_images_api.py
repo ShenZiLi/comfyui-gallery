@@ -186,6 +186,34 @@ def test_pagination_clamps_and_overflow():
         assert over["items"] == [] and over["hasMore"] is False
 
 
+def test_manual_attr_tag_add_delete_nonempty():
+    """属性标签：手动新增（非空校验）、返回 attr 列表、删除后消失。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            image_id = ims[0].id
+        # 空名 / 纯空格拒绝
+        assert client.post(f"/api/images/{image_id}/tags", json={"name": "  "}).status_code == 400
+        assert client.post(f"/api/images/{image_id}/tags", json={"name": ""}).status_code == 400
+        # 新增并去首尾空白
+        r = client.post(f"/api/images/{image_id}/tags", json={"name": " 黄昏 "})
+        assert r.status_code == 200
+        names = [t["name"] for t in r.json()["tags"]]
+        assert names == ["黄昏"] and all(t["category"] == "attr" for t in r.json()["tags"])
+        # 重复新增不叠加（_link 去重）
+        r2 = client.post(f"/api/images/{image_id}/tags", json={"name": "黄昏"})
+        assert len(r2.json()["tags"]) == 1
+        # 详情返回含 attr 标签
+        detail = client.get(f"/api/images/{image_id}").json()
+        assert any(t["name"] == "黄昏" and t["category"] == "attr" for t in detail["tags"])
+        # 删除
+        r3 = client.request("DELETE", f"/api/images/{image_id}/tags", json={"name": "黄昏"})
+        assert r3.status_code == 200 and r3.json()["tags"] == []
+        # 删不存在 → 404
+        assert client.request("DELETE", f"/api/images/{image_id}/tags", json={"name": "无此标签"}).status_code == 404
+
+
 def test_pagination_with_tag_and_folder_filters():
     with tempfile.TemporaryDirectory() as td:
         client, engine = _setup(Path(td))
