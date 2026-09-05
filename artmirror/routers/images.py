@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import case, exists, func
 from sqlmodel import Session, select
 
 from ..config import settings
@@ -270,6 +270,23 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
     return {"texts": texts, "lang": target, "cached": False}
 
 
+def _tag_match(q: str):
+    """生成 EXISTS 断言：某图片是否拥有名称模糊匹配 q 的标签（用于搜索过滤与排序加权）。"""
+    like = f"%{q}%"
+    return (
+        select(1)
+        .where(
+            ImageTag.tag_id == Tag.id,
+            ImageTag.image_id == ImageAsset.id,
+            ImageTag.is_deleted == 0,
+            Tag.name.like(like),
+            Tag.is_deleted == 0,
+        )
+        .correlate(ImageAsset)
+        .exists()
+    )
+
+
 def _filter_images(session: Session, folder_id, tag, q):
     """构建过滤后的基础查询（不含排序/分页）。"""
     stmt = select(ImageAsset).where(ImageAsset.is_deleted == 0)
@@ -293,6 +310,7 @@ def _filter_images(session: Session, folder_id, tag, q):
             (WorkflowMeta.prompt.like(like))
             | (WorkflowMeta.negative_prompt.like(like))
             | (ImageAsset.file_name.like(like))
+            | _tag_match(q)
         ).distinct()
     return stmt
 
@@ -325,8 +343,12 @@ def list_images(
     offset = max(0, offset)
     base = _filter_images(session, folderId, tag, q)
     total = session.exec(select(func.count()).select_from(base.subquery())).one()
+    order = _order_for(sort)
+    if q:
+        # 搜索时：标签命中的图片优先置于最前方，其次才是提示词/文件名命中
+        order = [case((_tag_match(q), 0), else_=1)] + order
     imgs = session.exec(
-        base.order_by(*_order_for(sort)).offset(offset).limit(limit)
+        base.order_by(*order).offset(offset).limit(limit)
     ).all()
     return {
         "items": to_cards(session, imgs),

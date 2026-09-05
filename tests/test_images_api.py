@@ -137,6 +137,33 @@ def test_list_filter_sort_and_slim():
             assert absent not in c
 
 
+def test_list_search_tag_match_prioritized():
+    """搜索标签：标签命中的图片排在提示词命中的前方。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 3)
+            im0, im1, im2 = ims
+            # im0 / im2 带属性标签「赛博朋克」；im1 无该标签但提示词含「赛博」
+            tag = Tag(name="赛博朋克", category="attr", count=0)
+            s.add(tag)
+            s.flush()
+            for im in (im0, im2):
+                if not s.exec(select(ImageTag).where(ImageTag.image_id == im.id, ImageTag.tag_id == tag.id)).first():
+                    s.add(ImageTag(image_id=im.id, tag_id=tag.id))
+            # im1 的提示词改成含「赛博」且作为仅提示词命中的那张
+            m1 = s.exec(select(WorkflowMeta).where(WorkflowMeta.image_id == im1.id)).one()
+            m1.prompt = "赛博 都市 夜景"
+            s.commit()
+            im0_id, im1_id, im2_id = im0.id, im1.id, im2.id
+        # 搜索「赛博」应命中全部 3 张；标签命中的 im0/im2 在 im1 之前
+        body = client.get("/api/images?q=赛博").json()
+        ordered = [c["id"] for c in body["items"]]
+        assert body["total"] == 3
+        assert ordered[-1] == im1_id                       # 仅提示词命中的排最后
+        assert set(ordered[:2]) == {im0_id, im2_id}        # 标签命中的两张在最前
+
+
 def test_detail_keeps_full_fields():
     with tempfile.TemporaryDirectory() as td:
         client, engine = _setup(Path(td))
