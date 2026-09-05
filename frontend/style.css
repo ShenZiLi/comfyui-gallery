@@ -607,11 +607,11 @@ body.am-selecting { user-select: none; }
     margin var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out); }
 @media (hover: hover) and (pointer: fine) {
-  .chip.attr:hover .attr-x { width: 17px; max-width: 17px; margin-left: 2px; padding: 0 3px; opacity: .9; transform: scale(1); pointer-events: auto; }
+  .chip.attr:hover .attr-x { width: 22px; max-width: 22px; margin-left: 5px; padding: 0 5px; opacity: .9; transform: scale(1); pointer-events: auto; }
   .chip.attr .attr-x:hover { opacity: 1; transform: scale(1.12); color: var(--danger); background: rgba(229,72,77,.14); border-radius: 50%; }
 }
 @media (hover: none) {
-  .chip.attr .attr-x { width: 17px; max-width: 17px; margin-left: 2px; padding: 0 3px; opacity: .9; transform: none; pointer-events: auto; }
+  .chip.attr .attr-x { width: 22px; max-width: 22px; margin-left: 5px; padding: 0 5px; opacity: .9; transform: none; pointer-events: auto; }
 }
 .chip.attr:active { transform: scale(.97); }
 .chip.attr.add { cursor: pointer; font-weight: 600; border-style: dashed; box-shadow: none;
@@ -632,7 +632,7 @@ body.am-selecting { user-select: none; }
 @media (prefers-reduced-motion: reduce) {
   .chip.attr { transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease; }
   .chip.attr:hover, .chip.attr:active { transform: none; }
-  .chip.attr .attr-x { transition: none; width: 17px; max-width: 17px; margin-left: 2px; padding: 0 3px; opacity: .9; transform: none; pointer-events: auto; }
+  .chip.attr .attr-x { transition: none; width: 22px; max-width: 22px; margin-left: 5px; padding: 0 5px; opacity: .9; transform: none; pointer-events: auto; }
 }
 .tag-add-input { width: 120px; padding: 3px 10px; font-size: 11px; line-height: 1.3; color: var(--text-2);
   border: 1px solid var(--brand); border-radius: 999px; background: var(--bg); outline: none;
