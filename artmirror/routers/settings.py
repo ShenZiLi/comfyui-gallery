@@ -12,8 +12,8 @@ from ..services import scanner, watcher
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# 三个模型角色及其扩展字段（支持不同厂商混搭）
-ROLES = ["text", "vision", "embed"]
+# 两个模型角色及其扩展字段（支持不同厂商混搭）
+ROLES = ["text", "vision"]
 ROLE_FIELDS = ["vendor", "base_url", "api_key", "model"]
 # 已知厂商类型；每个角色可为每个厂商保留独立配置
 VENDORS = ["deepseek", "qwen", "glm", "openai", "custom"]
@@ -278,28 +278,6 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                     headers = {"Authorization": f"Bearer {key}"}
                     r = httpx.get(url, headers=headers, timeout=30, trust_env=False)
                     r.raise_for_status()
-                    results[role] = {"ok": True, "message": "连接成功"}
-                elif role == "embed":
-                    # embedding 探测连通
-                    from ..services.llm import _role_config
-                    c = _role_config(session, "embed")
-                    base = (c.get("base_url") or "").strip()
-                    key = (c.get("api_key") or "").strip()
-                    model = (c.get("model") or "").strip()
-                    if not (base and key and model):
-                        raise llm.LLMNotConfigured("base_url/api_key/model 未配置完整")
-                    url = (
-                        base
-                        if base.rstrip("/").endswith("/embeddings")
-                        else base.rstrip("/") + "/embeddings"
-                    )
-                    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-                    payload = {"model": model, "input": "你好"}
-                    r = httpx.post(url, headers=headers, json=payload, timeout=60, trust_env=False)
-                    r.raise_for_status()
-                    data = r.json()
-                    if "data" not in data or not isinstance(data["data"], list) or not len(data["data"]):
-                        raise llm.LLMError("embedding 返回格式异常")
                     results[role] = {"ok": True, "message": "连接成功"}
             except Exception as e:
                 results[role] = {"ok": False, "message": str(e)}

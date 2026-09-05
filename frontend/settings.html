@@ -118,7 +118,7 @@
     <!-- 大模型配置（按角色混搭厂商） -->
     <div class="card pad">
       <h3 style="margin-top:0">大模型</h3>
-      <p class="muted">文本 / 视觉 / Embedding 各角色可分别选择不同厂商、独立配置，自由混搭。</p>
+      <p class="muted">文本 / 视觉 各角色可分别选择不同厂商、独立配置，自由混搭。</p>
       <template x-for="r in roles" :key="r.key">
         <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
@@ -231,7 +231,6 @@
   var ROLES = [
     { key: "text", label: "文本模型", modelLabel: "文本模型名", desc: "用于提示词翻译 / AI 文本评分", vendor: "deepseek" },
     { key: "vision", label: "视觉模型", modelLabel: "视觉模型名", desc: "用于图片反推提示词（需支持视觉输入）", vendor: "qwen" },
-    { key: "embed", label: "Embedding 模型", modelLabel: "Embedding 模型名", desc: "用于相似提示词聚类（可选）", vendor: "qwen" },
   ];
   var VENDORS = {
     deepseek: { baseUrl: "https://api.deepseek.com/v1", model: { text: "deepseek-v4-flash", vision: "deepseek-v4-flash-vision-exp", embed: "" } },
@@ -424,7 +423,7 @@
       c.vendors[c.vendor] = { vendor: c.vendor, base_url: c.baseUrl, api_key: c.apiKey, model: c.model };
       var self = this;
       Api.updateSettings({ llm: llm }).then(function () {
-        self.llmMsg = "已自动保存：文本 / 视觉 / Embedding 配置。";
+        self.llmMsg = "已自动保存：文本 / 视觉 配置。";
       }).catch(function (e) {
         self.llmMsg = "保存失败：" + ((e && e.message) || e);
       });
