@@ -600,6 +600,7 @@ body.am-selecting { user-select: none; }
     background-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) ease; }
 .chip.attr .attr-name { flex: 1 1 auto; min-width: 0; text-align: center; cursor: text; line-height: 1.4; }
 .chip.attr .attr-x { flex: 0 0 0; width: 0; max-width: 0; min-width: 0; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
   border: none; background: none; color: inherit; font-size: 12px; line-height: 1.4;
   cursor: pointer; margin: 0; padding: 0; opacity: 0; pointer-events: none; transform: scale(.5);
   transition: max-width var(--dur-fast) var(--ease-out), width var(--dur-fast) var(--ease-out),
