@@ -142,9 +142,12 @@
         throw e;
       });
     },
-    countImage: function (folderId) {
+    countImage: function (folderId, kind) {
       var url = "api/images/count";
-      if (folderId) url += "?folderId=" + encodeURIComponent(folderId);
+      var q = [];
+      if (folderId) q.push("folderId=" + encodeURIComponent(folderId));
+      if (kind) q.push("kind=" + encodeURIComponent(kind));
+      if (q.length) url += "?" + q.join("&");
       return req(url).catch(function (e) { throw e; });
     },
     batchStatus: function (taskId) {

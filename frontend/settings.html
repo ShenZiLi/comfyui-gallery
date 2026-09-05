@@ -238,7 +238,10 @@
       </div>
       <div class="modal-body">
         <p class="muted" style="margin:0 0 6px" x-text="'将执行「' + batchLabel(batchConfirm && batchConfirm.kind) + '」'"></p>
-        <p style="margin:0 0 20px">共涉及 <b x-text="batchConfirm && batchConfirm.total"></b> 张图片，确认开始？</p>
+        <p style="margin:0 0 6px">共涉及 <b x-text="batchConfirm && batchConfirm.total"></b> 张图片，确认开始？</p>
+        <p class="muted" style="margin:0 0 18px;font-size:12px" x-show="batchConfirm && batchConfirm.excluded > 0">
+          已自动排除 <b x-text="batchConfirm.excluded"></b> 张已处理过的图片。
+        </p>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button class="btn sm" @click="batchConfirm=null">取消</button>
           <button class="btn sm primary" @click="confirmStartBatch()">开始</button>
@@ -557,8 +560,8 @@
       if (this.batchConfirm || this.batchTask) return;
       var folderId = this.batchScope === "folder" ? (this.batchFolder || "") : null;
       if (this.batchScope === "folder" && !folderId) { App.toast("请先选择目录"); return; }
-      Api.countImage(folderId).then(function (d) {
-        self.batchConfirm = { kind: kind, folderId: folderId, total: (d && d.total) | 0 };
+      Api.countImage(folderId, kind).then(function (d) {
+        self.batchConfirm = { kind: kind, folderId: folderId, total: (d && d.total) | 0, excluded: (d && d.excluded) | 0 };
       }).catch(function (e) {
         App.toast("统计失败：" + ((e && e.message) || e));
       });

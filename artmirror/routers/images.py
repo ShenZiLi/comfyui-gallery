@@ -368,15 +368,52 @@ def list_images(
 @router.get("/count")
 def count_images(
     folderId: int | None = None,
+    kind: str = "",
     session: Session = Depends(get_session),
 ):
-    """统计全部或指定目录下待处理的图片数（用于批量操作前的确认提示）。"""
+    """统计待处理图片数（用于批量确认）：可排除已处理过的图片。"""
     if folderId:
         base = _filter_images(session, folderId, None, None)
     else:
         base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
-    total = session.exec(select(func.count()).select_from(base.subquery())).one()
-    return {"total": total}
+    total_all = session.exec(select(func.count()).select_from(base.subquery())).one()
+    excl = _batch_excl_sql(session, kind) if kind else None
+    if excl is not None:
+        pending = session.exec(select(func.count()).select_from(base.where(excl).subquery())).one()
+    else:
+        pending = total_all
+    return {"total": pending, "excluded": total_all - pending, "all": total_all}
+
+
+def _batch_excl_sql(session: Session, kind: str):
+    """批量 AI 的「已处理排除」条件：返回 ImageAsset 上需保留（未处理）的 where 表达式。
+
+    reverse → 排除已有反推提示词；tag → 排除已带属性标签；translate → 排除已有译文；
+    score → 排除已有 AI 评分；未知 kind 返回 None（不过滤）。
+    """
+    if kind == "reverse":
+        return ~exists(
+            select(1).where(ReversePrompt.image_id == ImageAsset.id).correlate(ImageAsset)
+        )
+    if kind == "tag":
+        return ~exists(
+            select(1)
+            .where(
+                ImageTag.image_id == ImageAsset.id,
+                ImageTag.is_deleted == 0,
+                Tag.id == ImageTag.tag_id,
+                Tag.is_deleted == 0,
+                Tag.category == "attr",
+            )
+            .correlate(ImageAsset)
+        )
+    if kind == "translate":
+        return ~exists(
+            select(1).where(PromptTranslation.image_id == ImageAsset.id).correlate(ImageAsset)
+        )
+    if kind == "score":
+        return ImageAsset.ai_rating.is_(None)
+    return None
 
 
 @router.get("/{image_id}")
@@ -671,6 +708,10 @@ def batch_ai(body: dict, session: Session = Depends(get_session)):
         base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
     else:
         raise HTTPException(400, "scope 仅支持 all / folder")
+    # 排除已处理过的图片（如反推已有反推提示词者）
+    excl = _batch_excl_sql(session, kind)
+    if excl is not None:
+        base = base.where(excl)
     ids = [i.id for i in session.exec(base).all()]
     bind = session.get_bind()
 
