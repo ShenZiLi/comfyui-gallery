@@ -19,7 +19,7 @@
     return '<nav><span class="brand">' + ICON_LOGO + '画镜 <span class="dot" style="font-size:12px;color:var(--text-3)">ArtMirror</span></span>' +
       items +
       '<span class="nav-spacer"></span>' +
-      '<button id="theme-toggle" class="theme-toggle" data-tip="切换主题（亮色 / 暗色 / Claude）" aria-label="切换主题"></button></nav>';
+      '<button id="theme-toggle" class="theme-toggle" data-tip="切换亮色 / 暗色模式" aria-label="切换亮色 / 暗色模式"></button></nav>';
   }
 
   function currentTheme() {
@@ -42,8 +42,8 @@
   function applyTheme(t) { setTheme(t); }
 
   function toggleTheme() {
-    var cur = currentTheme();
-    var next = THEME_SEQ[(THEME_SEQ.indexOf(cur) + 1) % THEME_SEQ.length];
+    // 右上角按钮只在亮色/暗色之间切换（Claude 主题仍可在设置页选择）
+    var next = currentTheme() === "dark" ? "light" : "dark";
     if (document.startViewTransition) {
       try {
         document.startViewTransition(function () { setTheme(next); });
