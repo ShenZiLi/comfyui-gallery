@@ -238,7 +238,103 @@ html[data-theme="spacex"] *::-webkit-scrollbar-track { background: transparent; 
   background-size: 24px 24px, 24px 24px, 100% 100%;
 }
 
-/* 减弱动态偏好：关闭新增的悬停位移（仅保留颜色过渡同理受全局控制） */
+/* ===== 第二层高质感细节：详情页 / 数据行 / 树 / 状态 / 杂项 ===== */
+
+/* 详情大图：外包一道极淡发丝框 + 内侧高光（不叠图、不遮图），像镜面帧 */
+html[data-theme="spacex"] .detail-image {
+  padding: 3px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #242429, #101014 40%);
+  box-shadow: 0 0 0 1px #2c2c31, inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+html[data-theme="spacex"] .detail-image img { border-radius: 9px; }
+
+/* 分区标题：发丝下方 + 微弱分隔，遥测「段落编号」感 */
+html[data-theme="spacex"] .section h3 {
+  color: var(--text-2);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #1f1f24;
+}
+
+/* 标签 / 徽标：低饱和数据标签（含义色弱化，但保持可读区分） */
+html[data-theme="spacex"] .sub-badge.reverse { background: rgba(131, 58, 180, .16); color: #cdb3ee; }
+html[data-theme="spacex"] .sub-badge.origin { background: var(--brand-weak); color: var(--brand); }
+html[data-theme="spacex"] .sub-badge.trans { background: rgba(5, 150, 105, .16); color: #6fd3ad; }
+html[data-theme="spacex"] .hd-badge {
+  color: var(--text-2);
+  border-color: #3a3a3f;
+  font-family: var(--font-display);
+  letter-spacing: .12em;
+}
+html[data-theme="spacex"] .status-inline { color: var(--text-3); }
+html[data-theme="spacex"] .status-inline.ok { color: #6fd3ad; }
+html[data-theme="spacex"] .status-inline.bad { color: #e0877f; }
+
+/* 目录树：active 淡蓝底 + 内侧高光，悬停仅亮背板 */
+html[data-theme="spacex"] .tree-item:hover { background: var(--brand-weak); }
+html[data-theme="spacex"] .tree-item.active {
+  background: var(--brand-weak);
+  color: var(--brand);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+/* 已注册目录行：金属发丝边 + 内侧高光 */
+html[data-theme="spacex"] .root-row {
+  border-color: #2c2c31;
+  background: #0d0d10;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+/* 空状态 / 加载更多：弱化 + 发丝分隔线 */
+html[data-theme="spacex"] .empty {
+  color: var(--text-3);
+  border: 1px dashed #2c2c31;
+  border-radius: var(--radius);
+  background: #0c0c0f;
+}
+html[data-theme="spacex"] .loading-more { color: var(--text-3); font-family: var(--font-display); letter-spacing: .2em; text-transform: uppercase; }
+
+/* 搜索框：近黑底 + 发丝边；图标弱化 */
+html[data-theme="spacex"] .searchbox input { background: #0f0f12; border-color: #3a3a3f; }
+html[data-theme="spacex"] .searchbox input:focus { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand), 0 0 0 4px var(--brand-glow); }
+html[data-theme="spacex"] .search-icon { color: var(--text-3); }
+
+/* 缩放工具条：近黑背板 */
+html[data-theme="spacex"] .zoom-tools { background: #09090b; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6); }
+
+/* Modal：近黑面板 + 发丝 + 内侧高光；遮罩更深的克制暗化 */
+html[data-theme="spacex"] .modal-mask { background: rgba(0, 0, 0, .66); }
+html[data-theme="spacex"] .modal-head,
+html[data-theme="spacex"] .modal-foot { border-color: #222227; }
+html[data-theme="spacex"] .modal-x:hover { background: var(--bg); color: var(--text); }
+
+/* 文件夹选择：发丝边 + 悬停底；面包屑近黑 */
+html[data-theme="spacex"] .fs-crumb { background: #0f0f12; border-color: #3a3a3f; }
+html[data-theme="spacex"] .fs-list { border-color: #2c2c31; background: #0c0c0f; }
+html[data-theme="spacex"] .fs-item:hover { background: var(--brand-weak); }
+html[data-theme="spacex"] .fs-item.active { background: var(--brand-weak); color: var(--brand); }
+
+/* 多选框拖选：淡蓝勾勒 + 极淡填充（框选交互期，非图片常驻叠加） */
+html[data-theme="spacex"] .am-select-box {
+  border-color: var(--brand);
+  background: var(--brand-glow);
+}
+
+/* 底部固定操作栏与版本水印：近黑浮层，不干扰内容 */
+html[data-theme="spacex"] .version-watermark {
+  color: var(--text-3);
+  font-family: var(--font-display);
+  letter-spacing: .14em;
+}
+
+/* 文件卡信息区：名称加细，弱化元数据，保持数据标签质感 */
+html[data-theme="spacex"] .img-card .info .name { font-weight: 600; letter-spacing: .01em; }
+
+/* 减弱动态偏好：关闭新增的悬停位移（颜色过渡仍随全局控制） */
 @media (prefers-reduced-motion: reduce) {
   html[data-theme="spacex"] .img-card { transition: none; }
 }
