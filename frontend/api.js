@@ -137,10 +137,21 @@
         throw e;
       });
     },
-    batchAI: function (kind, scope, filter) {
-      return req("api/images/batch-ai", { method: "POST", body: { kind: kind, scope: scope, filter: filter || {} } }).catch(function (e) {
+    batchAI: function (kind, scope, folderId) {
+      return req("api/images/batch-ai", { method: "POST", body: { kind: kind, scope: scope, folderId: folderId || null } }).catch(function (e) {
         throw e;
       });
+    },
+    countImage: function (folderId) {
+      var url = "api/images/count";
+      if (folderId) url += "?folderId=" + encodeURIComponent(folderId);
+      return req(url).catch(function (e) { throw e; });
+    },
+    batchStatus: function (taskId) {
+      return req("api/images/batch-ai/" + taskId).catch(function (e) { throw e; });
+    },
+    batchStop: function (taskId) {
+      return req("api/images/batch-ai/" + taskId + "/stop", { method: "POST" }).catch(function (e) { throw e; });
     },
     addImageTag: function (id, name) {
       return req("api/images/" + id + "/tags", { method: "POST", body: { name: name } }).catch(function (e) {

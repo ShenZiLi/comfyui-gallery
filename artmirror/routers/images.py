@@ -1,5 +1,6 @@
 """图片查询与文件服务路由。"""
 import re
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -21,6 +22,11 @@ from ..models import (
 from ..services import meta_service, llm, watcher
 
 router = APIRouter(prefix="/api/images", tags=["images"])
+
+# 批量 AI 后台任务注册表（内存态）
+_BATCH_LOCK = threading.Lock()
+_BATCH_SEQ = 0
+_BATCH_TASKS: dict[int, dict] = {}
 
 
 def _basename(name: str) -> str:
@@ -359,6 +365,20 @@ def list_images(
     }
 
 
+@router.get("/count")
+def count_images(
+    folderId: int | None = None,
+    session: Session = Depends(get_session),
+):
+    """统计全部或指定目录下待处理的图片数（用于批量操作前的确认提示）。"""
+    if folderId:
+        base = _filter_images(session, folderId, None, None)
+    else:
+        base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    total = session.exec(select(func.count()).select_from(base.subquery())).one()
+    return {"total": total}
+
+
 @router.get("/{image_id}")
 def get_image(image_id: int, session: Session = Depends(get_session)):
     im = session.get(ImageAsset, image_id)
@@ -606,46 +626,95 @@ def _batch_ai_one(session: Session, im: ImageAsset, kind: str) -> None:
     session.commit()
 
 
+def _run_batch(bind, tid: int, ids: list[int], kind: str) -> None:
+    """后台线程执行批量任务：逐张处理、实时更新进度，可被 cancel 事件终止。"""
+    task = _BATCH_TASKS.get(tid)
+    if task is None:
+        return
+    try:
+        with Session(bind) as session:
+            for im_id in ids:
+                if task["cancel"].is_set():
+                    break
+                im = session.get(ImageAsset, im_id)
+                try:
+                    if im is not None:
+                        _batch_ai_one(session, im, kind)
+                        task["ok"] += 1
+                except llm.LLMError as exc:
+                    if im is not None:
+                        task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                except Exception as exc:  # noqa: BLE001 — 逐张隔离
+                    session.rollback()
+                    if im is not None:
+                        task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                task["done"] += 1
+        if task["ok"]:
+            watcher.bump()
+    finally:
+        task["running"] = False
+
+
 @router.post("/batch-ai")
 def batch_ai(body: dict, session: Session = Depends(get_session)):
-    """批量 AI 操作：对全部/筛选图片逐个执行反推/打标/互译/评分（逐张隔离异常）。"""
+    """启动批量 AI 任务（异步）：对全部/按目录图片逐个执行反推/打标/互译/评分。
+
+    返回 task_id 与 total，前端轮询任务状态获得实时进度，可调用 stop 终止。
+    """
     kind = str((body or {}).get("kind") or "").strip()
     if kind not in ("reverse", "tag", "translate", "score"):
         raise HTTPException(400, "kind 仅支持 reverse / tag / translate / score")
     scope = str((body or {}).get("scope") or "all").strip() or "all"
-    f = body.get("filter") or {}
-
-    if scope == "filter":
-        base = _filter_images(
-            session,
-            f.get("folderId") or None,
-            (f.get("tag") or None),
-            (f.get("q") or None),
-        )
-    else:
+    if scope == "folder":
+        base = _filter_images(session, (body.get("folderId") or None), None, None)
+    elif scope == "all":
         base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
-    ims = session.exec(base).all()
+    else:
+        raise HTTPException(400, "scope 仅支持 all / folder")
+    ids = [i.id for i in session.exec(base).all()]
+    bind = session.get_bind()
 
-    ok = 0
-    fails: list[dict] = []
-    for im in ims:
-        try:
-            _batch_ai_one(session, im, kind)
-            ok += 1
-        except llm.LLMError as exc:
-            fails.append({"id": im.id, "name": im.file_name, "error": str(exc)})
-        except Exception as exc:  # noqa: BLE001 — 逐张隔离，避免一张中断整批
-            session.rollback()
-            fails.append({"id": im.id, "name": im.file_name, "error": str(exc)})
-    if ok:
-        watcher.bump()
+    global _BATCH_SEQ
+    with _BATCH_LOCK:
+        _BATCH_SEQ += 1
+        tid = _BATCH_SEQ
+        task = {
+            "id": tid, "kind": kind, "total": len(ids), "done": 0, "ok": 0,
+            "failed": [], "running": True, "cancel": threading.Event(),
+        }
+        _BATCH_TASKS[tid] = task
+    thread = threading.Thread(target=_run_batch, args=(bind, tid, ids, kind), daemon=True)
+    task["thread"] = thread
+    thread.start()
+    return {"task_id": tid, "kind": kind, "total": len(ids)}
+
+
+@router.get("/batch-ai/{task_id}")
+def batch_ai_status(task_id: int, session: Session = Depends(get_session)):
+    """查询批量任务实时状态。"""
+    task = _BATCH_TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(404, "task not found")
     return {
-        "kind": kind,
-        "scope": scope,
-        "total": len(ims),
-        "ok": ok,
-        "failed": fails,
+        "task_id": task_id,
+        "kind": task["kind"],
+        "total": task["total"],
+        "done": task["done"],
+        "ok": task["ok"],
+        "failed": task["failed"],
+        "running": task["running"],
+        "cancelled": task["cancel"].is_set(),
     }
+
+
+@router.post("/batch-ai/{task_id}/stop")
+def batch_ai_stop(task_id: int, session: Session = Depends(get_session)):
+    """终止批量任务：置 cancel 事件，工作线程尽早中断。"""
+    task = _BATCH_TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(404, "task not found")
+    task["cancel"].set()
+    return {"stopped": True, "task_id": task_id}
 
 
 @router.post("/{image_id}/reverse")

@@ -202,30 +202,76 @@
     <!-- 批量 AI 操作 -->
     <div class="card pad">
       <h3 style="margin-top:0">批量 AI 操作（注意：将消耗大量token）</h3>
-      <p class="muted">对「全部图片」或「当前筛选结果」执行批量增强。</p>
+      <p class="muted">对「全部图片」或「指定目录」执行批量增强；开始前会确认涉及图片数，执行中可实时查看进度并终止。</p>
       <div class="chips" style="margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="all" />全部</label>
-        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="filter" />当前筛选</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="batchScope" x-model="batchScope" value="all" />全部图片</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="batchScope" x-model="batchScope" value="folder" />按目录</label>
+        <select x-show="batchScope==='folder'" x-model="batchFolder" style="max-width:260px">
+          <option value="">选择目录…</option>
+          <template x-for="f in folderOptions()" :key="f.id">
+            <option :value="f.id" x-text="f.path + '（' + (f.count||0) + '）'"></option>
+          </template>
+        </select>
       </div>
       <div class="btn-row mt">
-        <button class="btn" @click="batch('reverse')" :disabled="!!running">
-          <span x-text="running==='reverse' ? '处理中…' : '图片反推'"></span>
-        </button>
-        <button class="btn" @click="batch('tag')" :disabled="!!running">
-          <span x-text="running==='tag' ? '处理中…' : '标签解析'"></span>
-        </button>
-        <button class="btn" @click="batch('translate')" :disabled="!!running">
-          <span x-text="running==='translate' ? '处理中…' : '中英互译'"></span>
-        </button>
-        <button class="btn" @click="batch('score')" :disabled="!!running">
-          <span x-text="running==='score' ? '处理中…' : 'AI 评分'"></span>
-        </button>
+        <button class="btn" @click="startBatch('reverse')">图片反推</button>
+        <button class="btn" @click="startBatch('tag')">标签解析</button>
+        <button class="btn" @click="startBatch('translate')">中英互译</button>
+        <button class="btn" @click="startBatch('score')">AI 评分</button>
       </div>
       <div class="card mt" style="background:var(--bg);padding:8px 10px">
         <div class="muted" style="font-size:12px">
           · 反推结果会单独标注为「<span style="color:#833ab4">反推提示词</span>」，不覆盖原生 workflow 提示词。<br/>
           · 所有反推操作请求LLM前均会做一次质量60的JPG有损压缩（临时），显著降低图片大小，减少token消耗。<br/>
           · 未配置模型时，AI 功能将置灰并给出提示。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量确认弹窗：显示涉及图片数，二次确认 -->
+  <div class="modal-mask" x-show="batchConfirm" x-cloak @keydown.escape.window="batchConfirm=null">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-head">
+        <h3>批量确认</h3>
+        <button class="modal-x" @click="batchConfirm=null">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin:0 0 6px" x-text="'将执行「' + batchLabel(batchConfirm && batchConfirm.kind) + '」'"></p>
+        <p style="margin:0 0 20px">共涉及 <b x-text="batchConfirm && batchConfirm.total"></b> 张图片，确认开始？</p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn sm" @click="batchConfirm=null">取消</button>
+          <button class="btn sm primary" @click="confirmStartBatch()">开始</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量进度弹窗：实时进度条 + 终止任务 -->
+  <div class="modal-mask" x-show="batchTask" x-cloak>
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head">
+        <h3 x-text="'批量' + batchLabel(batchTask && batchTask.kind)"></h3>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin:0 0 4px" x-text="batchRunMsg()"></p>
+        <div class="batch-bar"><i :style="'width:'+batchPct()+'%'"></i></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px">
+          <span x-text="(batchProgress.done||0) + ' / ' + (batchProgress.total||0) + ' 张'"></span>
+          <span x-text="batchPctText()"></span>
+        </div>
+        <div class="muted mt" x-show="batchProgress.failed && batchProgress.failed.length" style="font-size:12px;color:var(--danger)">
+          <span x-text="batchProgress.failed.length + ' 张失败'"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <template x-if="batchProgress.running">
+            <button class="btn sm danger" @click="stopBatch()" :disabled="batchStopping">
+              <span x-text="batchStopping ? '正在终止…' : '终止任务'"></span>
+            </button>
+          </template>
+          <template x-if="!batchProgress.running">
+            <button class="btn sm primary" @click="closeBatch()">完成</button>
+          </template>
         </div>
       </div>
     </div>
@@ -288,7 +334,13 @@
     vendorOpen: null,
     testState: {},
     scope: ["all"],
-    running: "",
+    batchScope: "all",
+    batchFolder: "",
+    batchConfirm: null,
+    batchTask: null,
+    batchProgress: { total: 0, done: 0, ok: 0, failed: [], running: false, cancelled: false },
+    batchStopping: false,
+    _batchTimer: null,
     _lastVer: -1,
     version: "",
     importDirHint() {
@@ -495,23 +547,79 @@
         self.testing = false;
       });
     },
-    batch(kind) {
-      var self = this;
-      if (this.running) return;
-      var scope = (this.scope || []).indexOf("filter") >= 0 ? "filter" : "all";
-      this.running = kind;
-      this.doneMsg = "";
-      Api.batchAI(kind, scope, { kind: kind }).then(function (d) {
-        self.running = "";
-        var ok = (d && d.ok) | 0, total = (d && d.total) | 0, failed = (d && d.failed) ? d.failed.length : 0;
-        self.doneMsg = "批量" + self.batchLabel(kind) + "完成：" + ok + "/" + total + " 成功" + (failed ? "，" + failed + " 失败" : "");
-      }).catch(function (e) {
-        self.running = "";
-        self.doneMsg = "批量" + self.batchLabel(kind) + "失败：" + ((e && e.message) || e);
-      });
-    },
+    folderOptions() { return (this.scanned || []).filter(function (f) { return (f.count || 0) > 0 && !f.hidden; }); },
     batchLabel(kind) {
       return { reverse: "图片反推", tag: "标签解析", translate: "中英互译", score: "AI 评分" }[kind] || kind;
+    },
+    // 点按钮 → 先统计图片数，弹二次确认
+    startBatch(kind) {
+      var self = this;
+      if (this.batchConfirm || this.batchTask) return;
+      var folderId = this.batchScope === "folder" ? (this.batchFolder || "") : null;
+      if (this.batchScope === "folder" && !folderId) { App.toast("请先选择目录"); return; }
+      Api.countImage(folderId).then(function (d) {
+        self.batchConfirm = { kind: kind, folderId: folderId, total: (d && d.total) | 0 };
+      }).catch(function (e) {
+        App.toast("统计失败：" + ((e && e.message) || e));
+      });
+    },
+    confirmStartBatch() {
+      var self = this;
+      var c = this.batchConfirm;
+      if (!c) return;
+      this.batchConfirm = null;
+      this.batchTask = { kind: c.kind, taskId: null };
+      this.batchProgress = { total: c.total, done: 0, ok: 0, failed: [], running: true, cancelled: false };
+      this.batchStopping = false;
+      Api.batchAI(c.kind, c.folderId ? "folder" : "all", c.folderId).then(function (d) {
+        self.batchTask = { kind: c.kind, taskId: d.task_id };
+        self.batchProgress.total = (d && d.total) | 0;
+        self.startPoll();
+      }).catch(function (e) {
+        self.closeBatch();
+        App.toast("启动失败：" + ((e && e.message) || e));
+      });
+    },
+    startPoll() {
+      this.stopPoll();
+      var self = this;
+      this._batchTimer = setInterval(function () { self.pollBatch(); }, 600);
+    },
+    stopPoll() { if (this._batchTimer) { clearInterval(this._batchTimer); this._batchTimer = null; } },
+    pollBatch() {
+      var self = this;
+      var tid = this.batchTask && this.batchTask.taskId;
+      if (!tid) return;
+      Api.batchStatus(tid).then(function (d) {
+        self.batchProgress = {
+          total: d.total, done: d.done, ok: d.ok,
+          failed: (d.failed || []).slice(0, 50),
+          running: d.running, cancelled: d.cancelled,
+        };
+        if (!d.running) self.stopPoll();
+      }).catch(function () { /* 下次轮询重试 */ });
+    },
+    stopBatch() {
+      var self = this;
+      var tid = this.batchTask && this.batchTask.taskId;
+      if (!tid || this.batchStopping) return;
+      this.batchStopping = true;
+      Api.batchStop(tid).then(function () { self.batchStopping = false; }).catch(function () { self.batchStopping = false; });
+    },
+    closeBatch() {
+      this.stopPoll();
+      this.batchTask = null;
+      this.batchProgress = { total: 0, done: 0, ok: 0, failed: [], running: false, cancelled: false };
+    },
+    batchPct() {
+      var t = (this.batchProgress && this.batchProgress.total) | 0;
+      var d = (this.batchProgress && this.batchProgress.done) | 0;
+      return t ? Math.min(100, Math.round(d / t * 100)) : 0;
+    },
+    batchPctText() { return this.batchPct() + "%"; },
+    batchRunMsg() {
+      if (this.batchProgress.cancelled) return "任务已终止。";
+      return this.batchProgress.running ? "正在处理，可随时终止任务…" : "已完成。";
     },
 
     // ---- 导入保存目录（绝对路径，在后端保存并入库） ----

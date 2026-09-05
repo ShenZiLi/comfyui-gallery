@@ -3,6 +3,7 @@
 只挂载 images 路由（避免 watcher 与静态托管副作用），DB 为独立 SQLite 文件。
 """
 import tempfile
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -165,7 +166,7 @@ def test_list_search_tag_match_prioritized():
 
 
 def test_batch_ai_isolates_failures_without_config():
-    """未配置大模型时批量 AI 逐张隔离失败、不中断，返回统计。"""
+    """未配置大模型时批量 AI 异步执行、逐张隔离失败、可轮询/终止。"""
     with tempfile.TemporaryDirectory() as td:
         client, engine = _setup(Path(td))
         with Session(engine) as s:
@@ -173,11 +174,22 @@ def test_batch_ai_isolates_failures_without_config():
         resp = client.post("/api/images/batch-ai", json={"kind": "reverse", "scope": "all"})
         assert resp.status_code == 200
         d = resp.json()
-        assert d["total"] == 3 and d["ok"] == 0
-        assert len(d["failed"]) == 3
-        assert all(x["error"] for x in d["failed"])
-        # 非法 kind
+        assert d["total"] == 3 and d["task_id"] > 0
+        # 轮询至完成
+        st = {}
+        for _ in range(60):
+            st = client.get(f"/api/images/batch-ai/{d['task_id']}").json()
+            if not st["running"]:
+                break
+            time.sleep(0.05)
+        assert st["running"] is False
+        assert st["done"] == 3 and st["ok"] == 0 and len(st["failed"]) == 3
+        assert all(x["error"] for x in st["failed"])
+        # 非法 kind / 非法 scope
         assert client.post("/api/images/batch-ai", json={"kind": "nope"}).status_code == 400
+        assert client.post("/api/images/batch-ai", json={"kind": "reverse", "scope": "bad"}).status_code == 400
+        # 终止不存在的任务
+        assert client.post("/api/images/batch-ai/9999/stop").status_code == 404
 
 
 def test_detail_keeps_full_fields():

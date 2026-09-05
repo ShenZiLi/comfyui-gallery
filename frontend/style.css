@@ -639,6 +639,10 @@ body.am-selecting { user-select: none; }
   border: 1px solid var(--brand); border-radius: 999px; background: var(--bg); outline: none;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
 .tag-add-input:focus { box-shadow: 0 0 0 3px var(--brand-weak); }
+
+/* 批量任务进度条 */
+.batch-bar { height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 10px; }
+.batch-bar i { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width var(--dur-med) ease; }
 html[data-theme="dark"] .chip.attr { color: #f0b267; border-color: color-mix(in srgb,#b98a34 45%,#000); background: color-mix(in srgb,#b98a34 16%,#10141c); }
 html[data-theme="dark"] .chip.model { color: #9db1ff; border-color: color-mix(in srgb,var(--model) 45%,#000); background: color-mix(in srgb,var(--model) 16%,#10141c); }
 html[data-theme="dark"] .chip.lora { color: #c79ae8; border-color: color-mix(in srgb,var(--lora) 45%,#000); background: color-mix(in srgb,var(--lora) 16%,#10141c); }
