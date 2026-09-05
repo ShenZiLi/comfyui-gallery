@@ -140,7 +140,7 @@
         </h3>
         <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
         <div class="chips" style="margin-top:6px">
-          <template x-for="t in im.tags || []" :key="t.category+t.name">
+          <template x-for="t in modelTags()" :key="t.category+t.name">
             <span class="chip" :class="t.category"><span x-text="t.name"></span><template x-if="t.category==='lora'"><span class="lora-w" x-text="loraStrength(t.name)"></span></template></span>
           </template>
         </div>
@@ -318,6 +318,8 @@
     },
     // 属性标签
     attrTags() { return ((this.im && this.im.tags) || []).filter(function (t) { return t.category === 'attr'; }); },
+    // 模型板块标签：排除属性标签（属性标签在提示词板块展示/编辑），保留模型/LoRA/VAE 等资源标签
+    modelTags() { return ((this.im && this.im.tags) || []).filter(function (t) { return t.category !== 'attr'; }); },
     _refreshTags(tags) {
       var cur = (this.im && this.im.tags) || [];
       this.im.tags = cur.filter(function (t) { return t.category !== 'attr'; }).concat(tags || []);
