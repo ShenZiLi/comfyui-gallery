@@ -111,16 +111,20 @@
         <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
           <b>负向：</b><span class="prompt-clickable" @click.stop="copy(activeNegative())" x-text="activeNegative()"></span>
         </div>
-        <!-- 属性标签：双击改名 / × 删除 / ＋ 新增 -->
+        <!-- 属性标签：悬停显 × 删除 / 双击改名 / ＋ 内联新增 -->
         <div class="attr-tags mt">
-          <span class="muted" style="font-size:12px;margin-right:4px">属性</span>
+          <span class="attr-label">标签</span>
           <template x-for="t in attrTags()" :key="'t'+t.name">
-            <span class="chip attr">
+            <span class="chip attr" :data-tip="'双击修改 · ' + t.name">
               <span class="attr-name" @dblclick.stop="renameTag(t)" x-text="t.name"></span>
               <button class="attr-x" data-tip="删除" @click.stop="removeTag(t)">×</button>
             </span>
           </template>
-          <button class="chip attr add" data-tip="新增属性标签" @click.stop="addTag()">＋</button>
+          <button class="chip attr add" x-show="!addingTag" data-tip="新增标签" @click.stop="startAddTag()">＋</button>
+          <input x-show="addingTag" x-ref="tagAddInput" class="tag-add-input" x-model="newTagText"
+                 placeholder="输入标签，回车确认"
+                 @keydown.enter.prevent="commitAddTag()" @keydown.esc.stop="cancelAddTag()"
+                 @blur="commitAddTag()" @click.stop />
         </div>
       </div>
 
@@ -236,6 +240,7 @@
     trIng: false, trLang: "",
     compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
+    addingTag: false, newTagText: "",
     navIds: [], navIdx: -1, curId: null,
     magnify: false,
     previewOpen: false, pvScale: 1, pvX: 0, pvY: 0,
@@ -265,6 +270,7 @@
       this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
       this.compressing = false;
+      this.addingTag = false; this.newTagText = "";
       this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
@@ -316,11 +322,18 @@
       var cur = (this.im && this.im.tags) || [];
       this.im.tags = cur.filter(function (t) { return t.category !== 'attr'; }).concat(tags || []);
     },
-    addTag() {
+    // 内联新增：点 ＋ 在标签右侧弹出迷你输入框，回车确认、Esc/点空白取消
+    startAddTag() {
       var self = this;
-      var name = window.prompt("新增属性标签：");
-      name = (name || "").trim();
-      if (!name) { App.toast("标签不能为空"); return; }
+      this.addingTag = true; this.newTagText = "";
+      this.$nextTick(function () { var el = self.$refs.tagAddInput; if (el) el.focus(); });
+    },
+    commitAddTag() {
+      if (!this.addingTag) return;
+      var name = (this.newTagText || "").trim();
+      this.addingTag = false; this.newTagText = "";
+      if (!name) return;
+      var self = this;
       Api.addImageTag(this.im.id, name).then(function (d) {
         self._refreshTags(d && d.tags);
         App.toast("已添加");
@@ -328,6 +341,7 @@
         App.toast((e && e.message) || "添加失败");
       });
     },
+    cancelAddTag() { this.addingTag = false; this.newTagText = ""; },
     removeTag(t) {
       var self = this;
       Api.removeImageTag(this.im.id, t.name).then(function (d) {
