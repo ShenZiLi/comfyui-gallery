@@ -601,6 +601,8 @@ body.am-selecting { user-select: none; }
 .chip.attr .attr-name { cursor: text; line-height: 1.4; }
 .chip.attr:active { transform: scale(.97); }
 .chip.attr.add { cursor: pointer; font-weight: 600; border-style: dashed; box-shadow: none;
+  width: 20px; height: 20px; padding: 0; font-size: 13px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
   color: color-mix(in srgb,#b98a34 82%,#777); }
 .chip.attr.add:hover { color: var(--brand); border-color: var(--brand); background: var(--brand-weak); box-shadow: none; }
 /* 入场：标签挂载时轻微淡入上浮（@starting-style 渐进增强，不支持则直接显示） */
