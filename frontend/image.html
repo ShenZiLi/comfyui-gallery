@@ -115,6 +115,7 @@
           <template x-for="t in attrTags()" :key="'t'+t.name">
             <span class="chip attr" data-tip="双击删除">
               <span class="attr-name" @dblclick.stop="removeTag(t)" x-text="t.name"></span>
+              <button class="attr-x" data-tip="删除" @click.stop="removeTag(t)">×</button>
             </span>
           </template>
           <button class="chip attr add" x-show="!addingTag" data-tip="新增标签" @click.stop="startAddTag()">＋</button>
