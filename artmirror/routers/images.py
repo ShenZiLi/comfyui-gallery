@@ -685,6 +685,7 @@ def update_image_prompt(image_id: int, body: dict, session: Session = Depends(ge
         row.text = _SEG.join(texts)
 
     session.commit()
+    watcher.bump()  # 提示词变化须让图库页轮询刷新（返回 gallery 立即生效）
     return to_detail(session, im)
 
 

@@ -261,11 +261,8 @@ def extract_prompt_tags(prompt, session: Session) -> list[str]:
     prompt = (prompt or "").strip()
     if not prompt:
         return []
-    text = chat_text(
-        f"{PROMPT_TAG}\n\n{prompt}",
-        _prompt_override(session, "prompt_tag", PROMPT_TAG),
-        session,
-    )
+    template = _prompt_override(session, "prompt_tag", PROMPT_TAG)
+    text = chat_text(f"{template}\n\n{prompt}", session)
     # 按常见分隔符切分并清洗
     tags: list[str] = []
     seen: set[str] = set()
