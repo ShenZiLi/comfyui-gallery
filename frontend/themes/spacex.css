@@ -1,61 +1,234 @@
 /* ============================================================================
-   SpaceX 暗黑科技主题
+   SpaceX 暗黑科技主题（增强版）
    设计规范来源：awesome-design-md / SpaceX 启发风格（DESIGN.md）。
    纯黑画布（canvas-night #000000）+ 近黑面板（canvas-night-soft #0a0a0a）、
    极淡 hairline 描边（#3a3a3f）、全大写紧缩等宽字距的航天遥测感。
-   品牌强调色刻意去饱和 —— 只用哑光白 / 淡蓝做点缀，黑即全部。
-   仅覆盖颜色类变量与若干组件；不引入动效、不引入外部字体。 */
+   品牌强调色刻意去饱和 —— 哑光淡蓝白点缀，黑即全部。
+
+   高质感细节：
+   - 面板/输入框顶部内侧高光（inset 0 1px 0 金属边缘），航天级机械质感
+   - 卡片悬停极微弱抬升 + hairline 亮化（不加色，只亮描边）
+   - 聚焦状态用哑光淡蓝 ghost 描边 + 极淡外晕（替代默认品牌色粗描边）
+   - 主按钮 ghost 反相关机：描边悬停、按下反白，具备遥测「按钮序列」味道
+   - 标题走紧缩显示字体 + 负字距（D-DIN/Arial Narrow 压缩链）
+   - 分段/下拉/弹窗统一发丝边 + 内侧高光，深色高程层层递进 */
 html[data-theme="spacex"] {
   --bg: #0a0a0a;                 /* 页面底：近黑，避免死黑 #000 */
   --panel: #0d0d10;              /* 卡片 / 面板底：在底色上轻微抬升 */
   --border: #3a3a3f;             /* hairline-on-dark：极淡暖灰描边 */
+  --border-strong: #4a4a52;      /* 强调描边 / 悬停亮化 */
   --text: #f5f6fa;               /* on-primary：暖白主文本 */
   --text-2: #a8a9b1;             /* 次级文本：可读中性灰 */
   --text-3: #5a5a5f;             /* ink-mute：弱化文本 */
   --brand: #f0f0fa;              /* 强调色：哑光淡蓝白（无品牌原色） */
   --brand-weak: #1a1a1f;         /* 强调色淡底 */
+  --brand-glow: rgba(240, 240, 250, .16); /* 聚焦 / 悬停外晕 */
   --nav-bg: rgba(7, 7, 10, .86); /* 顶栏：覆盖式近黑渐变感 */
   --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -12px rgba(0, 0, 0, .6);
   --shadow-hover: 0 8px 22px rgba(0, 0, 0, .6), 0 18px 48px -16px rgba(0, 0, 0, .5);
-  --font-display: "D-DIN", "Arial Narrow", Arial, Verdana, "PingFang SC", sans-serif;
+  --font-display: "D-DIN", "Arial Narrow", Arial, Verdana, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-/* ===== 表单控件 ===== */
+/* 金属边缘：面板 / 输入框 / 按钮顶部内侧一条微弱高光，机械质感的来源 */
+html[data-theme="spacex"] .card,
+html[data-theme="spacex"] .dropdown-menu,
+html[data-theme="spacex"] .modal {
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .045);
+}
 html[data-theme="spacex"] input[type=text],
 html[data-theme="spacex"] input[type=password],
 html[data-theme="spacex"] input[type=number],
 html[data-theme="spacex"] select,
-html[data-theme="spacex"] textarea { background: #0f0f12; border-color: #3a3a3f; color: var(--text); }
+html[data-theme="spacex"] textarea,
+html[data-theme="spacex"] .dropdown-btn {
+  background: #0f0f12;
+  border-color: #3a3a3f;
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+}
+
+/* 聚焦：ghost 淡蓝描边 + 极淡外晕，航天控制台的「锁定」感 */
+html[data-theme="spacex"] input:focus,
+html[data-theme="spacex"] select:focus,
+html[data-theme="spacex"] textarea:focus,
+html[data-theme="spacex"] .dropdown-btn.open {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), 0 0 0 4px var(--brand-glow), inset 0 1px 0 rgba(255, 255, 255, .03);
+}
 html[data-theme="spacex"] textarea { scrollbar-color: #3a3a3f #0f0f12; }
 
-/* ===== 按钮：ghost 描边感；primary = 哑光白底 + 黑字，hover 反相为 ghost ===== */
-html[data-theme="spacex"] .btn { background: transparent; border-color: #3a3a3f; color: var(--text); }
-html[data-theme="spacex"] .btn:hover { background: #f0f0fa; border-color: #f0f0fa; color: #0a0a0a; }
-html[data-theme="spacex"] .btn.primary { background: #f0f0fa; color: #0a0a0a; border-color: transparent; }
-html[data-theme="spacex"] .btn.primary:hover { background: transparent; color: #f0f0fa; border-color: #f0f0fa; }
-html[data-theme="spacex"] .btn.primary:disabled { background: #19191d; color: #5a5a5f; border-color: #3a3a3f; }
+/* 按钮：ghost 描边感；主按钮 = 哑光白底黑字，悬停反相为 ghost；统一负字距与字宽 */
+html[data-theme="spacex"] .btn {
+  background: transparent;
+  border-color: #3a3a3f;
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+html[data-theme="spacex"] .btn:hover {
+  background: rgba(240, 240, 250, .06);
+  border-color: #f0f0fa;
+  color: #f0f0fa;
+  box-shadow: 0 0 0 1px rgba(240, 240, 250, .18);
+}
+html[data-theme="spacex"] .btn.primary {
+  background: #f0f0fa;
+  color: #0a0a0a;
+  border-color: transparent;
+  font-weight: 600;
+}
+html[data-theme="spacex"] .btn.primary:hover {
+  background: transparent;
+  color: #f0f0fa;
+  border-color: #f0f0fa;
+  box-shadow: 0 0 0 1px rgba(240, 240, 250, .18);
+}
+html[data-theme="spacex"] .btn.primary:disabled {
+  background: #19191d;
+  color: #5a5a5f;
+  border-color: #3a3a3f;
+}
+html[data-theme="spacex"] .btn.danger {
+  border-color: rgba(198, 69, 69, .55);
+  color: #e0877f;
+}
+html[data-theme="spacex"] .btn.danger:hover {
+  background: rgba(198, 69, 69, .12);
+  border-color: #c64545;
+  color: #ffb3ab;
+}
 
-/* ===== 分段控件 ===== */
-html[data-theme="spacex"] .seg { background: #0d0d10; }
-html[data-theme="spacex"] .seg button.active { background: #1d1d23; }
+/* 分段控件：背板更近黑，激活项哑光抬升 + 内侧高光 */
+html[data-theme="spacex"] .seg { background: #09090b; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6); }
+html[data-theme="spacex"] .seg button { color: var(--text-2); }
+html[data-theme="spacex"] .seg button.active {
+  background: #1b1b21;
+  color: var(--brand);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 1px 2px rgba(0, 0, 0, .5);
+}
 
-/* ===== 面板：图片卡片 / 封面行 / 弹窗 ===== */
+/* 导航：active 用哑光底 + 沿发丝线，遥测标签感 */
+html[data-theme="spacex"] .nav-link.active {
+  color: var(--brand);
+  background: var(--brand-weak);
+  box-shadow: inset 0 -1px 0 var(--brand);
+}
+html[data-theme="spacex"] .theme-toggle {
+  background: transparent;
+  border-color: #3a3a3f;
+}
+html[data-theme="spacex"] .theme-toggle:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: var(--brand-weak);
+  box-shadow: 0 0 0 1px rgba(240, 240, 250, .12);
+}
+
+/* 键盘焦点：统一为淡蓝 ghost 外描边（替代默认粗 outline） */
+html[data-theme="spacex"] .btn:focus-visible,
+html[data-theme="spacex"] .icon-btn:focus-visible,
+html[data-theme="spacex"] .nav-link:focus-visible,
+html[data-theme="spacex"] .chip:focus-visible,
+html[data-theme="spacex"] .dropdown-btn:focus-visible,
+html[data-theme="spacex"] .dropdown-item:focus-visible,
+html[data-theme="spacex"] .seg button:focus-visible,
+html[data-theme="spacex"] .src-tab:focus-visible,
+html[data-theme="spacex"] .theme-toggle:focus-visible,
+html[data-theme="spacex"] .modal-x:focus-visible,
+html[data-theme="spacex"] a:focus-visible {
+  outline: 1px solid var(--brand);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--brand-glow);
+}
+
+/* 面板：图片卡片 / 封面行 / 弹窗 */
 html[data-theme="spacex"] .img-card .thumb-wrap,
 html[data-theme="spacex"] .cover-row,
 html[data-theme="spacex"] .modal { background: var(--panel); }
+/* 卡片悬停：仅发丝线亮化 + 极微弱抬升，不加色 —— 保持纯黑克制 */
+html[data-theme="spacex"] .img-card { transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+html[data-theme="spacex"] .img-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+/* 多选高亮：用淡蓝外晕代替默认品牌色 */
+html[data-theme="spacex"] .img-card.selected {
+  outline-color: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
 
-/* ===== 进度 / 代码 / 星标 ===== */
-html[data-theme="spacex"] .progress { background: #1a1a1e; }
-html[data-theme="spacex"] .code { background: #08080a; }
+/* 下拉菜单：发丝边 + 内侧高光 + 深色抬升 */
+html[data-theme="spacex"] .dropdown-item:hover,
+html[data-theme="spacex"] .dropdown-item.active {
+  background: var(--brand-weak);
+  color: var(--brand);
+}
+html[data-theme="spacex"] .dropdown-item .count { color: var(--text-3); }
+
+/* 图标按钮：悬停淡蓝底 */
+html[data-theme="spacex"] .icon-btn { color: var(--text-2); }
+html[data-theme="spacex"] .icon-btn:hover,
+html[data-theme="spacex"] .icon-btn.active {
+  color: var(--brand);
+  background: var(--brand-weak);
+}
+html[data-theme="spacex"] .icon-btn.danger:hover {
+  color: #ffb3ab;
+  background: rgba(198, 69, 69, .14);
+}
+
+/* 进度 / 代码 / 星标 */
+html[data-theme="spacex"] .progress {
+  background: #1a1a1e;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6);
+}
+html[data-theme="spacex"] .progress > i {
+  background-image: linear-gradient(90deg, rgba(240, 240, 250, .55), #f0f0fa 50%, rgba(240, 240, 250, .55));
+  box-shadow: 0 0 6px var(--brand-glow);
+}
+html[data-theme="spacex"] .code {
+  background: #08080a;
+  border: 1px solid #222227;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+}
 html[data-theme="spacex"] .stars .off { color: #3a3a3f; }
 
-/* ===== 滚动条：随主题变色（覆盖 body / .code / 弹窗 / 下拉 / 列表等） ===== */
+/* 弱化 chip：沿用彩色系但降到低饱和，保持数据标签感 */
+html[data-theme="spacex"] .chip:hover { border-color: var(--brand); color: var(--brand); }
+html[data-theme="spacex"] .chip.active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #0a0a0a;
+}
+
+/* Toast / 气泡：近黑面板 + 发丝边，深色控制台提示 */
+html[data-theme="spacex"] .am-toast {
+  background: rgba(13, 13, 16, .92);
+  color: var(--text);
+  border: 1px solid #3a3a3f;
+  box-shadow: 0 4px 20px -6px rgba(0, 0, 0, .7), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+/* 标题：紧缩显示字体 + 负字距（D-DIN/Arial Narrow 压缩链） */
+html[data-theme="spacex"] h1,
+html[data-theme="spacex"] h2,
+html[data-theme="spacex"] h3,
+html[data-theme="spacex"] .page h2,
+html[data-theme="spacex"] .card > h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.005em;
+  color: var(--text);
+}
+
+/* 滚动条：随主题变色的发丝线（覆盖 body / .code / 弹窗 / 下拉 / 列表等） */
 html[data-theme="spacex"] * { scrollbar-color: #3a3a3f transparent; }
 html[data-theme="spacex"] *::-webkit-scrollbar-thumb { background: #3a3a3f; }
 html[data-theme="spacex"] *::-webkit-scrollbar-thumb:hover { background: #5a5a5f; }
 html[data-theme="spacex"] *::-webkit-scrollbar-track { background: transparent; }
 
-/* ===== 预览色块：纯黑底 + 极淡网格斜切，太空遥测感 ===== */
+/* 预览色块：纯黑底 + 极淡网格斜切，太空遥测感 */
 .tsw-spacex {
   color: #f0f0fa;
   background:
@@ -63,4 +236,9 @@ html[data-theme="spacex"] *::-webkit-scrollbar-track { background: transparent; 
     linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px),
     linear-gradient(135deg, #0a0a0a 0%, #101014 55%, #f0f0fa 55%, #f0f0fa 100%);
   background-size: 24px 24px, 24px 24px, 100% 100%;
+}
+
+/* 减弱动态偏好：关闭新增的悬停位移（仅保留颜色过渡同理受全局控制） */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="spacex"] .img-card { transition: none; }
 }
