@@ -209,12 +209,14 @@
       </div>
       <div class="btn-row mt">
         <button class="btn" @click="batch('reverse')">图片反推</button>
+        <button class="btn" @click="batch('tag')">一键打标</button>
         <button class="btn" @click="batch('translate')">中英翻译</button>
         <button class="btn" @click="batch('score')">AI 评分</button>
       </div>
       <div class="card mt" style="background:var(--bg);padding:8px 10px">
         <div class="muted" style="font-size:12px">
           · 反推结果会单独标注为「<span style="color:#833ab4">反推提示词</span>」，不覆盖原生 workflow 提示词。<br/>
+          · 所有反推操作请求LLM前均会做一次质量60的JPG有损压缩（临时），显著降低图片大小，减少token消耗。<br/>
           · 未配置模型时，AI 功能将置灰并给出提示。
         </div>
       </div>
@@ -260,7 +262,6 @@
       { key: "tag", label: "标签解析" },
       { key: "score", label: "AI 评分" },
       { key: "translate", label: "中英互译" },
-      { key: "analyze", label: "AI 解析工作流" },
     ],
     promptDefaults: {},
     cfg: {
@@ -269,7 +270,7 @@
       compressMode: "new",
       compressQuality: 80,
       theme: App.currentTheme(),
-      prompts: { reverse: "", score: "", translate: "", analyze: "" },
+      prompts: { reverse: "", tag: "", score: "", translate: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
       },
@@ -315,7 +316,7 @@
         self.cfg.theme = App.currentTheme();
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
-        ["reverse", "tag", "score", "translate", "analyze"].forEach(function (k) {
+        ["reverse", "tag", "score", "translate"].forEach(function (k) {
           // 自定义为空时，展示默认提示词全文（可编辑）；保存时若未改动会归一化为空
           self.cfg.prompts[k] = (p[k] || "") || (self.promptDefaults[k] || "");
         });
@@ -522,7 +523,7 @@
     savePrompts() {
       var self = this;
       var payload = {};
-      ["reverse", "tag", "score", "translate", "analyze"].forEach(function (k) {
+      ["reverse", "tag", "score", "translate"].forEach(function (k) {
         // 内容与默认提示词一致时存空（= 使用内置默认），保持「留空=默认」语义
         payload[k] = (self.cfg.prompts[k] === (self.promptDefaults[k] || "")) ? "" : self.cfg.prompts[k];
       });

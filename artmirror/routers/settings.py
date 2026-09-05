@@ -167,7 +167,6 @@ def get_settings(session: Session = Depends(get_session)):
         "tag": llm_mod.PROMPT_TAG,
         "score": llm_mod.PROMPT_SCORE,
         "translate": llm_mod.PROMPT_TRANSLATE,
-        "analyze": llm_mod.PROMPT_ANALYZE,
     }
     prompts = {f: _get(session, f"prompt_{f}") for f in prompt_defaults}
     return {
@@ -182,7 +181,7 @@ def get_settings(session: Session = Depends(get_session)):
     }
 
 
-PROMPT_FEATURES = ("reverse", "tag", "score", "translate", "analyze")
+PROMPT_FEATURES = ("reverse", "tag", "score", "translate")
 
 
 @router.post("")
