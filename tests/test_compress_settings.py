@@ -57,6 +57,15 @@ def test_theme_roundtrip():
         assert client.get("/api/settings").json()["theme"] == "dark"
 
 
+def test_theme_extra_styles_roundtrip():
+    with tempfile.TemporaryDirectory() as td:
+        client, _ = _setup(Path(td))
+        # 4 个新增风格主题均可保存并回读
+        for t in ("linear", "apple", "spacex", "stripe"):
+            client.post("/api/settings", json={"theme": t})
+            assert client.get("/api/settings").json()["theme"] == t
+
+
 def test_theme_normalize():
     with tempfile.TemporaryDirectory() as td:
         client, _ = _setup(Path(td))

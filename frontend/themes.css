@@ -1,0 +1,6 @@
+/* 扩展主题入口：集中引入各「品牌风」主题样式。
+   每个主题均以 html[data-theme="..."] 为作用域，故多主题文件间彼此无关、可并行维护。 */
+@import "themes/linear.css";
+@import "themes/apple.css";
+@import "themes/spacex.css";
+@import "themes/stripe.css";

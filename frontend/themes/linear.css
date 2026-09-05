@@ -1,0 +1,45 @@
+/* ===== Linear 极简克制主题 =====
+   配色与字体参考 awesome-design-md/Linear (linear.app)：
+   canvas #010102 / surface-1 #0f1011 / surface-2 #141516 / surface-3 #18191a /
+   hairline #23252a / hairline-strong #34343a / ink #f7f8f8 / ink-muted #d0d6e0 /
+   ink-subtle #8a8f98 / ink-tertiary #62666d / primary #5e6ad2 / semantic-success #27a644。
+   层次由 surface 阶梯 + 发丝边线承载，强调色薰衣草蓝仅用于品牌标记、聚焦环与主 CTA。 */
+html[data-theme="linear"] {
+  --bg: #010102;
+  --panel: #0f1011;
+  --border: #23252a;
+  --text: #f7f8f8;
+  --text-2: #d0d6e0;
+  --text-3: #8a8f98;
+  --brand: #5e6ad2;
+  --brand-weak: #14151f;
+  --nav-bg: rgba(1, 1, 2, .92);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-hover: 0 1px 3px rgba(0, 0, 0, .5), 0 6px 20px rgba(62, 62, 68, .18);
+}
+html[data-theme="linear"] input[type=text],
+html[data-theme="linear"] input[type=password],
+html[data-theme="linear"] input[type=number],
+html[data-theme="linear"] select,
+html[data-theme="linear"] textarea { background: #0f1011; border-color: #23252a; color: var(--text); }
+html[data-theme="linear"] textarea { scrollbar-color: #34343a #0f1011; }
+html[data-theme="linear"] .btn { background: #0f1011; border-color: #23252a; color: var(--text); }
+html[data-theme="linear"] .btn:hover { background: #18191a; border-color: #34343a; color: #f7f8f8; }
+html[data-theme="linear"] .btn.primary { background: var(--brand); color: #fff; border-color: transparent; }
+html[data-theme="linear"] .btn.primary:hover { background: #828fff; color: #fff; border-color: transparent; }
+html[data-theme="linear"] .btn.primary:disabled { background: #23252a; color: #62666d; }
+html[data-theme="linear"] .seg { background: #0f1011; }
+html[data-theme="linear"] .seg button.active { background: #18191a; }
+html[data-theme="linear"] .img-card .thumb-wrap,
+html[data-theme="linear"] .cover-row,
+html[data-theme="linear"] .modal { background: #0f1011; }
+html[data-theme="linear"] .progress { background: #18191a; }
+html[data-theme="linear"] .code { background: #0f1011; }
+html[data-theme="linear"] .stars .off { color: #34343a; }
+/* 滚动条：随主题变色，Linear 发丝线语义 */
+html[data-theme="linear"] * { scrollbar-color: #34343a transparent; }
+html[data-theme="linear"] *::-webkit-scrollbar-thumb { background: #34343a; }
+html[data-theme="linear"] *::-webkit-scrollbar-thumb:hover { background: #3e3e44; }
+html[data-theme="linear"] *::-webkit-scrollbar-track { background: transparent; }
+/* 设置页预览色块：近黑底 + 薰衣草蓝强调斜切 */
+.tsw-linear { color: #f7f8f8; background: linear-gradient(135deg, #010102 0%, #0f1011 55%, #5e6ad2 55%, #5e6ad2 100%); }

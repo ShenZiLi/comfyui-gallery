@@ -1,0 +1,66 @@
+/* ============================================================================
+   SpaceX 暗黑科技主题
+   设计规范来源：awesome-design-md / SpaceX 启发风格（DESIGN.md）。
+   纯黑画布（canvas-night #000000）+ 近黑面板（canvas-night-soft #0a0a0a）、
+   极淡 hairline 描边（#3a3a3f）、全大写紧缩等宽字距的航天遥测感。
+   品牌强调色刻意去饱和 —— 只用哑光白 / 淡蓝做点缀，黑即全部。
+   仅覆盖颜色类变量与若干组件；不引入动效、不引入外部字体。 */
+html[data-theme="spacex"] {
+  --bg: #0a0a0a;                 /* 页面底：近黑，避免死黑 #000 */
+  --panel: #0d0d10;              /* 卡片 / 面板底：在底色上轻微抬升 */
+  --border: #3a3a3f;             /* hairline-on-dark：极淡暖灰描边 */
+  --text: #f5f6fa;               /* on-primary：暖白主文本 */
+  --text-2: #a8a9b1;             /* 次级文本：可读中性灰 */
+  --text-3: #5a5a5f;             /* ink-mute：弱化文本 */
+  --brand: #f0f0fa;              /* 强调色：哑光淡蓝白（无品牌原色） */
+  --brand-weak: #1a1a1f;         /* 强调色淡底 */
+  --nav-bg: rgba(7, 7, 10, .86); /* 顶栏：覆盖式近黑渐变感 */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px -12px rgba(0, 0, 0, .6);
+  --shadow-hover: 0 8px 22px rgba(0, 0, 0, .6), 0 18px 48px -16px rgba(0, 0, 0, .5);
+  --font-display: "D-DIN", "Arial Narrow", Arial, Verdana, "PingFang SC", sans-serif;
+}
+
+/* ===== 表单控件 ===== */
+html[data-theme="spacex"] input[type=text],
+html[data-theme="spacex"] input[type=password],
+html[data-theme="spacex"] input[type=number],
+html[data-theme="spacex"] select,
+html[data-theme="spacex"] textarea { background: #0f0f12; border-color: #3a3a3f; color: var(--text); }
+html[data-theme="spacex"] textarea { scrollbar-color: #3a3a3f #0f0f12; }
+
+/* ===== 按钮：ghost 描边感；primary = 哑光白底 + 黑字，hover 反相为 ghost ===== */
+html[data-theme="spacex"] .btn { background: transparent; border-color: #3a3a3f; color: var(--text); }
+html[data-theme="spacex"] .btn:hover { background: #f0f0fa; border-color: #f0f0fa; color: #0a0a0a; }
+html[data-theme="spacex"] .btn.primary { background: #f0f0fa; color: #0a0a0a; border-color: transparent; }
+html[data-theme="spacex"] .btn.primary:hover { background: transparent; color: #f0f0fa; border-color: #f0f0fa; }
+html[data-theme="spacex"] .btn.primary:disabled { background: #19191d; color: #5a5a5f; border-color: #3a3a3f; }
+
+/* ===== 分段控件 ===== */
+html[data-theme="spacex"] .seg { background: #0d0d10; }
+html[data-theme="spacex"] .seg button.active { background: #1d1d23; }
+
+/* ===== 面板：图片卡片 / 封面行 / 弹窗 ===== */
+html[data-theme="spacex"] .img-card .thumb-wrap,
+html[data-theme="spacex"] .cover-row,
+html[data-theme="spacex"] .modal { background: var(--panel); }
+
+/* ===== 进度 / 代码 / 星标 ===== */
+html[data-theme="spacex"] .progress { background: #1a1a1e; }
+html[data-theme="spacex"] .code { background: #08080a; }
+html[data-theme="spacex"] .stars .off { color: #3a3a3f; }
+
+/* ===== 滚动条：随主题变色（覆盖 body / .code / 弹窗 / 下拉 / 列表等） ===== */
+html[data-theme="spacex"] * { scrollbar-color: #3a3a3f transparent; }
+html[data-theme="spacex"] *::-webkit-scrollbar-thumb { background: #3a3a3f; }
+html[data-theme="spacex"] *::-webkit-scrollbar-thumb:hover { background: #5a5a5f; }
+html[data-theme="spacex"] *::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== 预览色块：纯黑底 + 极淡网格斜切，太空遥测感 ===== */
+.tsw-spacex {
+  color: #f0f0fa;
+  background:
+    linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px),
+    linear-gradient(135deg, #0a0a0a 0%, #101014 55%, #f0f0fa 55%, #f0f0fa 100%);
+  background-size: 24px 24px, 24px 24px, 100% 100%;
+}
