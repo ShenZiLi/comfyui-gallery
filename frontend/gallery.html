@@ -189,7 +189,7 @@
                         @click.stop="selectPrompt(im,'reverse')">
                       <span x-text="im._rParse ? '反推中' : '反推'"></span>
                     </button>
-                    <button class="src-tab ai" :class="{active: im._src==='ai', has: attrTags(im).length}" data-tip="用提示词打属性标签"
+                    <button class="src-tab ai" :class="{active: im._src==='ai', has: attrTags(im).length}" data-tip="生成标签"
                         @click.stop="autoTag(im)">
                       <span x-text="im._tagParse ? '打标中' : 'AI'"></span>
                     </button>

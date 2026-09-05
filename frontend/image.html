@@ -77,10 +77,8 @@
                     @click="selectPrompt('reverse')">
               <span x-text="pState==='rev' ? '反推中' : '反推'"></span>
             </button>
-            <button class="src-tab ai" :class="{active: im._src==='ai', has: !!im.aiPrompt || pState==='parse'}"
-                    @click="selectPrompt('ai')"
-                    data-tip="原生提示词不准确时，可用AI重新解析工作流" data-tip-delay="1500">
-              <span x-text="pState==='parse' ? '解析中' : 'AI'"></span>
+            <button class="src-tab ai" :class="{has: attrTags().length}" @click.stop="autoTag()" data-tip="生成标签">
+              <span x-text="tagging ? '生成中…' : 'AI生成标签'"></span>
             </button>
           </span>
           <span style="margin-left:auto;display:flex;gap:6px">
@@ -241,6 +239,7 @@
     compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
     addingTag: false, newTagText: "",
+    tagging: false,
     navIds: [], navIdx: -1, curId: null,
     magnify: false,
     previewOpen: false, pvScale: 1, pvX: 0, pvY: 0,
@@ -271,6 +270,7 @@
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
       this.compressing = false;
       this.addingTag = false; this.newTagText = "";
+      this.tagging = false;
       this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
@@ -344,6 +344,22 @@
       });
     },
     cancelAddTag() { this.addingTag = false; this.newTagText = ""; },
+    // AI 生成标签：用文本模型从该图提示词提取属性标签（追加合并）
+    autoTag() {
+      var self = this;
+      if (!this.im || this.tagging) return;
+      this.tagging = true;
+      this.pErr = "";
+      Api.autoTag(this.im.id).then(function (d) {
+        self.tagging = false;
+        if (d && Array.isArray(d.tags)) self._refreshTags(d.tags);
+        App.toast("已生成标签");
+      }).catch(function (e) {
+        self.tagging = false;
+        self.pErr = (e && e.message) || "生成标签失败";
+        App.toast((e && e.message) || "生成标签失败");
+      });
+    },
     removeTag(t) {
       var self = this;
       Api.removeImageTag(this.im.id, t.name).then(function (d) {
