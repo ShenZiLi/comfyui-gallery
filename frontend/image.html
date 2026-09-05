@@ -291,7 +291,7 @@
     ratioClass() {
       var im = this.im; if (!im) return "portrait";
       var w = Number(im.width) || 1, h = Number(im.height) || 1;
-      return (w / h) > 1 ? "landscape" : "portrait";
+      return (w / h) > 2.3 ? "landscape" : "portrait";
     },
     copy(text, label) { App.copyText(text); },
     copyImage() {
