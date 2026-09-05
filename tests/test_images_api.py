@@ -164,6 +164,22 @@ def test_list_search_tag_match_prioritized():
         assert set(ordered[:2]) == {im0_id, im2_id}        # 标签命中的两张在最前
 
 
+def test_batch_ai_isolates_failures_without_config():
+    """未配置大模型时批量 AI 逐张隔离失败、不中断，返回统计。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 3)
+        resp = client.post("/api/images/batch-ai", json={"kind": "reverse", "scope": "all"})
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["total"] == 3 and d["ok"] == 0
+        assert len(d["failed"]) == 3
+        assert all(x["error"] for x in d["failed"])
+        # 非法 kind
+        assert client.post("/api/images/batch-ai", json={"kind": "nope"}).status_code == 400
+
+
 def test_detail_keeps_full_fields():
     with tempfile.TemporaryDirectory() as td:
         client, engine = _setup(Path(td))

@@ -137,6 +137,11 @@
         throw e;
       });
     },
+    batchAI: function (kind, scope, filter) {
+      return req("api/images/batch-ai", { method: "POST", body: { kind: kind, scope: scope, filter: filter || {} } }).catch(function (e) {
+        throw e;
+      });
+    },
     addImageTag: function (id, name) {
       return req("api/images/" + id + "/tags", { method: "POST", body: { name: name } }).catch(function (e) {
         throw e;

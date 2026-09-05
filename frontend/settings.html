@@ -208,10 +208,18 @@
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="filter" />当前筛选</label>
       </div>
       <div class="btn-row mt">
-        <button class="btn" @click="batch('reverse')">图片反推</button>
-        <button class="btn" @click="batch('tag')">标签解析</button>
-        <button class="btn" @click="batch('translate')">中英互译</button>
-        <button class="btn" @click="batch('score')">AI 评分</button>
+        <button class="btn" @click="batch('reverse')" :disabled="!!running">
+          <span x-text="running==='reverse' ? '处理中…' : '图片反推'"></span>
+        </button>
+        <button class="btn" @click="batch('tag')" :disabled="!!running">
+          <span x-text="running==='tag' ? '处理中…' : '标签解析'"></span>
+        </button>
+        <button class="btn" @click="batch('translate')" :disabled="!!running">
+          <span x-text="running==='translate' ? '处理中…' : '中英互译'"></span>
+        </button>
+        <button class="btn" @click="batch('score')" :disabled="!!running">
+          <span x-text="running==='score' ? '处理中…' : 'AI 评分'"></span>
+        </button>
       </div>
       <div class="card mt" style="background:var(--bg);padding:8px 10px">
         <div class="muted" style="font-size:12px">
@@ -280,6 +288,7 @@
     vendorOpen: null,
     testState: {},
     scope: ["all"],
+    running: "",
     _lastVer: -1,
     version: "",
     importDirHint() {
@@ -486,7 +495,24 @@
         self.testing = false;
       });
     },
-    batch(kind) { alert("原型提示：批量「" + kind + "」将在后端 M3 AI 能力接入后执行。"); },
+    batch(kind) {
+      var self = this;
+      if (this.running) return;
+      var scope = (this.scope || []).indexOf("filter") >= 0 ? "filter" : "all";
+      this.running = kind;
+      this.doneMsg = "";
+      Api.batchAI(kind, scope, { kind: kind }).then(function (d) {
+        self.running = "";
+        var ok = (d && d.ok) | 0, total = (d && d.total) | 0, failed = (d && d.failed) ? d.failed.length : 0;
+        self.doneMsg = "批量" + self.batchLabel(kind) + "完成：" + ok + "/" + total + " 成功" + (failed ? "，" + failed + " 失败" : "");
+      }).catch(function (e) {
+        self.running = "";
+        self.doneMsg = "批量" + self.batchLabel(kind) + "失败：" + ((e && e.message) || e);
+      });
+    },
+    batchLabel(kind) {
+      return { reverse: "图片反推", tag: "标签解析", translate: "中英互译", score: "AI 评分" }[kind] || kind;
+    },
 
     // ---- 导入保存目录（绝对路径，在后端保存并入库） ----
     saveImportDir() {

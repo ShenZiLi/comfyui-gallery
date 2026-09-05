@@ -542,6 +542,112 @@ def score_image(image_id: int, session: Session = Depends(get_session)):
     return to_card(session, im)
 
 
+def _first_prompt_kind(session: Session, im: ImageAsset) -> str | None:
+    """按 origin → reverse → ai 顺序返回该图首个可翻译的提示词源；无则 None。"""
+    for k in ("origin", "reverse", "ai"):
+        if _kind_prompt_list(session, im, k):
+            return k
+    return None
+
+
+def _batch_ai_one(session: Session, im: ImageAsset, kind: str) -> None:
+    """对单图执行一种批量 AI 能力（写入并提交；异常抛出由调用方逐张隔离）。"""
+    if kind == "reverse":
+        text = llm.reverse_prompt_image(im.abs_path, session)
+        if not text:
+            raise llm.LLMError("视觉模型未生成有效反推结果")
+        rev = _latest(session, ReversePrompt, im.id)
+        if rev is None:
+            rev = ReversePrompt(image_id=im.id)
+            session.add(rev)
+        rev.text = text
+        rev.engine = "vision"
+        rev.model_name = _vision_model_name(session)
+        im.prompt_type = "reverse"
+    elif kind == "score":
+        res = llm.score_image(im.abs_path, session)
+        im.ai_rating = res["score"]
+        session.add(RatingRecord(
+            image_id=im.id, rating_type="ai", score=res["score"], reason=res["reason"]
+        ))
+    elif kind == "tag":
+        prompt = ""
+        meta = session.exec(select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)).first()
+        if meta and meta.prompt:
+            prompt = meta.prompt
+        if not prompt:
+            rev = _latest(session, ReversePrompt, im.id)
+            if rev and rev.text:
+                prompt = rev.text
+        if not prompt:
+            raise llm.LLMError("该图无可分析的提示词")
+        tags = llm.extract_prompt_tags(prompt, session)
+        for name in tags:
+            meta_service._link(session, im.id, name, "attr")
+    else:  # translate
+        k = _first_prompt_kind(session, im)
+        if not k:
+            raise llm.LLMError("该图无可用提示词")
+        src = _SEG.join(_kind_prompt_list(session, im, k))
+        target = _detect_target_lang(src)
+        translated = llm.translate_prompt(src, target, session)
+        texts = _split_translation(translated)
+        row = session.exec(
+            select(PromptTranslation).where(
+                PromptTranslation.image_id == im.id,
+                PromptTranslation.prompt_kind == k,
+                PromptTranslation.lang == target,
+            )
+        ).first()
+        if row is None:
+            row = PromptTranslation(image_id=im.id, prompt_kind=k, lang=target)
+            session.add(row)
+        row.text = _SEG.join(texts)
+    session.commit()
+
+
+@router.post("/batch-ai")
+def batch_ai(body: dict, session: Session = Depends(get_session)):
+    """批量 AI 操作：对全部/筛选图片逐个执行反推/打标/互译/评分（逐张隔离异常）。"""
+    kind = str((body or {}).get("kind") or "").strip()
+    if kind not in ("reverse", "tag", "translate", "score"):
+        raise HTTPException(400, "kind 仅支持 reverse / tag / translate / score")
+    scope = str((body or {}).get("scope") or "all").strip() or "all"
+    f = body.get("filter") or {}
+
+    if scope == "filter":
+        base = _filter_images(
+            session,
+            f.get("folderId") or None,
+            (f.get("tag") or None),
+            (f.get("q") or None),
+        )
+    else:
+        base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    ims = session.exec(base).all()
+
+    ok = 0
+    fails: list[dict] = []
+    for im in ims:
+        try:
+            _batch_ai_one(session, im, kind)
+            ok += 1
+        except llm.LLMError as exc:
+            fails.append({"id": im.id, "name": im.file_name, "error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 — 逐张隔离，避免一张中断整批
+            session.rollback()
+            fails.append({"id": im.id, "name": im.file_name, "error": str(exc)})
+    if ok:
+        watcher.bump()
+    return {
+        "kind": kind,
+        "scope": scope,
+        "total": len(ims),
+        "ok": ok,
+        "failed": fails,
+    }
+
+
 @router.post("/{image_id}/reverse")
 def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     """用视觉模型对图片反推提示词，写入并返回。"""
