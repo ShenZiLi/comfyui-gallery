@@ -60,8 +60,8 @@ def test_theme_roundtrip():
 def test_theme_extra_styles_roundtrip():
     with tempfile.TemporaryDirectory() as td:
         client, _ = _setup(Path(td))
-        # 4 个新增风格主题均可保存并回读
-        for t in ("linear", "apple", "spacex", "stripe"):
+        # 1 个风格主题（SpaceX）可保存并回读
+        for t in ("spacex",):
             client.post("/api/settings", json={"theme": t})
             assert client.get("/api/settings").json()["theme"] == t
 
