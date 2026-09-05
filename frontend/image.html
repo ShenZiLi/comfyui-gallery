@@ -109,13 +109,12 @@
         <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
           <b>负向：</b><span class="prompt-clickable" @click.stop="copy(activeNegative())" x-text="activeNegative()"></span>
         </div>
-        <!-- 属性标签：悬停显 × 删除 / 双击改名 / ＋ 内联新增 -->
+        <!-- 属性标签：双击删除 / ＋ 内联新增 -->
         <div class="attr-tags mt">
           <span class="attr-label">标签</span>
           <template x-for="t in attrTags()" :key="'t'+t.name">
-            <span class="chip attr" :data-tip="'双击修改 · ' + t.name">
-              <span class="attr-name" @dblclick.stop="renameTag(t)" x-text="t.name"></span>
-              <button class="attr-x" data-tip="删除" @click.stop="removeTag(t)">×</button>
+            <span class="chip attr" data-tip="双击删除">
+              <span class="attr-name" @dblclick.stop="removeTag(t)" x-text="t.name"></span>
             </span>
           </template>
           <button class="chip attr add" x-show="!addingTag" data-tip="新增标签" @click.stop="startAddTag()">＋</button>
@@ -367,21 +366,6 @@
         App.toast("已删除");
       }).catch(function (e) {
         App.toast((e && e.message) || "删除失败");
-      });
-    },
-    renameTag(t) {
-      var self = this;
-      var name = window.prompt("修改标签：", t.name);
-      name = (name || "").trim();
-      if (!name) { App.toast("标签不能为空"); return; }
-      if (name === t.name) return;
-      Api.removeImageTag(this.im.id, t.name).then(function () {
-        return Api.addImageTag(self.im.id, name);
-      }).then(function (d) {
-        self._refreshTags(d && d.tags);
-        App.toast("已修改");
-      }).catch(function (e) {
-        App.toast((e && e.message) || "修改失败");
       });
     },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
