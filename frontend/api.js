@@ -132,6 +132,41 @@
       });
     },
 
+    autoTag: function (id) {
+      return req("api/images/" + id + "/auto-tag", { method: "POST" }).catch(function (e) {
+        throw e;
+      });
+    },
+    batchAI: function (kind, scope, folderId) {
+      return req("api/images/batch-ai", { method: "POST", body: { kind: kind, scope: scope, folderId: folderId || null } }).catch(function (e) {
+        throw e;
+      });
+    },
+    countImage: function (folderId, kind) {
+      var url = "api/images/count";
+      var q = [];
+      if (folderId) q.push("folderId=" + encodeURIComponent(folderId));
+      if (kind) q.push("kind=" + encodeURIComponent(kind));
+      if (q.length) url += "?" + q.join("&");
+      return req(url).catch(function (e) { throw e; });
+    },
+    batchStatus: function (taskId) {
+      return req("api/images/batch-ai/" + taskId).catch(function (e) { throw e; });
+    },
+    batchStop: function (taskId) {
+      return req("api/images/batch-ai/" + taskId + "/stop", { method: "POST" }).catch(function (e) { throw e; });
+    },
+    addImageTag: function (id, name) {
+      return req("api/images/" + id + "/tags", { method: "POST", body: { name: name } }).catch(function (e) {
+        throw e;
+      });
+    },
+    removeImageTag: function (id, name) {
+      return req("api/images/" + id + "/tags", { method: "DELETE", body: { name: name } }).catch(function (e) {
+        throw e;
+      });
+    },
+
     setRating: function (id, score) {
       return req("api/images/" + id + "/rating", { method: "POST", body: { score: score } }).catch(function (e) {
         throw e;
@@ -192,7 +227,7 @@
     getSettings: function () {
       return req("api/settings").catch(function () {
         Api._fallback = true;
-        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" }, compressMode: "new", compressQuality: 80 });
+        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" }, compressMode: "new", compressQuality: 80, theme: "light" });
       });
     },
 

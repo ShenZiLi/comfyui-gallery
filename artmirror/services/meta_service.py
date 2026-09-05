@@ -105,6 +105,9 @@ def ingest(session: Session, image: ImageAsset, result: ParseResult) -> None:
     if result.vae:
         _link(session, image.id, _basename(result.vae), "vae")
 
+    # 在用 LoRA 及权重（与 loras 同名同序；落库便于前端 chip 显示权重）
+    meta.loras_json = _dumps_lora_weights(getattr(result, "lora_weights", None))
+
 
 def _link(session: Session, image_id: int, name: str, category: str) -> None:
     # 只保留文件/模型名：剥离 checkpoints/、LoRA/ 等路径前缀（兼容 \ 与 /）
@@ -136,6 +139,29 @@ def _dumps_list(items) -> str:
     if not cleaned:
         return ""
     return json.dumps(cleaned, ensure_ascii=False)
+
+
+def _dumps_lora_weights(items) -> str:
+    """LoRA 权重序列化：[(name, strength)] → [{"name","strength"}] JSON；去空、数值保留 4 位。"""
+    if not items:
+        return ""
+    import json
+
+    out = []
+    seen = set()
+    for name, strength in items:
+        name = str(name or "").strip().replace("\\", "/").rsplit("/", 1)[-1]
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        try:
+            s = round(float(strength), 4)
+        except (TypeError, ValueError):
+            s = 0.0
+        out.append({"name": name, "strength": s})
+    if not out:
+        return ""
+    return json.dumps(out, ensure_ascii=False)
 
 
 def replace_asset_tags(

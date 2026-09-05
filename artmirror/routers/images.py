@@ -1,10 +1,12 @@
 """图片查询与文件服务路由。"""
+import queue
 import re
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import case, exists, func
 from sqlmodel import Session, select
 
 from ..config import settings
@@ -21,6 +23,12 @@ from ..models import (
 from ..services import meta_service, llm, watcher
 
 router = APIRouter(prefix="/api/images", tags=["images"])
+
+# 批量 AI 后台任务注册表（内存态）
+_BATCH_LOCK = threading.Lock()
+_BATCH_SEQ = 0
+_BATCH_TASKS: dict[int, dict] = {}
+_BATCH_WORKERS = 2  # 批量并发工作线程数
 
 
 def _basename(name: str) -> str:
@@ -40,6 +48,25 @@ def _load_str_list(text: str) -> list[str]:
     except Exception:  # noqa: BLE001
         pass
     return []
+
+
+def _load_lora_weights(text: str) -> list[dict]:
+    """反序列化 LoRA 权重 JSON：[{"name","strength"}] → 前端 loras 列表。"""
+    if not text:
+        return []
+    try:
+        import json
+
+        data = json.loads(text)
+        if not isinstance(data, list):
+            return []
+        out = []
+        for item in data:
+            if isinstance(item, dict) and item.get("name"):
+                out.append({"name": str(item["name"]), "strength": float(item.get("strength") or 0.0)})
+        return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _latest(session: Session, model, image_id: int) -> dict | None:
@@ -168,6 +195,8 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
     card["workflow"] = meta.workflow_json if meta else ""
     card["path"] = im.file_path
     card["absPath"] = im.abs_path
+    # 在用 LoRA 及权重：[{"name","strength"}] —— 前端 chip 展示名称并追加权重
+    card["loras"] = _load_lora_weights(meta.loras_json if meta else "")
     # 各提示词源已持久化的中英译文：{kind: {lang: text}}
     translations: dict[str, dict[str, str]] = {}
     for t in session.exec(
@@ -249,6 +278,23 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
     return {"texts": texts, "lang": target, "cached": False}
 
 
+def _tag_match(q: str):
+    """生成 EXISTS 断言：某图片是否拥有名称模糊匹配 q 的标签（用于搜索过滤与排序加权）。"""
+    like = f"%{q}%"
+    return (
+        select(1)
+        .where(
+            ImageTag.tag_id == Tag.id,
+            ImageTag.image_id == ImageAsset.id,
+            ImageTag.is_deleted == 0,
+            Tag.name.like(like),
+            Tag.is_deleted == 0,
+        )
+        .correlate(ImageAsset)
+        .exists()
+    )
+
+
 def _filter_images(session: Session, folder_id, tag, q):
     """构建过滤后的基础查询（不含排序/分页）。"""
     stmt = select(ImageAsset).where(ImageAsset.is_deleted == 0)
@@ -272,6 +318,7 @@ def _filter_images(session: Session, folder_id, tag, q):
             (WorkflowMeta.prompt.like(like))
             | (WorkflowMeta.negative_prompt.like(like))
             | (ImageAsset.file_name.like(like))
+            | _tag_match(q)
         ).distinct()
     return stmt
 
@@ -304,8 +351,12 @@ def list_images(
     offset = max(0, offset)
     base = _filter_images(session, folderId, tag, q)
     total = session.exec(select(func.count()).select_from(base.subquery())).one()
+    order = _order_for(sort)
+    if q:
+        # 搜索时：标签命中的图片优先置于最前方，其次才是提示词/文件名命中
+        order = [case((_tag_match(q), 0), else_=1)] + order
     imgs = session.exec(
-        base.order_by(*_order_for(sort)).offset(offset).limit(limit)
+        base.order_by(*order).offset(offset).limit(limit)
     ).all()
     return {
         "items": to_cards(session, imgs),
@@ -314,6 +365,57 @@ def list_images(
         "offset": offset,
         "hasMore": offset + len(imgs) < total,
     }
+
+
+@router.get("/count")
+def count_images(
+    folderId: int | None = None,
+    kind: str = "",
+    session: Session = Depends(get_session),
+):
+    """统计待处理图片数（用于批量确认）：可排除已处理过的图片。"""
+    if folderId:
+        base = _filter_images(session, folderId, None, None)
+    else:
+        base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    total_all = session.exec(select(func.count()).select_from(base.subquery())).one()
+    excl = _batch_excl_sql(session, kind) if kind else None
+    if excl is not None:
+        pending = session.exec(select(func.count()).select_from(base.where(excl).subquery())).one()
+    else:
+        pending = total_all
+    return {"total": pending, "excluded": total_all - pending, "all": total_all}
+
+
+def _batch_excl_sql(session: Session, kind: str):
+    """批量 AI 的「已处理排除」条件：返回 ImageAsset 上需保留（未处理）的 where 表达式。
+
+    reverse → 排除已有反推提示词；tag → 排除已带属性标签；translate → 排除已有译文；
+    score → 排除已有 AI 评分；未知 kind 返回 None（不过滤）。
+    """
+    if kind == "reverse":
+        return ~exists(
+            select(1).where(ReversePrompt.image_id == ImageAsset.id).correlate(ImageAsset)
+        )
+    if kind == "tag":
+        return ~exists(
+            select(1)
+            .where(
+                ImageTag.image_id == ImageAsset.id,
+                ImageTag.is_deleted == 0,
+                Tag.id == ImageTag.tag_id,
+                Tag.is_deleted == 0,
+                Tag.category == "attr",
+            )
+            .correlate(ImageAsset)
+        )
+    if kind == "translate":
+        return ~exists(
+            select(1).where(PromptTranslation.image_id == ImageAsset.id).correlate(ImageAsset)
+        )
+    if kind == "score":
+        return ImageAsset.ai_rating.is_(None)
+    return None
 
 
 @router.get("/{image_id}")
@@ -499,6 +601,188 @@ def score_image(image_id: int, session: Session = Depends(get_session)):
     return to_card(session, im)
 
 
+def _first_prompt_kind(session: Session, im: ImageAsset) -> str | None:
+    """按 origin → reverse → ai 顺序返回该图首个可翻译的提示词源；无则 None。"""
+    for k in ("origin", "reverse", "ai"):
+        if _kind_prompt_list(session, im, k):
+            return k
+    return None
+
+
+def _batch_ai_one(session: Session, im: ImageAsset, kind: str) -> None:
+    """对单图执行一种批量 AI 能力（写入并提交；异常抛出由调用方逐张隔离）。"""
+    if kind == "reverse":
+        text = llm.reverse_prompt_image(im.abs_path, session)
+        if not text:
+            raise llm.LLMError("视觉模型未生成有效反推结果")
+        rev = _latest(session, ReversePrompt, im.id)
+        if rev is None:
+            rev = ReversePrompt(image_id=im.id)
+            session.add(rev)
+        rev.text = text
+        rev.engine = "vision"
+        rev.model_name = _vision_model_name(session)
+        im.prompt_type = "reverse"
+    elif kind == "score":
+        res = llm.score_image(im.abs_path, session)
+        im.ai_rating = res["score"]
+        session.add(RatingRecord(
+            image_id=im.id, rating_type="ai", score=res["score"], reason=res["reason"]
+        ))
+    elif kind == "tag":
+        prompt = ""
+        meta = session.exec(select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)).first()
+        if meta and meta.prompt:
+            prompt = meta.prompt
+        if not prompt:
+            rev = _latest(session, ReversePrompt, im.id)
+            if rev and rev.text:
+                prompt = rev.text
+        if not prompt:
+            raise llm.LLMError("该图无可分析的提示词")
+        tags = llm.extract_prompt_tags(prompt, session)
+        for name in tags:
+            meta_service._link(session, im.id, name, "attr")
+    else:  # translate
+        k = _first_prompt_kind(session, im)
+        if not k:
+            raise llm.LLMError("该图无可用提示词")
+        src = _SEG.join(_kind_prompt_list(session, im, k))
+        target = _detect_target_lang(src)
+        translated = llm.translate_prompt(src, target, session)
+        texts = _split_translation(translated)
+        row = session.exec(
+            select(PromptTranslation).where(
+                PromptTranslation.image_id == im.id,
+                PromptTranslation.prompt_kind == k,
+                PromptTranslation.lang == target,
+            )
+        ).first()
+        if row is None:
+            row = PromptTranslation(image_id=im.id, prompt_kind=k, lang=target)
+            session.add(row)
+        row.text = _SEG.join(texts)
+    session.commit()
+
+
+def _run_batch(bind, tid: int, ids: list[int], kind: str) -> None:
+    """后台执行批量任务：多线程（_BATCH_WORKERS 路并发）逐张处理、实时更新进度、可终止。"""
+    task = _BATCH_TASKS.get(tid)
+    if task is None:
+        return
+    work_q = queue.Queue()
+    for i in ids:
+        work_q.put(i)
+    count_lock = threading.Lock()  # 守护 done/ok/failed 的原子累加
+    stop_ev = task["cancel"]
+
+    def _worker() -> None:
+        # 每个工作线程自持一个会话（并发安全），并放宽 SQLite 写锁等待
+        with Session(bind) as session:
+            try:
+                session.connection().exec_driver_sql("PRAGMA busy_timeout=30000")
+            except Exception:  # noqa: BLE001
+                pass
+            while not stop_ev.is_set():
+                try:
+                    im_id = work_q.get_nowait()
+                except queue.Empty:
+                    break
+                im = None
+                try:
+                    im = session.get(ImageAsset, im_id)
+                    if im is not None:
+                        _batch_ai_one(session, im, kind)
+                        with count_lock:
+                            task["ok"] += 1
+                except llm.LLMError as exc:
+                    with count_lock:
+                        if im is not None:
+                            task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                except Exception as exc:  # noqa: BLE001 — 逐张隔离
+                    session.rollback()
+                    with count_lock:
+                        if im is not None:
+                            task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                with count_lock:
+                    task["done"] += 1
+
+    threads = [threading.Thread(target=_worker, daemon=True) for _ in range(_BATCH_WORKERS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if task["ok"]:
+        watcher.bump()
+    task["running"] = False
+
+
+@router.post("/batch-ai")
+def batch_ai(body: dict, session: Session = Depends(get_session)):
+    """启动批量 AI 任务（异步）：对全部/按目录图片逐个执行反推/打标/互译/评分。
+
+    返回 task_id 与 total，前端轮询任务状态获得实时进度，可调用 stop 终止。
+    """
+    kind = str((body or {}).get("kind") or "").strip()
+    if kind not in ("reverse", "tag", "translate", "score"):
+        raise HTTPException(400, "kind 仅支持 reverse / tag / translate / score")
+    scope = str((body or {}).get("scope") or "all").strip() or "all"
+    if scope == "folder":
+        base = _filter_images(session, (body.get("folderId") or None), None, None)
+    elif scope == "all":
+        base = select(ImageAsset).where(ImageAsset.is_deleted == 0)
+    else:
+        raise HTTPException(400, "scope 仅支持 all / folder")
+    # 排除已处理过的图片（如反推已有反推提示词者）
+    excl = _batch_excl_sql(session, kind)
+    if excl is not None:
+        base = base.where(excl)
+    ids = [i.id for i in session.exec(base).all()]
+    bind = session.get_bind()
+
+    global _BATCH_SEQ
+    with _BATCH_LOCK:
+        _BATCH_SEQ += 1
+        tid = _BATCH_SEQ
+        task = {
+            "id": tid, "kind": kind, "total": len(ids), "done": 0, "ok": 0,
+            "failed": [], "running": True, "cancel": threading.Event(),
+        }
+        _BATCH_TASKS[tid] = task
+    thread = threading.Thread(target=_run_batch, args=(bind, tid, ids, kind), daemon=True)
+    task["thread"] = thread
+    thread.start()
+    return {"task_id": tid, "kind": kind, "total": len(ids)}
+
+
+@router.get("/batch-ai/{task_id}")
+def batch_ai_status(task_id: int, session: Session = Depends(get_session)):
+    """查询批量任务实时状态。"""
+    task = _BATCH_TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(404, "task not found")
+    return {
+        "task_id": task_id,
+        "kind": task["kind"],
+        "total": task["total"],
+        "done": task["done"],
+        "ok": task["ok"],
+        "failed": task["failed"],
+        "running": task["running"],
+        "cancelled": task["cancel"].is_set(),
+    }
+
+
+@router.post("/batch-ai/{task_id}/stop")
+def batch_ai_stop(task_id: int, session: Session = Depends(get_session)):
+    """终止批量任务：置 cancel 事件，工作线程尽早中断。"""
+    task = _BATCH_TASKS.get(task_id)
+    if task is None:
+        raise HTTPException(404, "task not found")
+    task["cancel"].set()
+    return {"stopped": True, "task_id": task_id}
+
+
 @router.post("/{image_id}/reverse")
 def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     """用视觉模型对图片反推提示词，写入并返回。"""
@@ -522,6 +806,93 @@ def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     im.prompt_type = "reverse"
     session.commit()
     return {"text": text, "reversePrompt": text}
+
+
+@router.post("/{image_id}/auto-tag")
+def auto_tag_image(image_id: int, session: Session = Depends(get_session)):
+    """用文本模型从该图提示词提取属性标签并打标（category=attr，追加合并）。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+
+    # 取提示词：优先原生，回退反推
+    prompt = ""
+    meta = session.exec(
+        select(WorkflowMeta).where(WorkflowMeta.image_id == im.id)
+    ).first()
+    if meta and meta.prompt:
+        prompt = meta.prompt
+    if not prompt:
+        rev = _latest(session, ReversePrompt, im.id)
+        if rev and rev.text:
+            prompt = rev.text
+    if not prompt:
+        raise HTTPException(400, "该图无可分析的提示词")
+
+    try:
+        tags = llm.extract_prompt_tags(prompt, session)
+    except llm.LLMError as exc:
+        raise HTTPException(502, str(exc))
+    if not tags:
+        raise HTTPException(502, "文本模型未生成有效标签")
+
+    for name in tags:
+        meta_service._link(session, im.id, name, "attr")
+    session.commit()
+    return {"tags": _image_tags_of(session, im.id, "attr")}
+
+
+@router.post("/{image_id}/tags")
+def add_image_tag(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """手动为图片添加属性标签（category=attr）。名称去首尾空白后须非空。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    name = str((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "标签不能为空")
+    meta_service._link(session, im.id, name, "attr")
+    session.commit()
+    return {"saved": True, "tags": _image_tags_of(session, im.id, "attr")}
+
+
+@router.delete("/{image_id}/tags")
+def remove_image_tag(image_id: int, body: dict, session: Session = Depends(get_session)):
+    """删除图片的某个属性标签关联。"""
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404, "image not found")
+    name = str((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "标签不能为空")
+    tag = session.exec(
+        select(Tag).where(Tag.name == name, Tag.category == "attr")
+    ).first()
+    if tag is None:
+        raise HTTPException(404, "标签不存在")
+    link = session.exec(
+        select(ImageTag).where(ImageTag.image_id == im.id, ImageTag.tag_id == tag.id)
+    ).first()
+    if link is not None:
+        session.delete(link)
+        tag.count = max(0, (tag.count or 0) - 1)
+        session.commit()
+    return {"saved": True, "tags": _image_tags_of(session, im.id, "attr")}
+
+
+def _image_tags_of(session: Session, image_id: int, category: str) -> list[dict]:
+    """返回某图指定类别的标签列表。"""
+    rows = session.exec(
+        select(Tag)
+        .join(ImageTag, ImageTag.tag_id == Tag.id)
+        .where(
+            ImageTag.image_id == image_id,
+            Tag.category == category,
+            Tag.is_deleted == 0,
+        )
+        .order_by(Tag.id)
+    ).all()
+    return [{"name": _basename(t.name), "category": t.category} for t in rows]
 
 
 @router.post("/{image_id}/prompt")
@@ -577,6 +948,7 @@ def update_image_prompt(image_id: int, body: dict, session: Session = Depends(ge
         row.text = _SEG.join(texts)
 
     session.commit()
+    watcher.bump()  # 提示词变化须让图库页轮询刷新（返回 gallery 立即生效）
     return to_detail(session, im)
 
 

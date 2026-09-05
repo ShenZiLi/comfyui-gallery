@@ -2,6 +2,9 @@
 (function () {
   var ICON_SUN = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   var ICON_MOON = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>';
+  // Claude 风格主题图标：暖陶土色的圆点 + 星形（Claude 品牌感）
+  var ICON_CLAUDE = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v2M12 18v2M2 12h2M18 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  var THEME_SEQ = ["light", "dark", "claude", "spacex"];
   // 画镜品牌图标：抠图后的银色画框 + 玻璃 + 羽毛笔（多尺寸输出，详见 frontend/assets/icons/）
   var ICON_LOGO = '<img class="brand-icon" src="assets/icons/icon-32.png" width="22" height="22" alt="" aria-hidden="true" />';
 
@@ -16,30 +19,40 @@
     return '<nav><span class="brand">' + ICON_LOGO + '画镜 <span class="dot" style="font-size:12px;color:var(--text-3)">ArtMirror</span></span>' +
       items +
       '<span class="nav-spacer"></span>' +
-      '<button id="theme-toggle" class="theme-toggle" data-tip="切换明暗模式" aria-label="切换明暗模式"></button></nav>';
+      '<button id="theme-toggle" class="theme-toggle" data-tip="切换亮色 / 暗色模式" aria-label="切换亮色 / 暗色模式"></button></nav>';
   }
 
   function currentTheme() {
-    return localStorage.getItem("am-theme") || "light";
+    var t = localStorage.getItem("am-theme");
+    return THEME_SEQ.indexOf(t) >= 0 ? t : "light";
   }
 
-  function applyTheme(t) {
+  function setTheme(t) {
+    t = THEME_SEQ.indexOf(t) >= 0 ? t : "light";
     document.documentElement.setAttribute("data-theme", t);
     localStorage.setItem("am-theme", t);
     var btn = document.getElementById("theme-toggle");
-    if (btn) btn.innerHTML = t === "dark" ? ICON_SUN : ICON_MOON;
+    if (btn) {
+      // 图标反映风格：亮系→太阳 / 暗系→月亮 / Claude→星形
+      var darkish = (t === "dark" || t === "spacex");
+      var icon = t === "claude" ? ICON_CLAUDE : darkish ? ICON_MOON : ICON_SUN;
+      btn.innerHTML = icon;
+      btn.setAttribute("data-tip", "切换主题（当前：" + t + "）");
+    }
   }
+  // 兼容旧引用：applyTheme == setTheme
+  function applyTheme(t) { setTheme(t); }
 
   function toggleTheme() {
-    var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    // 亮/暗切换：优先用 View Transitions 从右上角按钮处圆形扩散至全屏
+    // 右上角按钮只在亮色/暗色之间切换（Claude 主题仍可在设置页选择）
+    var next = currentTheme() === "dark" ? "light" : "dark";
     if (document.startViewTransition) {
       try {
-        document.startViewTransition(function () { applyTheme(next); });
+        document.startViewTransition(function () { setTheme(next); });
         return;
       } catch (e) {}
     }
-    applyTheme(next); // 不支持时降级为直接切换
+    setTheme(next); // 不支持时降级为直接切换
   }
 
   function initNav(active) {
@@ -176,5 +189,6 @@
     }
   }
 
-  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast, go: go };
+  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast, go: go,
+    currentTheme: currentTheme, setTheme: setTheme, THEME_SEQ: THEME_SEQ };
 })();

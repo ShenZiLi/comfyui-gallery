@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -36,6 +37,22 @@ def _setting(session: Session, key: str) -> str:
 
 def _role_config(session: Session, role: str) -> dict:
     return {f: _setting(session, f"llm_{role}_{f}") for f in ROLE_FIELDS}
+
+
+def _disable_reasoning(base_url: str) -> dict:
+    """按厂商在请求体注入「关闭推理/思考」（非推理模式）。
+
+    各家禁用推理/思考的参数字段不同，无统一开关，故按 base_url 特征识别常用厂商：
+    - DashScope / 阿里（Qwen）→ enable_thinking = false
+    - 智谱 GLM → thinking = {"type": "disabled"}
+    - 其他（DeepSeek / OpenAI 官方等）推理与否由模型名决定，无请求级开关，返回空。
+    """
+    b = (base_url or "").lower()
+    if "dashscope" in b or "aliyuncs" in b:
+        return {"enable_thinking": False}
+    if "bigmodel" in b or "zhipu" in b or ("/api/paas" in b and "glm" in b):
+        return {"thinking": {"type": "disabled"}}
+    return {}
 
 
 def chat_text(prompt: str, session: Optional[Session] = None) -> str:
@@ -94,6 +111,7 @@ def _chat(session: Session, prompt: str) -> str:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
+        **_disable_reasoning(base),
     }
     try:
         # 直连不信任系统代理，避免代理出口 IP 被厂商限流导致误报
@@ -178,6 +196,7 @@ def _vi(session: Session, image_data_b64: str, prompt: str) -> str:
             }
         ],
         "temperature": 0.6,
+        **_disable_reasoning(base),
     }
     try:
         resp = httpx.post(url, headers=headers, json=payload, timeout=180, trust_env=False)
@@ -194,16 +213,15 @@ def _vi(session: Session, image_data_b64: str, prompt: str) -> str:
         raise LLMError("视觉模型返回格式异常")
 
 
-# 图片超过该字节数（5MB）时在发送前压缩一次，避免超出厂商图片大小限制
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
+# 图片上传视觉模型前一律做 JPG 有损压缩（质量 80），减小体积、降低超限风险
+COMPRESS_QUALITY = 80
 COMPRESS_MAX_DIM = 1600
-COMPRESS_QUALITY = 85
 
 
 def _encode_image(image_path) -> str:
-    """读取图片并 base64 编码；若原始文件 >5MB，先压缩一次（降尺寸 + JPEG 压缩）。
+    """读取图片并 base64 编码；统一先做一次 JPG 有损压缩（质量 80，最长边 1600）。
 
-    压缩后通常能显著减小体积，同时基本保留画面内容用于视觉模型理解。
+    压缩能显著减小体积，同时基本保留画面内容用于视觉模型理解。压缩失败则退回原图字节。
     """
     import base64
 
@@ -212,29 +230,22 @@ def _encode_image(image_path) -> str:
         raise LLMError("图片文件不存在")
 
     raw = path.read_bytes()
-    if len(raw) <= MAX_IMAGE_BYTES:
-        return base64.b64encode(raw).decode()
-
-    # 大于 5MB：用 Pillow 压缩一次
     try:
         from io import BytesIO
 
         import PIL.Image
 
         img = PIL.Image.open(BytesIO(raw))
-        if img.mode not in ("RGB", "RGBA", "L"):
-            img = img.convert("RGB")
         if max(img.size) > COMPRESS_MAX_DIM:
             img.thumbnail((COMPRESS_MAX_DIM, COMPRESS_MAX_DIM), PIL.Image.LANCZOS)
         if img.mode != "RGB":
             img = img.convert("RGB")
         out = BytesIO()
         img.save(out, format="JPEG", quality=COMPRESS_QUALITY, optimize=True)
-        compressed = out.getvalue()
-        data = base64.b64encode(compressed).decode()
+        raw = out.getvalue()
     except Exception:  # noqa: BLE001 — 压缩失败则退回原图
-        data = base64.b64encode(raw).decode()
-    return data
+        pass
+    return base64.b64encode(raw).decode()
 
 
 PROMPT_REVERSE = (
@@ -246,13 +257,39 @@ PROMPT_REVERSE = (
 
 def reverse_prompt_image(image_path, session: Session) -> str:
     """用视觉模型对图片反推提示词。提示词可经设置自定义，未配置用默认。"""
-    data = _encode_image(image_path)  # >5MB 时先压缩一次再发送反推
+    data = _encode_image(image_path)  # 已统一先做 JPG-80 压缩再发送反推
     text = chat_vision(
         data,
         _prompt_override(session, "prompt_reverse", PROMPT_REVERSE),
         session,
     )
     return (text or "").strip()
+
+
+# AI 属性标签：从提示词文本提取最多 4 个概括画面属性/风格/内容的标签
+PROMPT_TAG = (
+    "请分析下面这段 AI 绘画提示词，提取最多 4 个最能概括画面属性、风格或内容的标签"
+    "（如：赛博朋克、黄昏、单人、厚涂）。"
+    "只输出标签，用逗号或顿号分隔，不要编号、不要解释、不要换行输出多余内容。"
+)
+
+
+def extract_prompt_tags(prompt, session: Session) -> list[str]:
+    """用文本模型从提示词提取最多 4 个属性标签（去空、去重、保序）。"""
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return []
+    template = _prompt_override(session, "prompt_tag", PROMPT_TAG)
+    text = chat_text(f"{template}\n\n{prompt}", session)
+    # 按常见分隔符切分并清洗
+    tags: list[str] = []
+    seen: set[str] = set()
+    for part in re.split(r"[,，、;；\\n]+", text or ""):
+        t = part.strip()
+        if t and t not in seen and len(tags) < 4:
+            seen.add(t)
+            tags.append(t)
+    return tags
 
 
 # AI 评分用标准化评测提示词：从多个维度评价图片质量，输出结构化明细

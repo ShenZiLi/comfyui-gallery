@@ -3,6 +3,7 @@
 只挂载 images 路由（避免 watcher 与静态托管副作用），DB 为独立 SQLite 文件。
 """
 import tempfile
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -137,6 +138,62 @@ def test_list_filter_sort_and_slim():
             assert absent not in c
 
 
+def test_list_search_tag_match_prioritized():
+    """搜索标签：标签命中的图片排在提示词命中的前方。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 3)
+            im0, im1, im2 = ims
+            # im0 / im2 带属性标签「赛博朋克」；im1 无该标签但提示词含「赛博」
+            tag = Tag(name="赛博朋克", category="attr", count=0)
+            s.add(tag)
+            s.flush()
+            for im in (im0, im2):
+                if not s.exec(select(ImageTag).where(ImageTag.image_id == im.id, ImageTag.tag_id == tag.id)).first():
+                    s.add(ImageTag(image_id=im.id, tag_id=tag.id))
+            # im1 的提示词改成含「赛博」且作为仅提示词命中的那张
+            m1 = s.exec(select(WorkflowMeta).where(WorkflowMeta.image_id == im1.id)).one()
+            m1.prompt = "赛博 都市 夜景"
+            s.commit()
+            im0_id, im1_id, im2_id = im0.id, im1.id, im2.id
+        # 搜索「赛博」应命中全部 3 张；标签命中的 im0/im2 在 im1 之前
+        body = client.get("/api/images?q=赛博").json()
+        ordered = [c["id"] for c in body["items"]]
+        assert body["total"] == 3
+        assert ordered[-1] == im1_id                       # 仅提示词命中的排最后
+        assert set(ordered[:2]) == {im0_id, im2_id}        # 标签命中的两张在最前
+
+
+def test_batch_ai_isolates_failures_without_config():
+    """未配置大模型时批量 AI 异步执行、排除已处理、可轮询/终止。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            _seed(s, 3)  # 三张都有反推/译文/AI评分记录
+        # 排除统计：reverse 全部已处理→0；tag 无属性标签→3
+        assert client.get("/api/images/count?kind=reverse").json()["total"] == 0
+        assert client.get("/api/images/count?kind=reverse").json()["excluded"] == 3
+        assert client.get("/api/images/count?kind=tag").json()["total"] == 3
+        resp = client.post("/api/images/batch-ai", json={"kind": "tag", "scope": "all"})
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["total"] == 3 and d["task_id"] > 0
+        st = {}
+        for _ in range(60):
+            st = client.get(f"/api/images/batch-ai/{d['task_id']}").json()
+            if not st["running"]:
+                break
+            time.sleep(0.05)
+        assert st["running"] is False
+        assert st["done"] == 3 and st["ok"] == 0 and len(st["failed"]) == 3
+        assert all(x["error"] for x in st["failed"])
+        # 非法 kind / 非法 scope / 终止不存在任务
+        assert client.post("/api/images/batch-ai", json={"kind": "nope"}).status_code == 400
+        assert client.post("/api/images/batch-ai", json={"kind": "reverse", "scope": "bad"}).status_code == 400
+        assert client.post("/api/images/batch-ai/9999/stop").status_code == 404
+
+
 def test_detail_keeps_full_fields():
     with tempfile.TemporaryDirectory() as td:
         client, engine = _setup(Path(td))
@@ -184,6 +241,34 @@ def test_pagination_clamps_and_overflow():
         assert client.get("/api/images?offset=-5").json()["offset"] == 0  # 负 offset
         over = client.get("/api/images?limit=10&offset=99").json()        # 超总量
         assert over["items"] == [] and over["hasMore"] is False
+
+
+def test_manual_attr_tag_add_delete_nonempty():
+    """属性标签：手动新增（非空校验）、返回 attr 列表、删除后消失。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            image_id = ims[0].id
+        # 空名 / 纯空格拒绝
+        assert client.post(f"/api/images/{image_id}/tags", json={"name": "  "}).status_code == 400
+        assert client.post(f"/api/images/{image_id}/tags", json={"name": ""}).status_code == 400
+        # 新增并去首尾空白
+        r = client.post(f"/api/images/{image_id}/tags", json={"name": " 黄昏 "})
+        assert r.status_code == 200
+        names = [t["name"] for t in r.json()["tags"]]
+        assert names == ["黄昏"] and all(t["category"] == "attr" for t in r.json()["tags"])
+        # 重复新增不叠加（_link 去重）
+        r2 = client.post(f"/api/images/{image_id}/tags", json={"name": "黄昏"})
+        assert len(r2.json()["tags"]) == 1
+        # 详情返回含 attr 标签
+        detail = client.get(f"/api/images/{image_id}").json()
+        assert any(t["name"] == "黄昏" and t["category"] == "attr" for t in detail["tags"])
+        # 删除
+        r3 = client.request("DELETE", f"/api/images/{image_id}/tags", json={"name": "黄昏"})
+        assert r3.status_code == 200 and r3.json()["tags"] == []
+        # 删不存在 → 404
+        assert client.request("DELETE", f"/api/images/{image_id}/tags", json={"name": "无此标签"}).status_code == 404
 
 
 def test_pagination_with_tag_and_folder_filters():

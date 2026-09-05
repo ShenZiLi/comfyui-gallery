@@ -13,6 +13,7 @@
     try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
   </script>
   <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="themes.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
@@ -75,6 +76,23 @@
       </div>
     </div>
 
+    <!-- 主题外观 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">主题</h3>
+      <p class="muted">选择站点外观主题；偏好会持久化，下次进入仍保留上次选择。</p>
+      <div class="theme-grid" x-cloak>
+        <template x-for="th in themes" :key="th.key">
+          <button class="theme-option" :class="{active: cfg.theme===th.key}"
+                  :data-tip="th.desc" @click="pickTheme(th.key)">
+            <span class="theme-swatch" x-html="th.swatch"></span>
+            <span class="theme-name" x-text="th.label"></span>
+            <svg class="theme-check" x-show="cfg.theme===th.key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
+        </template>
+      </div>
+      <div class="muted mt" style="font-size:12px">Claude 风格采用暖米白底色与陶土橙强调色，还原 Claude.ai 的观感。</div>
+    </div>
+
     <!-- JPG 有损压缩 -->
     <div class="card pad">
       <h3 style="margin-top:0">JPG 压缩</h3>
@@ -100,7 +118,7 @@
     <!-- 大模型配置（按角色混搭厂商） -->
     <div class="card pad">
       <h3 style="margin-top:0">大模型</h3>
-      <p class="muted">文本 / 视觉 / Embedding 各角色可分别选择不同厂商、独立配置，自由混搭。</p>
+      <p class="muted">文本 / 视觉 各角色可分别选择不同厂商、独立配置，自由混搭。</p>
       <template x-for="r in roles" :key="r.key">
         <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
@@ -183,21 +201,80 @@
 
     <!-- 批量 AI 操作 -->
     <div class="card pad">
-      <h3 style="margin-top:0">批量 AI 操作</h3>
-      <p class="muted">对「全部图片」或「当前筛选结果」执行批量增强。</p>
+      <h3 style="margin-top:0">批量 AI 操作（注意：将消耗大量token）</h3>
+      <p class="muted">对「全部图片」或「指定目录」执行批量增强；开始前会确认涉及图片数，执行中可实时查看进度并终止。</p>
       <div class="chips" style="margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="all" />全部</label>
-        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="filter" />当前筛选</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="batchScope" x-model="batchScope" value="all" />全部图片</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="batchScope" x-model="batchScope" value="folder" />按目录</label>
+        <select x-show="batchScope==='folder'" x-model="batchFolder" style="max-width:260px">
+          <option value="">选择目录…</option>
+          <template x-for="f in folderOptions()" :key="f.id">
+            <option :value="f.id" x-text="f.path + '（' + (f.count||0) + '）'"></option>
+          </template>
+        </select>
       </div>
       <div class="btn-row mt">
-        <button class="btn" @click="batch('reverse')">反推提示词</button>
-        <button class="btn" @click="batch('translate')">中英翻译</button>
-        <button class="btn" @click="batch('score')">AI 评分</button>
+        <button class="btn" @click="startBatch('reverse')">图片反推</button>
+        <button class="btn" @click="startBatch('tag')">标签解析</button>
+        <button class="btn" @click="startBatch('translate')">中英互译</button>
+        <button class="btn" @click="startBatch('score')">AI 评分</button>
       </div>
       <div class="card mt" style="background:var(--bg);padding:8px 10px">
         <div class="muted" style="font-size:12px">
           · 反推结果会单独标注为「<span style="color:#833ab4">反推提示词</span>」，不覆盖原生 workflow 提示词。<br/>
+          · 所有反推操作请求LLM前均会做一次质量60的JPG有损压缩（临时），显著降低图片大小，减少token消耗。<br/>
           · 未配置模型时，AI 功能将置灰并给出提示。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量确认弹窗：显示涉及图片数，二次确认 -->
+  <div class="modal-mask" x-show="batchConfirm" x-cloak @keydown.escape.window="batchConfirm=null">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-head">
+        <h3>批量确认</h3>
+        <button class="modal-x" @click="batchConfirm=null">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin:0 0 6px" x-text="'将执行「' + batchLabel(batchConfirm && batchConfirm.kind) + '」'"></p>
+        <p style="margin:0 0 6px">共涉及 <b x-text="batchConfirm && batchConfirm.total"></b> 张图片，确认开始？</p>
+        <p class="muted" style="margin:0 0 18px;font-size:12px" x-show="batchConfirm && batchConfirm.excluded > 0">
+          已自动排除 <b x-text="batchConfirm.excluded"></b> 张已处理过的图片。
+        </p>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn sm" @click="batchConfirm=null">取消</button>
+          <button class="btn sm primary" @click="confirmStartBatch()">开始</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量进度弹窗：实时进度条 + 终止任务 -->
+  <div class="modal-mask" x-show="batchTask" x-cloak>
+    <div class="modal" style="max-width:460px">
+      <div class="modal-head">
+        <h3 x-text="'批量' + batchLabel(batchTask && batchTask.kind)"></h3>
+      </div>
+      <div class="modal-body">
+        <p class="muted" style="margin:0 0 4px" x-text="batchRunMsg()"></p>
+        <div class="batch-bar"><i :style="'width:'+batchPct()+'%'"></i></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px">
+          <span x-text="(batchProgress.done||0) + ' / ' + (batchProgress.total||0) + ' 张'"></span>
+          <span x-text="batchPctText()"></span>
+        </div>
+        <div class="muted mt" x-show="batchProgress.failed && batchProgress.failed.length" style="font-size:12px;color:var(--danger)">
+          <span x-text="batchProgress.failed.length + ' 张失败'"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <template x-if="batchProgress.running">
+            <button class="btn sm danger" @click="stopBatch()" :disabled="batchStopping">
+              <span x-text="batchStopping ? '正在终止…' : '终止任务'"></span>
+            </button>
+          </template>
+          <template x-if="!batchProgress.running">
+            <button class="btn sm primary" @click="closeBatch()">完成</button>
+          </template>
         </div>
       </div>
     </div>
@@ -211,7 +288,6 @@
   var ROLES = [
     { key: "text", label: "文本模型", modelLabel: "文本模型名", desc: "用于提示词翻译 / AI 文本评分", vendor: "deepseek" },
     { key: "vision", label: "视觉模型", modelLabel: "视觉模型名", desc: "用于图片反推提示词（需支持视觉输入）", vendor: "qwen" },
-    { key: "embed", label: "Embedding 模型", modelLabel: "Embedding 模型名", desc: "用于相似提示词聚类（可选）", vendor: "qwen" },
   ];
   var VENDORS = {
     deepseek: { baseUrl: "https://api.deepseek.com/v1", model: { text: "deepseek-v4-flash", vision: "deepseek-v4-flash-vision-exp", embed: "" } },
@@ -226,11 +302,22 @@
 
   window.Settings = {
     roles: ROLES,
+    // 主题选项：swatch 为预览色块（浅色小卡），key 与后端 theme 取值一一对应
+    themes: [
+      { key: "light", label: "亮色", desc: "清爽的浅灰白底，适合明亮环境",
+        swatch: '<span class="tsw tsw-light">亮</span>' },
+      { key: "dark", label: "暗色", desc: "深蓝灰底，适合夜间/暗光环境",
+        swatch: '<span class="tsw tsw-dark">暗</span>' },
+      { key: "claude", label: "Claude", desc: "暖米白 + 陶土橙，仿 Claude.ai",
+        swatch: '<span class="tsw tsw-claude">C</span>' },
+      { key: "spacex", label: "SpaceX", desc: "纯黑 + 全大写等宽，暗黑航天",
+        swatch: '<span class="tsw tsw-spacex">S</span>' },
+    ],
     promptFields: [
-      { key: "reverse", label: "反推提示词" },
+      { key: "reverse", label: "图片反推" },
+      { key: "tag", label: "标签解析" },
       { key: "score", label: "AI 评分" },
       { key: "translate", label: "中英互译" },
-      { key: "analyze", label: "AI 解析工作流" },
     ],
     promptDefaults: {},
     cfg: {
@@ -238,7 +325,8 @@
       importDir: "",
       compressMode: "new",
       compressQuality: 80,
-      prompts: { reverse: "", score: "", translate: "", analyze: "" },
+      theme: App.currentTheme(),
+      prompts: { reverse: "", tag: "", score: "", translate: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
       },
@@ -249,6 +337,13 @@
     vendorOpen: null,
     testState: {},
     scope: ["all"],
+    batchScope: "all",
+    batchFolder: "",
+    batchConfirm: null,
+    batchTask: null,
+    batchProgress: { total: 0, done: 0, ok: 0, failed: [], running: false, cancelled: false },
+    batchStopping: false,
+    _batchTimer: null,
     _lastVer: -1,
     version: "",
     importDirHint() {
@@ -276,9 +371,15 @@
         self.cfg.importDir = s.importDir || "";
         self.cfg.compressMode = s.compressMode || "new";
         self.cfg.compressQuality = (s.compressQuality != null && s.compressQuality >= 1) ? s.compressQuality : 80;
+        // 从后端回读持久化主题并应用（跨浏览器/会话一致）
+        var serverTheme = s.theme || "light";
+        if (App.THEME_SEQ.indexOf(serverTheme) >= 0 && serverTheme !== App.currentTheme()) {
+          App.setTheme(serverTheme);
+        }
+        self.cfg.theme = App.currentTheme();
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
-        ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+        ["reverse", "tag", "score", "translate"].forEach(function (k) {
           // 自定义为空时，展示默认提示词全文（可编辑）；保存时若未改动会归一化为空
           self.cfg.prompts[k] = (p[k] || "") || (self.promptDefaults[k] || "");
         });
@@ -386,7 +487,7 @@
       c.vendors[c.vendor] = { vendor: c.vendor, base_url: c.baseUrl, api_key: c.apiKey, model: c.model };
       var self = this;
       Api.updateSettings({ llm: llm }).then(function () {
-        self.llmMsg = "已自动保存：文本 / 视觉 / Embedding 配置。";
+        self.llmMsg = "已自动保存：文本 / 视觉 配置。";
       }).catch(function (e) {
         self.llmMsg = "保存失败：" + ((e && e.message) || e);
       });
@@ -449,7 +550,80 @@
         self.testing = false;
       });
     },
-    batch(kind) { alert("原型提示：批量「" + kind + "」将在后端 M3 AI 能力接入后执行。"); },
+    folderOptions() { return (this.scanned || []).filter(function (f) { return (f.count || 0) > 0 && !f.hidden; }); },
+    batchLabel(kind) {
+      return { reverse: "图片反推", tag: "标签解析", translate: "中英互译", score: "AI 评分" }[kind] || kind;
+    },
+    // 点按钮 → 先统计图片数，弹二次确认
+    startBatch(kind) {
+      var self = this;
+      if (this.batchConfirm || this.batchTask) return;
+      var folderId = this.batchScope === "folder" ? (this.batchFolder || "") : null;
+      if (this.batchScope === "folder" && !folderId) { App.toast("请先选择目录"); return; }
+      Api.countImage(folderId, kind).then(function (d) {
+        self.batchConfirm = { kind: kind, folderId: folderId, total: (d && d.total) | 0, excluded: (d && d.excluded) | 0 };
+      }).catch(function (e) {
+        App.toast("统计失败：" + ((e && e.message) || e));
+      });
+    },
+    confirmStartBatch() {
+      var self = this;
+      var c = this.batchConfirm;
+      if (!c) return;
+      this.batchConfirm = null;
+      this.batchTask = { kind: c.kind, taskId: null };
+      this.batchProgress = { total: c.total, done: 0, ok: 0, failed: [], running: true, cancelled: false };
+      this.batchStopping = false;
+      Api.batchAI(c.kind, c.folderId ? "folder" : "all", c.folderId).then(function (d) {
+        self.batchTask = { kind: c.kind, taskId: d.task_id };
+        self.batchProgress.total = (d && d.total) | 0;
+        self.startPoll();
+      }).catch(function (e) {
+        self.closeBatch();
+        App.toast("启动失败：" + ((e && e.message) || e));
+      });
+    },
+    startPoll() {
+      this.stopPoll();
+      var self = this;
+      this._batchTimer = setInterval(function () { self.pollBatch(); }, 600);
+    },
+    stopPoll() { if (this._batchTimer) { clearInterval(this._batchTimer); this._batchTimer = null; } },
+    pollBatch() {
+      var self = this;
+      var tid = this.batchTask && this.batchTask.taskId;
+      if (!tid) return;
+      Api.batchStatus(tid).then(function (d) {
+        self.batchProgress = {
+          total: d.total, done: d.done, ok: d.ok,
+          failed: (d.failed || []).slice(0, 50),
+          running: d.running, cancelled: d.cancelled,
+        };
+        if (!d.running) self.stopPoll();
+      }).catch(function () { /* 下次轮询重试 */ });
+    },
+    stopBatch() {
+      var self = this;
+      var tid = this.batchTask && this.batchTask.taskId;
+      if (!tid || this.batchStopping) return;
+      this.batchStopping = true;
+      Api.batchStop(tid).then(function () { self.batchStopping = false; }).catch(function () { self.batchStopping = false; });
+    },
+    closeBatch() {
+      this.stopPoll();
+      this.batchTask = null;
+      this.batchProgress = { total: 0, done: 0, ok: 0, failed: [], running: false, cancelled: false };
+    },
+    batchPct() {
+      var t = (this.batchProgress && this.batchProgress.total) | 0;
+      var d = (this.batchProgress && this.batchProgress.done) | 0;
+      return t ? Math.min(100, Math.round(d / t * 100)) : 0;
+    },
+    batchPctText() { return this.batchPct() + "%"; },
+    batchRunMsg() {
+      if (this.batchProgress.cancelled) return "任务已终止。";
+      return this.batchProgress.running ? "正在处理，可随时终止任务…" : "已完成。";
+    },
 
     // ---- 导入保存目录（绝对路径，在后端保存并入库） ----
     saveImportDir() {
@@ -457,6 +631,16 @@
       var v = (this.cfg.importDir || "").trim();
       Api.updateSettings({ importDir: v }).catch(function (e) {
         self.doneMsg = "保存失败：" + ((e && e.message) || e);
+      });
+    },
+
+    // ---- 主题切换（即时应用 + 持久化到后端与本地） ----
+    pickTheme(key) {
+      var self = this;
+      self.cfg.theme = key;
+      App.setTheme(key);  // 立即应用，写入 localStorage
+      Api.updateSettings({ theme: key }).catch(function (e) {
+        self.doneMsg = "主题保存失败：" + ((e && e.message) || e);
       });
     },
 
@@ -475,7 +659,7 @@
     savePrompts() {
       var self = this;
       var payload = {};
-      ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+      ["reverse", "tag", "score", "translate"].forEach(function (k) {
         // 内容与默认提示词一致时存空（= 使用内置默认），保持「留空=默认」语义
         payload[k] = (self.cfg.prompts[k] === (self.promptDefaults[k] || "")) ? "" : self.cfg.prompts[k];
       });

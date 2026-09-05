@@ -12,8 +12,8 @@ from ..services import scanner, watcher
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# 三个模型角色及其扩展字段（支持不同厂商混搭）
-ROLES = ["text", "vision", "embed"]
+# 两个模型角色及其扩展字段（支持不同厂商混搭）
+ROLES = ["text", "vision"]
 ROLE_FIELDS = ["vendor", "base_url", "api_key", "model"]
 # 已知厂商类型；每个角色可为每个厂商保留独立配置
 VENDORS = ["deepseek", "qwen", "glm", "openai", "custom"]
@@ -44,6 +44,15 @@ def _compress_quality(session: Session) -> int:
     except (TypeError, ValueError):
         q = 80
     return max(1, min(100, q))
+
+
+# 支持的主题值；非法值归一化为 light
+THEMES = ("light", "dark", "claude", "spacex")
+
+
+def _normalize_theme(value) -> str:
+    t = str(value or "light").strip().lower()
+    return t if t in THEMES else "light"
 
 
 def _compress_quality_from(value) -> int:
@@ -155,9 +164,9 @@ def get_settings(session: Session = Depends(get_session)):
     from ..services import llm as llm_mod
     prompt_defaults = {
         "reverse": llm_mod.PROMPT_REVERSE,
+        "tag": llm_mod.PROMPT_TAG,
         "score": llm_mod.PROMPT_SCORE,
         "translate": llm_mod.PROMPT_TRANSLATE,
-        "analyze": llm_mod.PROMPT_ANALYZE,
     }
     prompts = {f: _get(session, f"prompt_{f}") for f in prompt_defaults}
     return {
@@ -168,10 +177,11 @@ def get_settings(session: Session = Depends(get_session)):
         "prompt_defaults": prompt_defaults,
         "compressMode": _get(session, "compress_mode") or "new",
         "compressQuality": _compress_quality(session),
+        "theme": _normalize_theme(_get(session, "theme")),
     }
 
 
-PROMPT_FEATURES = ("reverse", "score", "translate", "analyze")
+PROMPT_FEATURES = ("reverse", "tag", "score", "translate")
 
 
 @router.post("")
@@ -206,6 +216,8 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
         _set(session, "compress_mode", "new" if str(body["compressMode"]).strip() == "new" else "overwrite")
     if body.get("compressQuality") is not None:
         _set(session, "compress_quality", str(_compress_quality_from(body["compressQuality"])))
+    if body.get("theme") is not None:
+        _set(session, "theme", _normalize_theme(body["theme"]))
     session.commit()
 
     result = {"saved": True}
@@ -266,28 +278,6 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
                     headers = {"Authorization": f"Bearer {key}"}
                     r = httpx.get(url, headers=headers, timeout=30, trust_env=False)
                     r.raise_for_status()
-                    results[role] = {"ok": True, "message": "连接成功"}
-                elif role == "embed":
-                    # embedding 探测连通
-                    from ..services.llm import _role_config
-                    c = _role_config(session, "embed")
-                    base = (c.get("base_url") or "").strip()
-                    key = (c.get("api_key") or "").strip()
-                    model = (c.get("model") or "").strip()
-                    if not (base and key and model):
-                        raise llm.LLMNotConfigured("base_url/api_key/model 未配置完整")
-                    url = (
-                        base
-                        if base.rstrip("/").endswith("/embeddings")
-                        else base.rstrip("/") + "/embeddings"
-                    )
-                    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-                    payload = {"model": model, "input": "你好"}
-                    r = httpx.post(url, headers=headers, json=payload, timeout=60, trust_env=False)
-                    r.raise_for_status()
-                    data = r.json()
-                    if "data" not in data or not isinstance(data["data"], list) or not len(data["data"]):
-                        raise llm.LLMError("embedding 返回格式异常")
                     results[role] = {"ok": True, "message": "连接成功"}
             except Exception as e:
                 results[role] = {"ok": False, "message": str(e)}

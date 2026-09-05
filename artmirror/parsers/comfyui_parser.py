@@ -43,6 +43,11 @@ LORA_LOADERS = {
     "LoraLoaderBlockWeight",
 }
 
+# Easy-Use 简易 LoRA 堆（Krea2 / RunningHub 常用）：多槽堆叠节点
+EASY_LORA_STACKS = {
+    "easy loraStack", "easy loraStackApply",
+}
+
 NEGATIVE_LINK = 1  # conditioning 数组下标 1 为 negative
 
 # 提示词最小长度：真实提示词通常为中文/英文且长度超过 10；
@@ -67,6 +72,7 @@ class ParseResult:
     negative_prompts: list[str] = field(default_factory=list)  # 原生多提示词（负）
     model_name: str = ""
     loras: list[str] = field(default_factory=list)
+    lora_weights: list[tuple[str, float]] = field(default_factory=list)  # [(name, strength)]
     vae: str = ""
     seed: Optional[int] = None
     steps: Optional[int] = None
@@ -138,6 +144,7 @@ TEXT_SOURCE_NODES = {
     "CLIPTextEncode", "CLIPTextEncodeSDXL", "CLIPTextEncodeControlNet",
     "PrimitiveNode", "StringPrimitive", "easy getNode", "easy setNode",
     "CR Text", "ShowText", "ShowText|pysssss",
+    "JjkText",  # krea2-muse 等用其承载正向提示词（文本存于 inputs.text 或 string）
 }
 
 # 可穿越的传递/开关节点：沿其输入连线继续回溯文本源。
@@ -149,6 +156,29 @@ PASSTHROUGH_NODES = {
     "easy getNode", "easy setNode", "easy anythingEverywhere",
     "Fast Bypasser (rgthree)", "Bypasser (rgthree)", "Fast Groups Bypasser (rgthree)",
 }
+
+# 文本联结节点：把多个文本输入拼成一条提示词（只拼在用的文本）
+TEXT_MERGE_NODES = {"CR Text Concatenate"}
+
+
+def _merge_source_texts(graph: dict) -> set[str]:
+    """收集文本联结节点的输入源文本（API 格式），这些文本已并入拼接结果，
+    不应再作为独立提示词块收集。"""
+    merged: set[str] = set()
+    for n in graph.values():
+        if not isinstance(n, dict) or n.get("class_type", "") not in TEXT_MERGE_NODES:
+            continue
+        inputs = n.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        for i in range(1, 11):
+            v = inputs.get(f"text{i}")
+            t = _resolve_text(v, graph, 0) if isinstance(v, list) else (
+                str(v).strip() if isinstance(v, str) else ""
+            )
+            if t:
+                merged.add(t)
+    return merged
 
 
 def extract_prompt_lists(graph: dict) -> dict:
@@ -198,6 +228,10 @@ def extract_prompt_lists(graph: dict) -> dict:
             add_neg(_resolve_text(inputs.get("negative"), graph))
 
     # 2) 补充未被命中的文本节点（启发式正负）
+    #    文本联结（CR Text Concatenate）的输入源，其文本已并入拼接结果，
+    #    不应再作为独立正向/负向块收集（否则重复）。
+    merge_sources = _merge_source_texts(graph)
+
     extra = sorted(graph.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 0)
     for nid, n in extra:
         cls = n.get("class_type", "")
@@ -208,7 +242,7 @@ def extract_prompt_lists(graph: dict) -> dict:
         t = (t or "").strip()
         if not t:
             continue
-        if t in pos_seen or t in neg_seen:
+        if t in pos_seen or t in neg_seen or t in merge_sources:
             continue
         if _looks_negative(str(nid), t):
             add_neg(t)
@@ -238,6 +272,20 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
     if not isinstance(inputs, dict):
         return ""
     cls = node.get("class_type", "")
+
+    # 文本联结节点：把 text1..text10 按 separator 拼成一条（只拼在用的）
+    if cls in TEXT_MERGE_NODES:
+        parts: list[str] = []
+        for i in range(1, 11):
+            v = inputs.get(f"text{i}")
+            r = _resolve_text(v, graph, depth + 1) if isinstance(v, list) else (str(v).strip() if isinstance(v, str) else "")
+            if r:
+                parts.append(r)
+        if not parts:
+            return ""
+        sep = inputs.get("separator")
+        sep = sep if isinstance(sep, str) and sep else ", "
+        return sep.join(parts)
 
     if cls in TEXT_SOURCE_NODES:
         v = inputs.get("text")
@@ -270,8 +318,15 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
 UI_TEXT_NODES = {
     "CLIPTextEncode", "CLIPTextEncodeSDXL", "CLIPTextEncodeControlNet",
     "CR Text",
+    "JjkText",
     "easy showAnything", "ShowText|pysssss",
 }
+
+
+def _num_suffix(name: str) -> int:
+    """提取 text1/text2/... 的数字后缀用于排序；无后缀则按序返回大数保持分布。"""
+    digits = "".join(ch for ch in str(name) if ch.isdigit())
+    return int(digits) if digits else 10 ** 6
 
 
 def _ui_widget_texts(node: dict) -> list[str]:
@@ -333,12 +388,26 @@ def _extract_prompt_lists_ui(graph: dict) -> dict:
         add_pos(_ui_trace_text(n, "positive", by_id, link_from))
         add_neg(_ui_trace_text(n, "negative", by_id, link_from))
 
+    # 文本联结节点（UI）：其 text* 输入源作为「已并入拼接结果」，兜底不再单独收集。
+    merge_child_ids: set[str] = set()
+    for n in nodes:
+        if not isinstance(n, dict) or n.get("type", "") not in TEXT_MERGE_NODES:
+            continue
+        for inp in n.get("inputs") or []:
+            if not isinstance(inp, dict) or inp.get("link") is None:
+                continue
+            src_id = link_from.get(int(inp["link"]))
+            if src_id is not None:
+                merge_child_ids.add(str(src_id))
+
     # 2) 兜底：未命中的文本节点（widget 值，含数组），启发式正负
     ordered = sorted(
         (n for n in nodes if isinstance(n, dict) and n.get("type", "") in UI_TEXT_NODES),
         key=lambda n: int(n.get("id", 0) or 0),
     )
     for n in ordered:
+        if str(n.get("id", 0) or 0) in merge_child_ids:
+            continue
         for t in _ui_widget_texts(n):
             if t in pos_seen or t in neg_seen:
                 continue
@@ -372,6 +441,39 @@ def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
         return ""
     ntype = node.get("type", "")
     inputs = node.get("inputs") or []
+
+    # 文本联结节点：沿各 text* 输入连线回溯源文本，按 widgets_values[0] 作 separator 拼接。
+    # 某输入源节点 mode==4（bypass）或自身 mode==4 时跳过该输入。
+    if ntype in TEXT_MERGE_NODES:
+        if node.get("mode") == 4:
+            return ""
+        parts: list[str] = []
+        # 按输入名排序保证顺序：text1, text2, ...（含可能缺失的中间号）
+        merged = {}
+        for inp in inputs:
+            if not isinstance(inp, dict) or inp.get("link") is None:
+                continue
+            name = str(inp.get("name") or "")
+            if not name.startswith("text"):
+                continue
+            src_id = link_from.get(int(inp["link"]))
+            src = by_id.get(str(src_id))
+            # 输入源节点 bypass（mode==4）视为不使用
+            if isinstance(src, dict) and src.get("mode") == 4:
+                continue
+            r = _ui_node_text(src, by_id, link_from, depth + 1)
+            if r:
+                merged[name] = r
+        # text1 < text2 < ... 排序
+        for name in sorted(merged, key=lambda k: _num_suffix(k)):
+            parts.append(merged[name])
+        if not parts:
+            return ""
+        wv = node.get("widgets_values")
+        sep = ", "
+        if isinstance(wv, list) and wv and isinstance(wv[0], str) and wv[0]:
+            sep = wv[0]
+        return sep.join(parts)
 
     # 文本源节点：若 text 输入被连线接管（如 CR Text → Any Switch → CLIPTextEncode.text），
     # 沿连线取真正生效的文本；否则取 widget 值
@@ -411,9 +513,16 @@ def _looks_negative(node_id: str, text: str) -> bool:
     low = (node_id or "").lower()
     if "negative" in low:
         return True
-    markers = ("lowres", "worst", "extra fingers", "extra legs", "missing fingers",
-               "bad anatomy", "bad hands", "blurry", "jpeg artifacts", "watermark",
-               "poorly drawn", "deformed", "out of frame", "artifacts")
+    markers = (
+        "lowres", "worst", "extra fingers", "extra legs", "missing fingers",
+        "bad anatomy", "bad hands", "blurry", "jpeg artifacts", "watermark",
+        "poorly drawn", "deformed", "out of frame", "artifacts",
+        "mosaic", "censored",
+        # 中文负面词：原中文负向提示词若无负面标记会被误判为正向，污染 prompt
+        "马赛克", "低分辨率", "模糊", "扭曲", "噪点", "水印", "乱码",
+        "崩坏", "畸形", "多余的手指", "多余的腿", "手指错乱", "肢体错乱",
+        "画质差", "分辨率低", "瑕疵", "重影", "过曝", "欠曝",
+    )
     return any(m in (text or "").lower() for m in markers)
 
 
@@ -478,6 +587,71 @@ def _trace_model(sampler: dict, is_ui: bool, id_map: dict, link_from: Optional[d
     return ""
 
 
+def _strength_used(strength) -> bool:
+    """权重≠0 才算「在用」（负权重如 -2.0 也算在用）。"""
+    s = _to_float(strength)
+    return s is not None and s != 0.0
+
+
+def _num_loras(node: dict, is_ui: bool) -> int:
+    """easy loraStack 的生效槽位上限 num_loras；缺失/非整数时保守回退 10 槽。"""
+    if is_ui:
+        return 10  # UI 图无显式 num_loras widget 时可遍历全部
+    raw = node.get("inputs", {}).get("num_loras")
+    n = _to_int(raw)
+    return n if n is not None and n >= 0 else 10
+
+
+def _extract_easy_lora_stack(node: dict, is_ui: bool) -> list[tuple[str, float]]:
+    """从 easy loraStack / easy loraStackApply 提取在用 LoRA 及权重。
+
+    UI 格式：``widgets_values`` 每 4 项一组 [name, strength, ...]，逐组遍历，``num_loras``
+    缺失时遍历全部槽位；API 格式：``lora_i_name`` / ``lora_i_strength``（i 从 1 起）直列。
+    以 num_loras 为上限取前 N 槽（超出部分即使 name/strength 非空的「历史残留」也不生效）；
+    整堆 ``toggle=False`` 则跳过；单槽 strength==0 排除、负权重仍算在用。
+    """
+    out: list[tuple[str, float]] = []
+
+    if is_ui:
+        wv = node.get("widgets_values")
+        if isinstance(wv, list) and len(wv) >= 4:
+            group = 4
+            for i in range(0, len(wv) - (len(wv) % group), group):
+                name = wv[i]
+                strength = wv[i + 1]
+                if isinstance(name, str) and name.strip() and _strength_used(strength):
+                    out.append((name.strip(), round(_to_float(strength) or 0.0, 4)))
+        return out
+
+    # API：直列 lora_i_name / lora_i_strength
+    inputs = node.get("inputs", {}) or {}
+    limit = _num_loras(node, is_ui)
+    seen = set()
+    slot = 0
+    for i in range(1, 1000):
+        name_key = f"lora_{i}_name"
+        if name_key not in inputs:
+            name_key = f"lora{i}_name"
+            if name_key not in inputs:
+                break
+        # num_loras 限制的是「参与堆叠的槽位数量」：超出上限的槽位即使有残留数据也不生效
+        if limit and slot >= limit:
+            break
+        slot += 1
+        strength_key = name_key.replace("name", "strength")
+        name = inputs.get(name_key)
+        strength = inputs.get(strength_key)
+        if not (isinstance(name, str) and name.strip()):
+            continue
+        if not _strength_used(strength):
+            continue
+        if name.strip() in seen:
+            continue
+        seen.add(name.strip())
+        out.append((name.strip(), round(_to_float(strength) or 0.0, 4)))
+    return out
+
+
 def extract_assets(graph: dict) -> dict:
     """提取主模型 / LoRA / VAE 名称。
 
@@ -507,6 +681,7 @@ def extract_assets(graph: dict) -> dict:
 
     loader_names: list[str] = []
     loras: list[str] = []
+    lora_weights: list[tuple[str, float]] = []
     vae = ""
 
     for _nid, n in pairs:
@@ -519,7 +694,17 @@ def extract_assets(graph: dict) -> dict:
             lora = n.get("inputs", {}).get("lora_name") if not is_ui else None
             lora = lora or _widget_val(n, 0)
             if lora:
-                loras.append(str(lora))
+                lora = str(lora)
+                loras.append(lora)
+                # 标准 LoraLoader：权重看 strength_model（UI widgets_values[？] / API inputs.strength_model）
+                strength = _to_float(n.get("inputs", {}).get("strength_model")) if not is_ui else None
+                if strength is None and not is_ui:
+                    strength = _to_float(n.get("inputs", {}).get("strength"))
+                lora_weights.append((lora, round(strength or 0.0, 4)))
+        elif cls in EASY_LORA_STACKS:
+            for name, strength in _extract_easy_lora_stack(n, is_ui):
+                loras.append(name)
+                lora_weights.append((name, strength))
         elif cls == "VAELoader":
             val = _widget_val(n, 0)
             if not val and not is_ui:
@@ -539,19 +724,33 @@ def extract_assets(graph: dict) -> dict:
     if not model and loader_names:
         model = loader_names[0]
 
+    # 名称去重保序；lora_weights 与 loras 同名同序（同步去重）
+    seen = set()
+    dedup_loras: list[str] = []
+    dedup_weights: list[tuple[str, float]] = []
+    for name, w in zip(loras, lora_weights):
+        if name in seen:
+            continue
+        seen.add(name)
+        dedup_loras.append(name)
+        dedup_weights.append(w)
+
     return {
         "model_name": model,
-        "loras": list(dict.fromkeys(loras)),
+        "loras": dedup_loras,
+        "lora_weights": dedup_weights,
         "vae": vae,
     }
 
 
 def extract_sampler_params(graph: dict) -> dict:
-    """提取采样参数。"""
+    """提取采样参数。seed 支持三种形式：字面量、`noise_seed` 键（KSamplerAdvanced）、
+    引脚引用 `[node_id, 0]`（回溯到源节点取字面 seed 值）。"""
     for n in _collect_ksamplers(graph):
         i = n.get("inputs", {})
+        seed = _resolve_seed(i, graph)
         return {
-            "seed": _to_int(i.get("seed")),
+            "seed": seed,
             "steps": _to_int(i.get("steps")),
             "cfg": _to_float(i.get("cfg")),
             "sampler": str(i.get("sampler_name") or ""),
@@ -559,6 +758,37 @@ def extract_sampler_params(graph: dict) -> dict:
             "denoise": _to_float(i.get("denoise")),
         }
     return {}
+
+
+def _resolve_seed(inputs: dict, graph: dict, depth: int = 0) -> Optional[int]:
+    """解析 seed：字面量 / `noise_seed` / 引脚引用。
+
+    - KSamplerAdvanced 用 ``noise_seed`` 而非 ``seed``；
+    - seed 值可能为 ``[node_id, output_index]`` 引脚，指向 ``Seed (rgthree)`` 等源节点，
+      此时沿 link 回溯取源节点字面 seed 值（最多回溯 5 层防环）。
+    """
+    if depth > 5:
+        return None
+    raw = inputs.get("seed")
+    if raw is None:
+        raw = inputs.get("noise_seed")
+    if _to_int(raw) is not None:
+        return _to_int(raw)
+    # 引脚引用：回溯源节点取 seed
+    if isinstance(raw, list) and raw and isinstance(raw[0], str):
+        node = graph.get(raw[0])
+        if isinstance(node, dict):
+            src_inputs = node.get("inputs", {})
+            # 优先源节点自身 inputs，其次转成带 link 的引用来回溯（Seed (rgthree) 链）
+            if isinstance(src_inputs, dict):
+                val = src_inputs.get("seed")
+                if val is None:
+                    # Seed (rgthree) 的 value 常存于 widgets_values 或 inputs.seed
+                    val = src_inputs.get("value")
+                if val is not None and _to_int(val) is not None:
+                    return _to_int(val)
+                return _resolve_seed(src_inputs, graph, depth + 1)
+    return None
 
 
 def _to_int(v: Any) -> Optional[int]:

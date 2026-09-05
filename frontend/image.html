@@ -13,6 +13,7 @@
     try { document.documentElement.setAttribute("data-theme", localStorage.getItem("am-theme") || "light"); } catch (e) {}
   </script>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="themes.css" />
   <script src="mock-data.js"></script>
   <script src="api.js"></script>
   <script src="app.js"></script>
@@ -76,10 +77,8 @@
                     @click="selectPrompt('reverse')">
               <span x-text="pState==='rev' ? '反推中' : '反推'"></span>
             </button>
-            <button class="src-tab ai" :class="{active: im._src==='ai', has: !!im.aiPrompt || pState==='parse'}"
-                    @click="selectPrompt('ai')"
-                    data-tip="原生提示词不准确时，可用AI重新解析工作流" data-tip-delay="1500">
-              <span x-text="pState==='parse' ? '解析中' : 'AI'"></span>
+            <button class="src-tab ai" :class="{has: attrTags().length}" @click.stop="autoTag()" data-tip="生成标签">
+              <span x-text="tagging ? '生成中…' : 'AI'"></span>
             </button>
           </span>
           <span style="margin-left:auto;display:flex;gap:6px">
@@ -110,6 +109,21 @@
         <div class="muted mt" x-show="activeNegative()" style="font-size:12px">
           <b>负向：</b><span class="prompt-clickable" @click.stop="copy(activeNegative())" x-text="activeNegative()"></span>
         </div>
+        <!-- 属性标签：双击删除 / ＋ 内联新增 -->
+        <div class="attr-tags mt">
+          <span class="attr-label">标签</span>
+          <template x-for="t in attrTags()" :key="'t'+t.name">
+            <span class="chip attr" data-tip="双击删除">
+              <span class="attr-name" @dblclick.stop="removeTag(t)" x-text="t.name"></span>
+              <button class="attr-x" data-tip="删除" @click.stop="removeTag(t)">×</button>
+            </span>
+          </template>
+          <button class="chip attr add" x-show="!addingTag" data-tip="新增标签" @click.stop="startAddTag()">＋</button>
+          <input x-show="addingTag" x-ref="tagAddInput" class="tag-add-input" x-model="newTagText"
+                 placeholder="输入标签，回车确认"
+                 @keydown.enter.prevent="commitAddTag()" @keydown.esc.stop="cancelAddTag()"
+                 @blur="commitAddTag()" @click.stop />
+        </div>
       </div>
 
       <!-- 模型 / 参数 -->
@@ -124,8 +138,8 @@
         </h3>
         <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
         <div class="chips" style="margin-top:6px">
-          <template x-for="t in im.tags || []" :key="t.category+t.name">
-            <span class="chip" :class="t.category" x-text="t.name"></span>
+          <template x-for="t in modelTags()" :key="t.category+t.name">
+            <span class="chip" :class="t.category"><span x-text="t.name"></span><template x-if="t.category==='lora'"><span class="lora-w" x-text="loraStrength(t.name)"></span></template></span>
           </template>
         </div>
         <div class="muted mt" style="font-size:12px" x-show="im.params">
@@ -224,6 +238,8 @@
     trIng: false, trLang: "",
     compressing: false,
     editing: false, editText: "", _editWhat: "", savingEdit: false,
+    addingTag: false, newTagText: "",
+    tagging: false,
     navIds: [], navIdx: -1, curId: null,
     magnify: false,
     previewOpen: false, pvScale: 1, pvX: 0, pvY: 0,
@@ -253,6 +269,8 @@
       this.aState = ""; this.mState = ""; this.mErr = ""; this.hoverRating = 0;
       this.pState = ""; this.pErr = ""; this.trOn = false; this.trSrc = ""; this.trTexts = []; this.trIng = false;
       this.compressing = false;
+      this.addingTag = false; this.newTagText = "";
+      this.tagging = false;
       this.delTarget = null; this.showModal = false;
       Api.getImage(id).then(function (image) {
         self.im = image;
@@ -286,11 +304,76 @@
     canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
     canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.fileSize); },
+    // 按名匹配返回 lora 权重文本（来自后端 card.loras；未持久化时为空）
+    loraStrength(name) {
+      var loras = (this.im && this.im.loras) || [];
+      for (var i = 0; i < loras.length; i++) {
+        if (loras[i].name === name) {
+          var s = Number(loras[i].strength);
+          if (s === 0) return "";
+          return " · " + (Math.round(s * 100) / 100);
+        }
+      }
+      return "";
+    },
+    // 属性标签
+    attrTags() { return ((this.im && this.im.tags) || []).filter(function (t) { return t.category === 'attr'; }); },
+    // 模型板块标签：排除属性标签（属性标签在提示词板块展示/编辑），保留模型/LoRA/VAE 等资源标签
+    modelTags() { return ((this.im && this.im.tags) || []).filter(function (t) { return t.category !== 'attr'; }); },
+    _refreshTags(tags) {
+      var cur = (this.im && this.im.tags) || [];
+      this.im.tags = cur.filter(function (t) { return t.category !== 'attr'; }).concat(tags || []);
+    },
+    // 内联新增：点 ＋ 在标签右侧弹出迷你输入框，回车确认、Esc/点空白取消
+    startAddTag() {
+      var self = this;
+      this.addingTag = true; this.newTagText = "";
+      this.$nextTick(function () { var el = self.$refs.tagAddInput; if (el) el.focus(); });
+    },
+    commitAddTag() {
+      if (!this.addingTag) return;
+      var name = (this.newTagText || "").trim();
+      this.addingTag = false; this.newTagText = "";
+      if (!name) return;
+      var self = this;
+      Api.addImageTag(this.im.id, name).then(function (d) {
+        self._refreshTags(d && d.tags);
+        App.toast("已添加");
+      }).catch(function (e) {
+        App.toast((e && e.message) || "添加失败");
+      });
+    },
+    cancelAddTag() { this.addingTag = false; this.newTagText = ""; },
+    // AI 生成标签：用文本模型从该图提示词提取属性标签（追加合并）
+    autoTag() {
+      var self = this;
+      if (!this.im || this.tagging) return;
+      this.tagging = true;
+      this.pErr = "";
+      Api.autoTag(this.im.id).then(function (d) {
+        self.tagging = false;
+        if (d && Array.isArray(d.tags)) self._refreshTags(d.tags);
+        App.toast("已生成标签");
+      }).catch(function (e) {
+        self.tagging = false;
+        self.pErr = (e && e.message) || "生成标签失败";
+        App.toast((e && e.message) || "生成标签失败");
+      });
+    },
+    removeTag(t) {
+      var self = this;
+      Api.removeImageTag(this.im.id, t.name).then(function (d) {
+        self._refreshTags(d && d.tags);
+        App.toast("已删除");
+      }).catch(function (e) {
+        App.toast((e && e.message) || "删除失败");
+      });
+    },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
       var im = this.im; if (!im) return "portrait";
       var w = Number(im.width) || 1, h = Number(im.height) || 1;
-      return (w / h) > 1 ? "landscape" : "portrait";
+      return (w / h) > 2.3 ? "landscape" : "portrait";
     },
     copy(text, label) { App.copyText(text); },
     copyImage() {
