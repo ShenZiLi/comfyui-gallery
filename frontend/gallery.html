@@ -1194,7 +1194,7 @@
       Api.autoTag(im.id).then(function (d) {
         im._tagParse = false;
         if (d && Array.isArray(d.tags)) im.tags = (im.tags || []).filter(function (t) { return t.category !== 'attr'; }).concat(d.tags);
-        im._src = "ai";
+        // 不切换 _src：保持当前提示词正文不动，仅在下方追加属性标签
       }).catch(function (e) {
         im._tagParse = false;
         im._pErr = e && e.message ? e.message : "AI 打标失败";
