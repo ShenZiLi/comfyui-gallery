@@ -42,6 +42,25 @@ def _load_str_list(text: str) -> list[str]:
     return []
 
 
+def _load_lora_weights(text: str) -> list[dict]:
+    """反序列化 LoRA 权重 JSON：[{"name","strength"}] → 前端 loras 列表。"""
+    if not text:
+        return []
+    try:
+        import json
+
+        data = json.loads(text)
+        if not isinstance(data, list):
+            return []
+        out = []
+        for item in data:
+            if isinstance(item, dict) and item.get("name"):
+                out.append({"name": str(item["name"]), "strength": float(item.get("strength") or 0.0)})
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _latest(session: Session, model, image_id: int) -> dict | None:
     row = session.exec(
         select(model).where(model.image_id == image_id).order_by(model.id.desc())
@@ -168,6 +187,8 @@ def to_detail(session: Session, im: ImageAsset) -> dict:
     card["workflow"] = meta.workflow_json if meta else ""
     card["path"] = im.file_path
     card["absPath"] = im.abs_path
+    # 在用 LoRA 及权重：[{"name","strength"}] —— 前端 chip 展示名称并追加权重
+    card["loras"] = _load_lora_weights(meta.loras_json if meta else "")
     # 各提示词源已持久化的中英译文：{kind: {lang: text}}
     translations: dict[str, dict[str, str]] = {}
     for t in session.exec(

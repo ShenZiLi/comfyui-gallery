@@ -325,3 +325,147 @@ def test_parse_falls_back_to_workflow_when_prompt_empty():
     assert result.error == ""
     assert "magical forest" in result.prompt, result.prompt
     assert result.negative_prompt == ""
+
+
+# ===== 旧文档描述的解析器增强（落地）=====
+
+def test_jjktext_in_text_source_api():
+    """JjkText 作为 API 文本源：ksample 正向经它取到提示词。"""
+    graph = {
+        "5": {"class_type": "JjkText", "inputs": {"text": "a cyberpunk alleyway in the rain, neon reflections"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "blurry, 低分辨率"}},
+        "7": {"class_type": "KSampler", "inputs": {"positive": ["5", 0], "negative": ["6", 0]}},
+    }
+    prompt, negative = parse_prompt_graph(graph)
+    assert prompt == "a cyberpunk alleyway in the rain, neon reflections"
+    assert negative == "blurry, 低分辨率"
+
+
+def test_jjktext_in_ui_fallback():
+    """UI 图：JjkText 兜底取 widget 文本。"""
+    ui = {
+        "nodes": [
+            {"id": 1, "type": "JjkText", "widgets_values": ["a cozy reading nook, warm lamp, leather armchair"]},
+            {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["blurry, 马赛克"]},
+        ],
+        "links": [],
+    }
+    lists = extract_prompt_lists(ui)
+    assert lists["positive"] == ["a cozy reading nook, warm lamp, leather armchair"]
+    assert lists["negative"] == ["blurry, 马赛克"]
+
+
+def test_chinese_negative_words_route_to_negative():
+    """中文负面词（马赛克/低分辨率/水印）应判定为负向而非污染正向。"""
+    graph = {
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "girl portrait, soft light"}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": "马赛克，低分辨率，水印"}},
+        "7": {"class_type": "KSampler", "inputs": {"positive": ["5", 0], "negative": ["6", 0]}},
+    }
+    prompt, negative = parse_prompt_graph(graph)
+    assert prompt == "girl portrait, soft light"
+    assert negative == "马赛克，低分辨率，水印"
+
+
+def test_noise_seed_key_supported():
+    """KSamplerAdvanced 用 noise_seed 而非 seed，应提取到 seed。"""
+    graph = {
+        "3": {"class_type": "KSamplerAdvanced", "inputs": {"noise_seed": 777000, "steps": 30}},
+    }
+    params = extract_sampler_params(graph)
+    assert params["seed"] == 777000
+    assert params["steps"] == 30
+
+
+def test_seed_pin_resolved_from_source():
+    """seed 为引脚引用 [node_id, 0] 时，回溯到 Seed 源节点取字面 seed。"""
+    graph = {
+        "2": {"class_type": "Seed (rgthree)", "inputs": {"seed": 424242, "value": 0}},
+        "3": {"class_type": "KSampler", "inputs": {"seed": ["2", 0], "steps": 20}},
+    }
+    params = extract_sampler_params(graph)
+    assert params["seed"] == 424242
+
+
+def test_easy_lora_stack_api_with_num_loras_cap():
+    """easy loraStack（API）：以 num_loras 为上限，超出的历史残留槽位被跳过，strength=0 排除。"""
+    graph = {
+        # num_loras=3 → 只取前 3 个在用槽（第 4/5 槽保留但超上限 → 跳过）
+        "9": {
+            "class_type": "easy loraStack",
+            "inputs": {
+                "num_loras": 3,
+                "lora_1_name": "krea2-Cc-1", "lora_1_strength": 1.0,
+                "lora_2_name": "krea2-Cc-2", "lora_2_strength": 0.8,
+                "lora_3_name": "krea2-Cc-3", "lora_3_strength": 0.0,   # strength=0 → 排除
+                "lora_4_name": "krea2-Cc-4", "lora_4_strength": 0.9,   # 超上限 → 跳过
+                "lora_5_name": "krea2-Cc-5", "lora_5_strength": 0.7,   # 超上限 → 跳过
+            },
+        },
+        "10": {"class_type": "easy loraStack", "inputs": {"lora_1_name": "allin-rh-neg", "lora_1_strength": -2.0}},
+    }
+    assets = extract_assets(graph)
+    # 负权重 -2.0 仍算在用
+    assert assets["loras"] == ["krea2-Cc-1", "krea2-Cc-2", "allin-rh-neg"]
+    assert assets["lora_weights"] == [
+        ("krea2-Cc-1", 1.0), ("krea2-Cc-2", 0.8), ("allin-rh-neg", -2.0),
+    ]
+
+
+def test_easy_lora_stack_ui_every_4():
+    """easy loraStack（UI）：widgets_values 每 4 项一组，strength=0 排除，负权重保留。"""
+    ui = {
+        "nodes": [
+            {"id": 9, "type": "easy loraStack",
+             "widgets_values": ["loraA", 1.0, 1, 0, "loraB", 0.0, 1, 0, "loraC", -1.5, 1, 0]},
+        ],
+        "links": [],
+    }
+    assets = extract_assets(ui)
+    assert assets["loras"] == ["loraA", "loraC"]  # loraB strength=0 排除
+    assert assets["lora_weights"] == [("loraA", 1.0), ("loraC", -1.5)]
+
+
+def test_standard_loader_strength_captured():
+    """标准 LoraLoader（API）：权重取 strength_model，随 lora_weights 返回。"""
+    graph = {
+        "2": {"class_type": "LoraLoader", "inputs": {"lora_name": "model/blur.safetensors", "strength_model": 0.75}},
+    }
+    assets = extract_assets(graph)
+    assert assets["loras"] == ["model/blur.safetensors"]
+    assert assets["lora_weights"] == [("model/blur.safetensors", 0.75)]
+
+
+def test_cr_text_concatenate_api():
+    """CR Text Concatenate（API）：text1..textN 按 separator 拼接成一条提示词。"""
+    graph = {
+        "5": {"class_type": "CR Text", "inputs": {"text": "Sakharmb4"}},
+        "6": {"class_type": "CR Text", "inputs": {"text": "Next Scene: 平视, 50mm"}},
+        "7": {"class_type": "CR Text Concatenate",
+              "inputs": {"text1": ["5", 0], "text2": ["6", 0], "separator": "， "}},
+        "8": {"class_type": "KSampler", "inputs": {"positive": ["7", 0]}},
+    }
+    prompt, _ = parse_prompt_graph(graph)
+    assert prompt == "Sakharmb4， Next Scene: 平视, 50mm"
+
+
+def test_cr_text_concatenate_ui_with_bypass():
+    """CR Text Concatenate（UI）：沿 text* 连线回源拼接；bypass 源跳过。"""
+    ui = {
+        "nodes": [
+            {"id": 5, "type": "CR Text", "widgets_values": ["Sakharmb4"]},
+            {"id": 6, "type": "CR Text", "widgets_values": ["Next Scene: 平视"]},
+            {"id": 44, "type": "CR Text", "mode": 4, "widgets_values": ["BYPass me"]},  # bypass → 跳过
+            {"id": 7, "type": "CR Text Concatenate", "widgets_values": ["， "],
+             "inputs": [{"name": "text1", "link": 1}, {"name": "text2", "link": 2}, {"name": "text3", "link": 3}]},
+            {"id": 8, "type": "KSampler", "inputs": [{"name": "positive", "link": 10}]},
+        ],
+        "links": [
+            [1, 5, 0, 7, 0, "STRING"],
+            [2, 6, 0, 7, 1, "STRING"],
+            [3, 44, 0, 7, 2, "STRING"],
+            [10, 7, 0, 8, 0, "CONDITIONING"],
+        ],
+    }
+    lists = extract_prompt_lists(ui)
+    assert lists["positive"] == ["Sakharmb4， Next Scene: 平视"]

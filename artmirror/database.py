@@ -53,6 +53,7 @@ _WORKFLOW_META_COLUMNS = {
     "origin_prompts_json": "TEXT DEFAULT ''",
     "negative_prompts_json": "TEXT DEFAULT ''",
     "ai_prompts_json": "TEXT DEFAULT ''",
+    "loras_json": "TEXT DEFAULT ''",
 }
 
 

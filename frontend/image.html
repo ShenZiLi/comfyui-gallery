@@ -126,7 +126,7 @@
         <div class="muted" style="font-size:12px" x-show="mErr"><b x-text="mErr"></b></div>
         <div class="chips" style="margin-top:6px">
           <template x-for="t in im.tags || []" :key="t.category+t.name">
-            <span class="chip" :class="t.category" x-text="t.name"></span>
+            <span class="chip" :class="t.category"><span x-text="t.name"></span><template x-if="t.category==='lora'"><span class="lora-w" x-text="loraStrength(t.name)"></span></template></span>
           </template>
         </div>
         <div class="muted mt" style="font-size:12px" x-show="im.params">
@@ -287,6 +287,18 @@
     canPrev() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) > 0; },
     canNext() { return this.navIds.length > 0 && this.navIds.indexOf(this.curId) >= 0 && this.navIds.indexOf(this.curId) < this.navIds.length - 1; },
     fmt(im) { return im.width + "×" + im.height + " · " + App.fmtSize(im.fileSize); },
+    // 按名匹配返回 lora 权重文本（来自后端 card.loras；未持久化时为空）
+    loraStrength(name) {
+      var loras = (this.im && this.im.loras) || [];
+      for (var i = 0; i < loras.length; i++) {
+        if (loras[i].name === name) {
+          var s = Number(loras[i].strength);
+          if (s === 0) return "";
+          return " · " + (Math.round(s * 100) / 100);
+        }
+      }
+      return "";
+    },
     // 横纵比 >1（横图）上下布局；<=1（竖图）左右布局
     ratioClass() {
       var im = this.im; if (!im) return "portrait";

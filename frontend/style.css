@@ -585,6 +585,8 @@ body.am-selecting { user-select: none; }
 .chip.active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .chip.folder-hide { cursor: pointer; }
 .chip.folder-hide.dim { opacity: .38; text-decoration: line-through; }
+/* lora 权重后缀：等宽、弱化，追加在 chip 名称后 */
+.chip .lora-w { font-family: "SF Mono", ui-monospace, "Cascadia Code", monospace; font-size: 10px; opacity: .72; }
 html[data-theme="dark"] .chip.model { color: #9db1ff; border-color: color-mix(in srgb,var(--model) 45%,#000); background: color-mix(in srgb,var(--model) 16%,#10141c); }
 html[data-theme="dark"] .chip.lora { color: #c79ae8; border-color: color-mix(in srgb,var(--lora) 45%,#000); background: color-mix(in srgb,var(--lora) 16%,#10141c); }
 html[data-theme="dark"] .chip.vae { color: #7cc6f0; border-color: color-mix(in srgb,var(--vae) 40%,#000); background: color-mix(in srgb,var(--vae) 12%,#10141c); }
