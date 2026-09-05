@@ -39,6 +39,22 @@ def _role_config(session: Session, role: str) -> dict:
     return {f: _setting(session, f"llm_{role}_{f}") for f in ROLE_FIELDS}
 
 
+def _disable_reasoning(base_url: str) -> dict:
+    """按厂商在请求体注入「关闭推理/思考」（非推理模式）。
+
+    各家禁用推理/思考的参数字段不同，无统一开关，故按 base_url 特征识别常用厂商：
+    - DashScope / 阿里（Qwen）→ enable_thinking = false
+    - 智谱 GLM → thinking = {"type": "disabled"}
+    - 其他（DeepSeek / OpenAI 官方等）推理与否由模型名决定，无请求级开关，返回空。
+    """
+    b = (base_url or "").lower()
+    if "dashscope" in b or "aliyuncs" in b:
+        return {"enable_thinking": False}
+    if "bigmodel" in b or "zhipu" in b or ("/api/paas" in b and "glm" in b):
+        return {"thinking": {"type": "disabled"}}
+    return {}
+
+
 def chat_text(prompt: str, session: Optional[Session] = None) -> str:
     """调用「文本」角色模型，返回回复文本。"""
     if session is None:
@@ -95,6 +111,7 @@ def _chat(session: Session, prompt: str) -> str:
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.2,
+        **_disable_reasoning(base),
     }
     try:
         # 直连不信任系统代理，避免代理出口 IP 被厂商限流导致误报
@@ -179,6 +196,7 @@ def _vi(session: Session, image_data_b64: str, prompt: str) -> str:
             }
         ],
         "temperature": 0.6,
+        **_disable_reasoning(base),
     }
     try:
         resp = httpx.post(url, headers=headers, json=payload, timeout=180, trust_env=False)
