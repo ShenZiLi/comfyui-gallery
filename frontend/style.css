@@ -589,14 +589,34 @@ body.am-selecting { user-select: none; }
 .chip .lora-w { font-family: "SF Mono", ui-monospace, "Cascadia Code", monospace; font-size: 10px; opacity: .72; }
 /* 属性标签（attr）：暖琥珀系弱强调，与模型/LoRA 区分；含删除与新增样式 */
 .chip.attr { color: #a87a2b; border-color: color-mix(in srgb,#b98a34 40%,#fff); background: color-mix(in srgb,#b98a34 14%,#fff); }
-/* 属性标签：pill 化 + 悬停显删除 + 内联新增（image / gallery 共用） */
-.attr-tags, .prompt-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.attr-tags .attr-label { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--text-3); user-select: none; margin-right: 2px; }
+/* 属性标签（attr）：pill 化 + 双击删除 + 内联新增（image / gallery 共用） */
+.attr-tags, .prompt-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.attr-tags .attr-label { font-size: 11px; font-weight: 700; letter-spacing: .5px; color: var(--text-3);
+  user-select: none; padding-right: 8px; border-right: 1px solid var(--border); }
 .chip.attr { display: inline-flex; align-items: center; justify-content: center; gap: 0;
-  padding: 3px 10px; border-radius: 999px; cursor: default; white-space: nowrap; }
-.chip.attr .attr-name { cursor: text; line-height: 1.35; }
-.chip.attr.add { cursor: pointer; font-weight: 600; border-style: dashed; }
-.chip.attr.add:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-weak); }
+  padding: 3px 11px; border-radius: 999px; cursor: default; white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 1px 2px rgba(20,16,8,.05);
+  transition: opacity var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease,
+    background-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) ease; }
+.chip.attr .attr-name { cursor: text; line-height: 1.4; }
+.chip.attr:active { transform: scale(.97); }
+.chip.attr.add { cursor: pointer; font-weight: 600; border-style: dashed; box-shadow: none;
+  color: color-mix(in srgb,#b98a34 82%,#777); }
+.chip.attr.add:hover { color: var(--brand); border-color: var(--brand); background: var(--brand-weak); box-shadow: none; }
+/* 入场：标签挂载时轻微淡入上浮（@starting-style 渐进增强，不支持则直接显示） */
+@starting-style {
+  .attr-tags > .chip.attr, .prompt-tags > .chip.attr { opacity: 0; transform: translateY(3px) scale(.97); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .chip.attr:not(.add):hover { transform: translateY(-1px) scale(1.04);
+    border-color: color-mix(in srgb,#b98a34 70%,transparent);
+    background: color-mix(in srgb,#b98a34 16%,transparent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 3px 12px color-mix(in srgb,#b98a34 22%,transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip.attr { transition: border-color var(--dur-fast) ease, color var(--dur-fast) ease, background-color var(--dur-fast) ease; }
+  .chip.attr:hover, .chip.attr:active { transform: none; }
+}
 .tag-add-input { width: 120px; padding: 3px 10px; font-size: 11px; line-height: 1.3; color: var(--text-2);
   border: 1px solid var(--brand); border-radius: 999px; background: var(--bg); outline: none;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
