@@ -43,6 +43,30 @@ def test_compress_settings_defaults():
         assert data["compressQuality"] == 80
 
 
+def test_theme_roundtrip():
+    with tempfile.TemporaryDirectory() as td:
+        client, _ = _setup(Path(td))
+        # 默认亮色
+        resp = client.get("/api/settings")
+        assert resp.json()["theme"] == "light"
+
+        # 写入 claude / dark
+        client.post("/api/settings", json={"theme": "claude"})
+        assert client.get("/api/settings").json()["theme"] == "claude"
+        client.post("/api/settings", json={"theme": "dark"})
+        assert client.get("/api/settings").json()["theme"] == "dark"
+
+
+def test_theme_normalize():
+    with tempfile.TemporaryDirectory() as td:
+        client, _ = _setup(Path(td))
+        # 非法主题归一化为 light；空值同
+        client.post("/api/settings", json={"theme": "neon"})
+        assert client.get("/api/settings").json()["theme"] == "light"
+        client.post("/api/settings", json={"theme": ""})
+        assert client.get("/api/settings").json()["theme"] == "light"
+
+
 def test_compress_settings_roundtrip():
     with tempfile.TemporaryDirectory() as td:
         client, _ = _setup(Path(td))

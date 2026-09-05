@@ -192,7 +192,7 @@
     getSettings: function () {
       return req("api/settings").catch(function () {
         Api._fallback = true;
-        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" }, compressMode: "new", compressQuality: 80 });
+        return ok({ scanRoots: [], llm: { vendor: "deepseek", baseUrl: "", apiKey: "", visionModel: "", textModel: "", embedModel: "" }, compressMode: "new", compressQuality: 80, theme: "light" });
       });
     },
 

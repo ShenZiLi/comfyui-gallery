@@ -65,6 +65,38 @@ html[data-theme="dark"] {
   --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .4);
   --shadow-hover: 0 6px 18px rgba(0, 0, 0, .55), 0 14px 40px rgba(0, 0, 0, .45);
 }
+
+/* Claude 风格主题：暖米白 + 陶土橙，仿 Claude.ai */
+html[data-theme="claude"] {
+  --bg: #fafaf9;
+  --panel: #ffffff;
+  --border: #ece9e4;
+  --text: #262629;
+  --text-2: #6a675f;
+  --text-3: #a09c92;
+  --brand: #d97757;
+  --brand-weak: #fdf0e9;
+  --nav-bg: rgba(250, 250, 249, .94);
+  --shadow: 0 1px 2px rgba(120, 90, 60, .06), 0 6px 20px -8px rgba(120, 90, 60, .14);
+  --shadow-hover: 0 6px 18px rgba(120, 90, 60, .12), 0 14px 40px rgba(120, 90, 60, .10);
+}
+html[data-theme="claude"] input[type=text],
+html[data-theme="claude"] input[type=password],
+html[data-theme="claude"] input[type=number],
+html[data-theme="claude"] select,
+html[data-theme="claude"] textarea { background: #fbfaf9; border-color: #ece9e4; color: var(--text); }
+html[data-theme="claude"] textarea { scrollbar-color: #ddd7cd #fbfaf9; }
+html[data-theme="claude"] .btn { background: var(--panel); border-color: var(--border); color: var(--text); }
+html[data-theme="claude"] .btn:hover { background: #fdf0e9; border-color: #d97757; color: #bc5637; }
+html[data-theme="claude"] .btn.primary { background: var(--brand); color: #fff; }
+html[data-theme="claude"] .seg { background: #f1efe9; }
+html[data-theme="claude"] .seg button.active { background: var(--panel); }
+html[data-theme="claude"] .img-card .thumb-wrap,
+html[data-theme="claude"] .cover-row,
+html[data-theme="claude"] .modal { background: var(--panel); }
+html[data-theme="claude"] .progress { background: #ede9e2; }
+html[data-theme="claude"] .code { background: #f4f1ec; }
+html[data-theme="claude"] .stars .off { color: #ddd7cd; }
 html[data-theme="dark"] input[type=text],
 html[data-theme="dark"] input[type=password],
 html[data-theme="dark"] input[type=number],
@@ -93,6 +125,10 @@ html[data-theme="dark"] * { scrollbar-color: #3a4251 transparent; }
 html[data-theme="dark"] *::-webkit-scrollbar-thumb { background: #3a4251; }
 html[data-theme="dark"] *::-webkit-scrollbar-thumb:hover { background: #4b566a; }
 html[data-theme="dark"] *::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="claude"] * { scrollbar-color: #d8d2c7 transparent; }
+html[data-theme="claude"] *::-webkit-scrollbar-thumb { background: #d8d2c7; }
+html[data-theme="claude"] *::-webkit-scrollbar-thumb:hover { background: #c7bfb1; }
+html[data-theme="claude"] *::-webkit-scrollbar-track { background: transparent; }
 
 /* ===== 亮/暗主题切换：从右上角按钮处圆形扩散至全屏（View Transitions） ===== */
 ::view-transition-old(root) { animation: vt-out .3s ease-out; mix-blend-mode: normal; }
@@ -648,6 +684,34 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 
 /* ===== 设置 ===== */
 .setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+
+/* ===== 设置页主题切换 ===== */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 10px; }
+.theme-option {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 12px 8px 14px; cursor: pointer; user-select: none;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-size: 13px; font-family: inherit;
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-in-out),
+    box-shadow var(--dur-fast) var(--ease-in-out), background var(--dur-fast) var(--ease-in-out);
+}
+.theme-option:hover { border-color: color-mix(in srgb, var(--brand) 60%, var(--border)); transform: translateY(-1px); }
+.theme-option:active { transform: scale(.97); }
+.theme-option.active { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); background: var(--brand-weak); }
+.theme-option .theme-name { font-weight: 600; }
+.theme-option .theme-check {
+  position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; color: var(--brand);
+}
+.theme-swatch { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; border-radius: 8px; overflow: hidden; }
+/* 预览色块：模拟各主题底/面板/强调色 */
+.tsw { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 15px; font-weight: 700; letter-spacing: .5px; }
+.tsw-light { color: #1f2329; background: linear-gradient(135deg, #f5f6f8 0%, #fff 55%, #4f6ef7 55%, #4f6ef7 100%); }
+.tsw-dark { color: #e6eaf2; background: linear-gradient(135deg, #0f1218 0%, #171d29 55%, #4f6ef7 55%, #4f6ef7 100%); }
+.tsw-claude { color: #262629; background: linear-gradient(135deg, #fafaf9 0%, #fff 55%, #d97757 55%, #d97757 100%); }
+@media (hover: hover) and (pointer: fine) { .theme-option:hover { transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) {
+  .theme-option, .theme-option:hover, .theme-option:active { transition: none; transform: none; }
+}
 
 /* ===== 图片详情左右空白翻页（圆形毛玻璃钮） ===== */
 /* 仅宽屏有侧边留白时显示热区（不覆盖居中图片），悬停浮现圆形毛玻璃钮 */

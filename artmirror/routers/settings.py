@@ -46,6 +46,15 @@ def _compress_quality(session: Session) -> int:
     return max(1, min(100, q))
 
 
+# 支持的主题值；非法值归一化为 light
+THEMES = ("light", "dark", "claude")
+
+
+def _normalize_theme(value) -> str:
+    t = str(value or "light").strip().lower()
+    return t if t in THEMES else "light"
+
+
 def _compress_quality_from(value) -> int:
     """把前端传来的质量值归一化到 1–100，非法时用默认 80。"""
     try:
@@ -168,6 +177,7 @@ def get_settings(session: Session = Depends(get_session)):
         "prompt_defaults": prompt_defaults,
         "compressMode": _get(session, "compress_mode") or "new",
         "compressQuality": _compress_quality(session),
+        "theme": _normalize_theme(_get(session, "theme")),
     }
 
 
@@ -206,6 +216,8 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
         _set(session, "compress_mode", "new" if str(body["compressMode"]).strip() == "new" else "overwrite")
     if body.get("compressQuality") is not None:
         _set(session, "compress_quality", str(_compress_quality_from(body["compressQuality"])))
+    if body.get("theme") is not None:
+        _set(session, "theme", _normalize_theme(body["theme"]))
     session.commit()
 
     result = {"saved": True}

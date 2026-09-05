@@ -75,6 +75,23 @@
       </div>
     </div>
 
+    <!-- 主题外观 -->
+    <div class="card pad">
+      <h3 style="margin-top:0">主题</h3>
+      <p class="muted">选择站点外观主题；偏好会持久化，下次进入仍保留上次选择。</p>
+      <div class="theme-grid" x-cloak>
+        <template x-for="th in themes" :key="th.key">
+          <button class="theme-option" :class="{active: cfg.theme===th.key}"
+                  :data-tip="th.desc" @click="pickTheme(th.key)">
+            <span class="theme-swatch" x-html="th.swatch"></span>
+            <span class="theme-name" x-text="th.label"></span>
+            <svg class="theme-check" x-show="cfg.theme===th.key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </button>
+        </template>
+      </div>
+      <div class="muted mt" style="font-size:12px">Claude 风格采用暖米白底色与陶土橙强调色，还原 Claude.ai 的观感。</div>
+    </div>
+
     <!-- JPG 有损压缩 -->
     <div class="card pad">
       <h3 style="margin-top:0">JPG 压缩</h3>
@@ -226,6 +243,15 @@
 
   window.Settings = {
     roles: ROLES,
+    // 主题选项：swatch 为预览色块（浅色小卡），key 与后端 theme 取值一一对应
+    themes: [
+      { key: "light", label: "亮色", desc: "清爽的浅灰白底，适合明亮环境",
+        swatch: '<span class="tsw tsw-light">亮</span>' },
+      { key: "dark", label: "暗色", desc: "深蓝灰底，适合夜间/暗光环境",
+        swatch: '<span class="tsw tsw-dark">暗</span>' },
+      { key: "claude", label: "Claude", desc: "暖米白 + 陶土橙，仿 Claude.ai",
+        swatch: '<span class="tsw tsw-claude">C</span>' },
+    ],
     promptFields: [
       { key: "reverse", label: "反推提示词" },
       { key: "score", label: "AI 评分" },
@@ -238,6 +264,7 @@
       importDir: "",
       compressMode: "new",
       compressQuality: 80,
+      theme: App.currentTheme(),
       prompts: { reverse: "", score: "", translate: "", analyze: "" },
       llm: {
         text: blankRole("deepseek"), vision: blankRole("qwen"), embed: blankRole("qwen"),
@@ -276,6 +303,12 @@
         self.cfg.importDir = s.importDir || "";
         self.cfg.compressMode = s.compressMode || "new";
         self.cfg.compressQuality = (s.compressQuality != null && s.compressQuality >= 1) ? s.compressQuality : 80;
+        // 从后端回读持久化主题并应用（跨浏览器/会话一致）
+        var serverTheme = s.theme || "light";
+        if (App.THEME_SEQ.indexOf(serverTheme) >= 0 && serverTheme !== App.currentTheme()) {
+          App.setTheme(serverTheme);
+        }
+        self.cfg.theme = App.currentTheme();
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
         ["reverse", "score", "translate", "analyze"].forEach(function (k) {
@@ -457,6 +490,16 @@
       var v = (this.cfg.importDir || "").trim();
       Api.updateSettings({ importDir: v }).catch(function (e) {
         self.doneMsg = "保存失败：" + ((e && e.message) || e);
+      });
+    },
+
+    // ---- 主题切换（即时应用 + 持久化到后端与本地） ----
+    pickTheme(key) {
+      var self = this;
+      self.cfg.theme = key;
+      App.setTheme(key);  // 立即应用，写入 localStorage
+      Api.updateSettings({ theme: key }).catch(function (e) {
+        self.doneMsg = "主题保存失败：" + ((e && e.message) || e);
       });
     },
 
