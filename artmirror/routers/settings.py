@@ -164,6 +164,7 @@ def get_settings(session: Session = Depends(get_session)):
     from ..services import llm as llm_mod
     prompt_defaults = {
         "reverse": llm_mod.PROMPT_REVERSE,
+        "tag": llm_mod.PROMPT_TAG,
         "score": llm_mod.PROMPT_SCORE,
         "translate": llm_mod.PROMPT_TRANSLATE,
         "analyze": llm_mod.PROMPT_ANALYZE,
@@ -181,7 +182,7 @@ def get_settings(session: Session = Depends(get_session)):
     }
 
 
-PROMPT_FEATURES = ("reverse", "score", "translate", "analyze")
+PROMPT_FEATURES = ("reverse", "tag", "score", "translate", "analyze")
 
 
 @router.post("")

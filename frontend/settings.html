@@ -208,7 +208,7 @@
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" x-model="scope" value="filter" />当前筛选</label>
       </div>
       <div class="btn-row mt">
-        <button class="btn" @click="batch('reverse')">反推提示词</button>
+        <button class="btn" @click="batch('reverse')">图片反推</button>
         <button class="btn" @click="batch('translate')">中英翻译</button>
         <button class="btn" @click="batch('score')">AI 评分</button>
       </div>
@@ -256,7 +256,8 @@
         swatch: '<span class="tsw tsw-spacex">S</span>' },
     ],
     promptFields: [
-      { key: "reverse", label: "反推提示词" },
+      { key: "reverse", label: "图片反推" },
+      { key: "tag", label: "标签解析" },
       { key: "score", label: "AI 评分" },
       { key: "translate", label: "中英互译" },
       { key: "analyze", label: "AI 解析工作流" },
@@ -314,7 +315,7 @@
         self.cfg.theme = App.currentTheme();
         self.promptDefaults = s.prompt_defaults || {};
         var p = s.prompts || {};
-        ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+        ["reverse", "tag", "score", "translate", "analyze"].forEach(function (k) {
           // 自定义为空时，展示默认提示词全文（可编辑）；保存时若未改动会归一化为空
           self.cfg.prompts[k] = (p[k] || "") || (self.promptDefaults[k] || "");
         });
@@ -521,7 +522,7 @@
     savePrompts() {
       var self = this;
       var payload = {};
-      ["reverse", "score", "translate", "analyze"].forEach(function (k) {
+      ["reverse", "tag", "score", "translate", "analyze"].forEach(function (k) {
         // 内容与默认提示词一致时存空（= 使用内置默认），保持「留空=默认」语义
         payload[k] = (self.cfg.prompts[k] === (self.promptDefaults[k] || "")) ? "" : self.cfg.prompts[k];
       });
