@@ -1,4 +1,5 @@
 """图片查询与文件服务路由。"""
+import queue
 import re
 import threading
 from pathlib import Path
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/api/images", tags=["images"])
 _BATCH_LOCK = threading.Lock()
 _BATCH_SEQ = 0
 _BATCH_TASKS: dict[int, dict] = {}
+_BATCH_WORKERS = 2  # 批量并发工作线程数
 
 
 def _basename(name: str) -> str:
@@ -664,32 +666,55 @@ def _batch_ai_one(session: Session, im: ImageAsset, kind: str) -> None:
 
 
 def _run_batch(bind, tid: int, ids: list[int], kind: str) -> None:
-    """后台线程执行批量任务：逐张处理、实时更新进度，可被 cancel 事件终止。"""
+    """后台执行批量任务：多线程（_BATCH_WORKERS 路并发）逐张处理、实时更新进度、可终止。"""
     task = _BATCH_TASKS.get(tid)
     if task is None:
         return
-    try:
+    work_q = queue.Queue()
+    for i in ids:
+        work_q.put(i)
+    count_lock = threading.Lock()  # 守护 done/ok/failed 的原子累加
+    stop_ev = task["cancel"]
+
+    def _worker() -> None:
+        # 每个工作线程自持一个会话（并发安全），并放宽 SQLite 写锁等待
         with Session(bind) as session:
-            for im_id in ids:
-                if task["cancel"].is_set():
-                    break
-                im = session.get(ImageAsset, im_id)
+            try:
+                session.connection().exec_driver_sql("PRAGMA busy_timeout=30000")
+            except Exception:  # noqa: BLE001
+                pass
+            while not stop_ev.is_set():
                 try:
+                    im_id = work_q.get_nowait()
+                except queue.Empty:
+                    break
+                im = None
+                try:
+                    im = session.get(ImageAsset, im_id)
                     if im is not None:
                         _batch_ai_one(session, im, kind)
-                        task["ok"] += 1
+                        with count_lock:
+                            task["ok"] += 1
                 except llm.LLMError as exc:
-                    if im is not None:
-                        task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                    with count_lock:
+                        if im is not None:
+                            task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
                 except Exception as exc:  # noqa: BLE001 — 逐张隔离
                     session.rollback()
-                    if im is not None:
-                        task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
-                task["done"] += 1
-        if task["ok"]:
-            watcher.bump()
-    finally:
-        task["running"] = False
+                    with count_lock:
+                        if im is not None:
+                            task["failed"].append({"id": im.id, "name": im.file_name, "error": str(exc)})
+                with count_lock:
+                    task["done"] += 1
+
+    threads = [threading.Thread(target=_worker, daemon=True) for _ in range(_BATCH_WORKERS)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if task["ok"]:
+        watcher.bump()
+    task["running"] = False
 
 
 @router.post("/batch-ai")
