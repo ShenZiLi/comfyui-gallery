@@ -378,7 +378,7 @@
     copy(text, label) { App.copyText(text); },
     copyImage() {
       var im = this.im; if (!im) return;
-      App.copyImage("api/images/" + im.id + "/file");
+      App.copyImage("api/images/" + im.id + "/file", im.name);
     },
     download() {
       var im = this.im; if (!im) return;

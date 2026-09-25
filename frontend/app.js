@@ -189,12 +189,24 @@
     }
   }
 
-  // 图片剪贴板只输出 PNG：PNG 原样复制，其他图片先解码到 canvas 转成 PNG。
-  // 先在点击事件内调用 clipboard.write，再异步提供图片数据，保留浏览器的用户手势授权。
-  function copyImage(url) {
+  // 浏览器原生剪贴板至少支持 PNG；Chromium 还可用 web 自定义格式保留 JPEG 等原始字节。
+  // 同时写 PNG 作为普通桌面应用可粘贴的预览，并在点击事件内同步启动写入。
+  function copyImage(url, fileName) {
     if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
       toast("当前环境不支持复制图片");
       return;
+    }
+
+    var extension = String(fileName || "").split(".").pop().toLowerCase();
+    var mimeByExtension = {
+      png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+      webp: "image/webp", bmp: "image/bmp", gif: "image/gif",
+    };
+    var sourceMime = mimeByExtension[extension] || "";
+    function supportsClipboardType(type) {
+      try {
+        return typeof ClipboardItem.supports === "function" && ClipboardItem.supports(type);
+      } catch (e) { return false; }
     }
 
     function asPng(blob) {
@@ -231,14 +243,25 @@
       });
     }
 
-    var imageData = fetch(url).then(function (response) {
+    var sourceData = fetch(url).then(function (response) {
       if (!response.ok) {
         var fetchError = new Error("原图读取失败（HTTP " + response.status + "）");
         fetchError.code = "fetch";
         throw fetchError;
       }
       return response.blob();
-    }).then(asPng);
+    });
+    var clipboardData = { "image/png": sourceData.then(asPng) };
+    var originalType = "png";
+    if (sourceMime && sourceMime !== "image/png") {
+      if (supportsClipboardType(sourceMime)) {
+        clipboardData[sourceMime] = sourceData;
+        originalType = "native";
+      } else if (supportsClipboardType("web " + sourceMime)) {
+        clipboardData["web " + sourceMime] = sourceData;
+        originalType = "web";
+      }
+    }
 
     function failed(error) {
       console.error("ArtMirror 图片复制失败:", error);
@@ -250,8 +273,10 @@
     }
 
     try {
-      navigator.clipboard.write([new ClipboardItem({ "image/png": imageData })])
-        .then(function () { toast("已复制"); }, failed);
+      navigator.clipboard.write([new ClipboardItem(clipboardData)])
+        .then(function () {
+          toast(originalType === "native" ? "已复制（原格式）" : originalType === "web" ? "已复制（含原格式数据）" : "已复制为 PNG");
+        }, failed);
     } catch (error) {
       failed(error);
     }
