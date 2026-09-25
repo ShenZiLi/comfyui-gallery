@@ -252,14 +252,11 @@
       return response.blob();
     });
     var clipboardData = { "image/png": sourceData.then(asPng) };
-    var originalType = "png";
     if (sourceMime && sourceMime !== "image/png") {
       if (supportsClipboardType(sourceMime)) {
         clipboardData[sourceMime] = sourceData;
-        originalType = "native";
       } else if (supportsClipboardType("web " + sourceMime)) {
         clipboardData["web " + sourceMime] = sourceData;
-        originalType = "web";
       }
     }
 
@@ -274,9 +271,7 @@
 
     try {
       navigator.clipboard.write([new ClipboardItem(clipboardData)])
-        .then(function () {
-          toast(originalType === "native" ? "已复制（原格式）" : originalType === "web" ? "已复制（含原格式数据）" : "已复制为 PNG");
-        }, failed);
+        .then(function () { toast("已复制"); }, failed);
     } catch (error) {
       failed(error);
     }
