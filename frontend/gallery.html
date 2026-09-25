@@ -976,16 +976,7 @@
       a.download = im.name || "image.png"; a.click();
     },
     copyImage(im) {
-      fetch("api/images/" + im.id + "/file").then(r => r.blob()).then(function (b) {
-        if (!navigator.clipboard || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
-          throw new Error("unsupported");
-        }
-        return navigator.clipboard.write([new ClipboardItem({ "image/png": b })]);
-      }).then(function () {
-        App.toast("已复制");
-      }).catch(function () {
-        App.toast("复制失败（当前环境不支持复制图片）");
-      });
+      App.copyImage("api/images/" + im.id + "/file");
     },
     reqDelete(im) { this.delTarget = im; },
     // ===== 多选（空白处拖动框选，平铺/沉浸） =====

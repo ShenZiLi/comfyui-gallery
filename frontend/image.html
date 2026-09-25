@@ -378,16 +378,7 @@
     copy(text, label) { App.copyText(text); },
     copyImage() {
       var im = this.im; if (!im) return;
-      fetch("api/images/" + im.id + "/file").then(function (r) { return r.blob(); }).then(function (b) {
-        if (!navigator.clipboard || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
-          throw new Error("unsupported");
-        }
-        return navigator.clipboard.write([new ClipboardItem({ "image/png": b })]);
-      }).then(function () {
-        App.toast("已复制");
-      }).catch(function () {
-        App.toast("复制失败（当前环境不支持复制图片）");
-      });
+      App.copyImage("api/images/" + im.id + "/file");
     },
     download() {
       var im = this.im; if (!im) return;

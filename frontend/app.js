@@ -189,6 +189,74 @@
     }
   }
 
-  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, toast: toast, go: go,
+  // 图片剪贴板只输出 PNG：PNG 原样复制，其他图片先解码到 canvas 转成 PNG。
+  // 先在点击事件内调用 clipboard.write，再异步提供图片数据，保留浏览器的用户手势授权。
+  function copyImage(url) {
+    if (!navigator.clipboard || !navigator.clipboard.write || typeof ClipboardItem === "undefined" || window.isSecureContext === false) {
+      toast("当前环境不支持复制图片");
+      return;
+    }
+
+    function asPng(blob) {
+      if (blob.type === "image/png") return Promise.resolve(blob);
+      if (!blob.type || blob.type.indexOf("image/") !== 0) {
+        var typeError = new Error("响应内容不是图片");
+        typeError.code = "not-image";
+        return Promise.reject(typeError);
+      }
+      if (typeof createImageBitmap !== "function") {
+        var decodeError = new Error("当前浏览器无法转换该图片格式");
+        decodeError.code = "decode";
+        return Promise.reject(decodeError);
+      }
+      return createImageBitmap(blob).then(function (bitmap) {
+        var canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        var context = canvas.getContext("2d");
+        if (!context) {
+          bitmap.close();
+          throw new Error("无法创建图片画布");
+        }
+        context.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return new Promise(function (resolve, reject) {
+          canvas.toBlob(function (png) {
+            canvas.width = 0;
+            canvas.height = 0;
+            if (png) resolve(png);
+            else reject(new Error("图片转换为 PNG 失败"));
+          }, "image/png");
+        });
+      });
+    }
+
+    var imageData = fetch(url).then(function (response) {
+      if (!response.ok) {
+        var fetchError = new Error("原图读取失败（HTTP " + response.status + "）");
+        fetchError.code = "fetch";
+        throw fetchError;
+      }
+      return response.blob();
+    }).then(asPng);
+
+    function failed(error) {
+      console.error("ArtMirror 图片复制失败:", error);
+      if (error && error.code === "fetch") toast(error.message);
+      else if (error && error.code === "not-image") toast("原图响应不是有效图片");
+      else if (error && error.code === "decode") toast("当前浏览器无法转换该图片格式");
+      else if (error && error.name === "NotAllowedError") toast("剪贴板写入被浏览器拒绝，请重试");
+      else toast("图片复制失败，请查看控制台错误信息");
+    }
+
+    try {
+      navigator.clipboard.write([new ClipboardItem({ "image/png": imageData })])
+        .then(function () { toast("已复制"); }, failed);
+    } catch (error) {
+      failed(error);
+    }
+  }
+
+  window.App = { initNav: initNav, starHTML: starHTML, highlight: highlight, fmtSize: fmtSize, copyText: copyText, copyImage: copyImage, toast: toast, go: go,
     currentTheme: currentTheme, setTheme: setTheme, THEME_SEQ: THEME_SEQ };
 })();
