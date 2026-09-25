@@ -23,7 +23,7 @@
 **Files:**
 - Modify: `frontend/settings.html`
 
-- [ ] **Step 1：在主题列表追加 glass 项**
+- [x] **Step 1：在主题列表追加 glass 项**
 
 在 `micro` 项后添加：
 
@@ -34,7 +34,7 @@
 
 现有 `pickTheme(key)` 已把主题写入 localStorage 并调用 `Api.updateSettings({ theme: key })`，无需修改保存逻辑。
 
-- [ ] **Step 2：提交主题选择入口**
+- [x] **Step 2：提交主题选择入口**
 
 ```powershell
 git add -- frontend/settings.html
@@ -48,7 +48,7 @@ git commit -m "feat: add glass theme option"
 - Modify: `frontend/themes.css`
 - Modify: `frontend/style.css`（仅追加预览 swatch 规则）
 
-- [ ] **Step 1：追加主题 import 和 swatch**
+- [x] **Step 1：追加主题 import 和 swatch**
 
 `frontend/themes.css` 末尾添加 `@import "themes/glass.css";`；`frontend/style.css` 在现有 swatch 规则后追加：
 
@@ -56,7 +56,7 @@ git commit -m "feat: add glass theme option"
 .tsw-glass { color: #f4f5ff; background: linear-gradient(135deg, #11182d 0 42%, rgba(137, 158, 255, .56) 42% 68%, #1b1730 68%); }
 ```
 
-- [ ] **Step 2：写入独立主题变量与组件规则**
+- [x] **Step 2：写入独立主题变量与组件规则**
 
 `frontend/themes/glass.css` 定义深靛蓝 `--bg`、半透明深色 `--panel`、浅白透明描边、亮灰白主文字、淡紫蓝 `--brand`、柔和蓝紫 `--brand-glow` 和透明导航底色。页面只加固定氛围渐变；导航容器、普通 `.card`、`.dropdown-menu`、`.modal` 与输入控件使用半透明背景、`backdrop-filter: blur(15px)`、`-webkit-backdrop-filter` 和 1px 浅色细边；输入聚焦和可见键盘焦点使用品牌色光环。按钮、分段控件、菜单项、进度条、代码块、滚动条按同套色板适配。
 
@@ -64,7 +64,7 @@ CSS 必须限定在 `html[data-theme="glass"]`。图片本体选择器（`img`�
 
 在 `@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))` 下，为玻璃表面提供更实的不透明深底。添加 `prefers-reduced-motion` 规则，取消本主题控件过渡。
 
-- [ ] **Step 3：提交主题样式**
+- [x] **Step 3：提交主题样式**
 
 ```powershell
 git add -- frontend/themes.css frontend/themes/glass.css frontend/style.css
@@ -77,7 +77,7 @@ git commit -m "style: add aurora glass theme"
 - Modify: `artmirror/routers/settings.py`
 - Modify: `docs/功能清单.md`
 
-- [ ] **Step 1：允许后端保存 glass 主题值**
+- [x] **Step 1：允许后端保存 glass 主题值**
 
 在 `artmirror/routers/settings.py` 的 `THEMES` 元组末尾追加 `"glass"`：
 
@@ -91,7 +91,7 @@ THEMES = ("light", "dark", "claude", "spacex", "micro", "glass")
 
 将主题总数更新为六种，新增一条勾选的磨砂玻璃主题说明，指出独立 CSS 作用域及玻璃材质；在更新记录最前加入日期 `2026-09-25` 的 Glassmorphism 条目。
 
-- [ ] **Step 3：重启本地服务并确认健康状态**
+- [x] **Step 3：重启本地服务并确认健康状态**
 
 在 PowerShell 终止当前监听 8000 端口的服务，等待 1 秒，再运行：
 
@@ -101,7 +101,7 @@ uv run uvicorn launchers.web.main:app --host 127.0.0.1 --port 8000
 
 用另一个 PowerShell 命令执行 `Invoke-RestMethod http://127.0.0.1:8000/api/health`，确认返回健康信息。按项目 `AGENTS.md`，不使用自动化浏览器验证前端；提示用户强刷后检查设置页主题卡片与玻璃外观。
 
-- [ ] **Step 4：提交后端白名单和功能清单**
+- [x] **Step 4：提交后端白名单和功能清单**
 
 ```powershell
 git add -- artmirror/routers/settings.py
@@ -110,4 +110,4 @@ git commit -m "feat: persist glass theme preference"
 
 ## 完成条件
 
-三个主题功能提交均只包含列出的文件；加入后端白名单后再次重启服务并确认 `/api/health` 返回成功；最终 `git status --short` 中不存在本任务产生的未提交文件。当前开发工作流要求不运行用户未要求的测试。
+四个主题功能提交均只包含列出的文件；加入后端白名单后再次重启服务并确认 `/api/health` 返回成功；最终 `git status --short` 中不存在本任务产生的未提交文件。当前开发工作流要求不运行用户未要求的测试。
