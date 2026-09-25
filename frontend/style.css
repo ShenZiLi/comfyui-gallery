@@ -382,48 +382,18 @@ body.am-selecting { user-select: none; }
   box-shadow: 0 0 0 3px rgba(79,110,247,.22);
 }
 
-/* 扫描新图提示：顶栏中央的玻璃质感刷新按钮，不占布局也不遮挡图片 */
-.refresh-float {
-  position: absolute; top: 7px; left: 50%; z-index: 22;
-  width: 50px; height: 50px; transform: translateX(-50%);
-  display: inline-flex; align-items: center; justify-content: center;
-  overflow: hidden; isolation: isolate;
-  border: 1px solid rgba(255,255,255,.7); border-radius: 50%;
-  color: #fff;
-  background: linear-gradient(145deg,
-    color-mix(in srgb, var(--brand) 52%, white),
-    color-mix(in srgb, var(--brand) 78%, transparent) 58%,
-    color-mix(in srgb, var(--brand) 68%, #142653));
-  -webkit-backdrop-filter: blur(16px) saturate(1.55);
-  backdrop-filter: blur(16px) saturate(1.55);
-  box-shadow: 0 10px 24px rgba(31,54,112,.2),
-    0 0 0 6px rgba(255,255,255,.24),
-    inset 0 1px 0 rgba(255,255,255,.82),
-    inset 0 -5px 12px rgba(20,39,91,.2);
-  cursor: pointer;
-  animation: refresh-float-in .28s var(--ease-out), refresh-float-pulse 2.4s ease-in-out .28s infinite;
-  transition: box-shadow var(--dur-med) var(--ease-out), filter var(--dur-med) var(--ease-out);
-}
-.refresh-float::before {
-  position: absolute; inset: 1px; z-index: 0;
-  border-radius: inherit; content: ""; pointer-events: none;
-  background: linear-gradient(145deg, rgba(255,255,255,.58), transparent 46% 72%, rgba(255,255,255,.16));
-}
-.refresh-float svg { position: relative; z-index: 1; filter: drop-shadow(0 1px 1px rgba(20,39,91,.3)); transition: transform .45s var(--ease-out); }
-.refresh-float:hover { filter: brightness(1.08); box-shadow: 0 12px 28px rgba(31,54,112,.25), 0 0 0 7px rgba(255,255,255,.3), inset 0 1px 0 rgba(255,255,255,.9), inset 0 -5px 12px rgba(20,39,91,.2); }
-.refresh-float:hover svg { transform: rotate(180deg); }
-.refresh-float:active { transform: translateX(-50%) scale(.94); }
-.refresh-float:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
-@keyframes refresh-float-in {
-  from { opacity: 0; transform: translateX(-50%) scale(.65); }
-  to { opacity: 1; transform: translateX(-50%) scale(1); }
-}
-@keyframes refresh-float-pulse {
-  50% { box-shadow: 0 10px 26px rgba(31,54,112,.24), 0 0 0 9px rgba(255,255,255,.28), inset 0 1px 0 rgba(255,255,255,.82), inset 0 -5px 12px rgba(20,39,91,.2); }
+/* 后台新增图片刷新提示：沿用缩放图标尺寸，保持透明底 */
+.refresh-inline { color: var(--text-3); background: transparent; animation: refresh-inline-in .22s ease-out; }
+.refresh-inline:hover { color: var(--brand); background: transparent; }
+.refresh-inline svg { transition: transform .3s ease; }
+.refresh-inline:hover svg { transform: rotate(180deg); }
+@keyframes refresh-inline-in {
+  from { opacity: 0; transform: scale(.7); }
+  to { opacity: 1; transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .refresh-float { animation: none; }
-  .refresh-float, .refresh-float svg { transition: none; }
+  .refresh-inline { animation: none; }
+  .refresh-inline, .refresh-inline svg { transition: none; }
 }
 
 /* ===== 目录树 ===== */
