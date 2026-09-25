@@ -383,13 +383,13 @@ body.am-selecting { user-select: none; }
 }
 
 /* 后台新增图片刷新提示：沿用缩放图标尺寸，保持透明底 */
-.refresh-inline { color: var(--text-3); background: transparent; animation: refresh-inline-in .22s ease-out; }
+.refresh-inline { color: var(--brand); background: transparent; animation: refresh-inline-in .38s var(--ease-out); }
 .refresh-inline:hover { color: var(--brand); background: transparent; }
-.refresh-inline svg { transition: transform .3s ease; }
+.refresh-inline svg { filter: drop-shadow(0 0 2px var(--brand-weak)); transition: transform .3s ease; }
 .refresh-inline:hover svg { transform: rotate(180deg); }
 @keyframes refresh-inline-in {
-  from { opacity: 0; transform: scale(.7); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: rotate(-70deg) scale(.6); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
   .refresh-inline { animation: none; }
