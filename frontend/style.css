@@ -777,6 +777,7 @@ html[data-theme="dark"] .similar-tag { background: color-mix(in srgb,var(--style
 .tsw-dark { color: #e6eaf2; background: linear-gradient(135deg, #0f1218 0%, #171d29 55%, #4f6ef7 55%, #4f6ef7 100%); }
 .tsw-claude { color: #141413; background: linear-gradient(135deg, #faf9f5 0%, #fff 55%, #cc785c 55%, #cc785c 100%); }
 .tsw-micro { color: #134e4a; background: linear-gradient(135deg, #f0fdfa 0%, #fff 55%, #0d9488 55%, #0d9488 100%); }
+.tsw-glass { color: #f4f5ff; background: linear-gradient(135deg, #11182d 0 42%, rgba(137, 158, 255, .56) 42% 68%, #1b1730 68%); }
 @media (hover: hover) and (pointer: fine) { .theme-option:hover { transform: translateY(-1px); } }
 @media (prefers-reduced-motion: reduce) {
   .theme-option, .theme-option:hover, .theme-option:active { transition: none; transform: none; }

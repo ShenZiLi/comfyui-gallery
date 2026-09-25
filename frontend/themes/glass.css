@@ -1,0 +1,171 @@
+/* Aurora Glassmorphism: layered indigo night canvas and restrained frosted surfaces.
+   All selectors are scoped so selecting this theme cannot alter another theme. */
+html[data-theme="glass"] {
+  --bg: #0b1020;
+  --panel: rgba(25, 32, 57, .76);
+  --border: rgba(205, 216, 255, .17);
+  --border-strong: rgba(205, 216, 255, .3);
+  --text: #f1f3ff;
+  --text-2: #c0c8e2;
+  --text-3: #919bb9;
+  --brand: #b6c4ff;
+  --brand-weak: rgba(120, 143, 255, .17);
+  --brand-glow: rgba(132, 151, 255, .24);
+  --nav-bg: rgba(13, 18, 36, .72);
+  --shadow: 0 8px 28px rgba(2, 5, 18, .25), inset 0 1px 0 rgba(255, 255, 255, .07);
+  --shadow-hover: 0 12px 34px rgba(2, 5, 18, .36), 0 0 24px rgba(111, 132, 255, .09), inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+html[data-theme="glass"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 14% 0%, rgba(65, 83, 166, .34), transparent 38%),
+    radial-gradient(ellipse at 88% 9%, rgba(106, 63, 150, .23), transparent 34%),
+    linear-gradient(160deg, #0d1325 0%, #0b1020 54%, #101022 100%);
+  background-attachment: fixed;
+}
+
+html[data-theme="glass"] .sticky-head {
+  background: rgba(12, 17, 34, .72);
+  border-bottom-color: rgba(205, 216, 255, .14);
+  box-shadow: 0 8px 24px rgba(2, 5, 18, .12);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+html[data-theme="glass"] #topnav nav { background: transparent; }
+
+html[data-theme="glass"] .card,
+html[data-theme="glass"] .dropdown-menu,
+html[data-theme="glass"] .modal,
+html[data-theme="glass"] .fs-list {
+  background-color: var(--panel);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(15px);
+  backdrop-filter: blur(15px);
+}
+html[data-theme="glass"] .card:hover { border-color: var(--border-strong); }
+
+html[data-theme="glass"] input[type=text],
+html[data-theme="glass"] input[type=password],
+html[data-theme="glass"] input[type=number],
+html[data-theme="glass"] select,
+html[data-theme="glass"] textarea,
+html[data-theme="glass"] .dropdown-btn {
+  color: var(--text);
+  background: rgba(12, 17, 34, .62);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .055);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+html[data-theme="glass"] input::placeholder,
+html[data-theme="glass"] textarea::placeholder { color: #929cba; }
+html[data-theme="glass"] input:focus,
+html[data-theme="glass"] select:focus,
+html[data-theme="glass"] textarea:focus,
+html[data-theme="glass"] .dropdown-btn.open {
+  border-color: #a8b8ff;
+  box-shadow: 0 0 0 3px var(--brand-glow), inset 0 1px 0 rgba(255, 255, 255, .08);
+  background: rgba(18, 24, 47, .88);
+}
+
+html[data-theme="glass"] .btn,
+html[data-theme="glass"] .theme-option {
+  color: var(--text);
+  background: rgba(255, 255, 255, .055);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+html[data-theme="glass"] .btn:hover,
+html[data-theme="glass"] .theme-option:hover {
+  color: #fff;
+  background: rgba(125, 146, 255, .16);
+  border-color: var(--border-strong);
+}
+html[data-theme="glass"] .btn.primary {
+  color: #111831;
+  background: linear-gradient(135deg, #d4dcff, #9eafff);
+  border-color: rgba(222, 228, 255, .65);
+  box-shadow: 0 4px 18px rgba(112, 132, 255, .2), inset 0 1px 0 rgba(255, 255, 255, .65);
+}
+html[data-theme="glass"] .btn.primary:hover { color: #0d142b; background: #e0e5ff; }
+html[data-theme="glass"] .btn.primary:disabled { color: #69718f; background: #bec5de; }
+html[data-theme="glass"] .btn.danger { color: #fff; background: rgba(190, 65, 87, .88); border-color: rgba(255, 170, 186, .35); }
+
+html[data-theme="glass"] .seg {
+  background: rgba(8, 12, 26, .58);
+  border: 1px solid rgba(205, 216, 255, .1);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, .22);
+}
+html[data-theme="glass"] .seg button { color: var(--text-2); }
+html[data-theme="glass"] .seg button.active {
+  color: #f5f6ff;
+  background: rgba(135, 153, 255, .2);
+  box-shadow: inset 0 0 0 1px rgba(205, 216, 255, .19), 0 2px 8px rgba(3, 6, 18, .2);
+}
+html[data-theme="glass"] .nav-link.active,
+html[data-theme="glass"] .dropdown-item:hover,
+html[data-theme="glass"] .dropdown-item.active,
+html[data-theme="glass"] .chip.active {
+  color: #dce3ff;
+  background: var(--brand-weak);
+}
+html[data-theme="glass"] .nav-link:hover,
+html[data-theme="glass"] .dropdown-item:hover { color: #fff; }
+html[data-theme="glass"] .theme-option.active {
+  background: rgba(124, 145, 255, .2);
+  border-color: #aebcff;
+  box-shadow: 0 0 0 1px rgba(174, 188, 255, .6), 0 0 20px rgba(116, 139, 255, .15), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+html[data-theme="glass"] .theme-option .theme-check { color: #dce3ff; }
+
+html[data-theme="glass"] .img-card .thumb-wrap { background: #11182a; }
+html[data-theme="glass"] .img-card .info { background: rgba(18, 24, 43, .72); }
+html[data-theme="glass"] .cover-row { background: var(--panel); }
+html[data-theme="glass"] .progress { background: rgba(5, 8, 20, .58); }
+html[data-theme="glass"] .progress > i { background: linear-gradient(90deg, #8198ff, #c0a8ff); }
+html[data-theme="glass"] .code { color: #e4e8fa; background: rgba(7, 11, 23, .72); border: 1px solid rgba(205, 216, 255, .12); }
+html[data-theme="glass"] .stars .off { color: #4a5270; }
+html[data-theme="glass"] .modal-mask { background: rgba(4, 7, 18, .68); }
+html[data-theme="glass"] .modal-head,
+html[data-theme="glass"] .modal-foot { border-color: rgba(205, 216, 255, .13); }
+html[data-theme="glass"] .modal-x:hover { color: #fff; background: var(--brand-weak); }
+html[data-theme="glass"] .fs-crumb { background: rgba(12, 17, 34, .62); border-color: var(--border); }
+html[data-theme="glass"] .fs-item:hover,
+html[data-theme="glass"] .fs-item.active { background: var(--brand-weak); }
+html[data-theme="glass"] .am-toast { background: rgba(20, 26, 47, .94); border: 1px solid var(--border); box-shadow: var(--shadow); }
+
+html[data-theme="glass"] :where(.btn, .icon-btn, .nav-link, .chip, .dropdown-btn, .dropdown-item, .seg button, .theme-toggle, .theme-option, .src-tab, .modal-x, a):focus-visible {
+  outline: 2px solid #c2ccff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(137, 158, 255, .2);
+}
+html[data-theme="glass"] * { scrollbar-color: rgba(159, 172, 225, .42) transparent; }
+html[data-theme="glass"] *::-webkit-scrollbar-thumb { background: rgba(159, 172, 225, .42); border-radius: 5px; }
+html[data-theme="glass"] *::-webkit-scrollbar-thumb:hover { background: rgba(190, 199, 239, .62); }
+html[data-theme="glass"] *::-webkit-scrollbar-track { background: transparent; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme="glass"] .card,
+  html[data-theme="glass"] .dropdown-menu,
+  html[data-theme="glass"] .modal,
+  html[data-theme="glass"] .fs-list { background-color: #191f36; }
+  html[data-theme="glass"] input[type=text],
+  html[data-theme="glass"] input[type=password],
+  html[data-theme="glass"] input[type=number],
+  html[data-theme="glass"] select,
+  html[data-theme="glass"] textarea,
+  html[data-theme="glass"] .dropdown-btn { background: #11172b; }
+  html[data-theme="glass"] .sticky-head { background: #0d1224; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="glass"] .card,
+  html[data-theme="glass"] .btn,
+  html[data-theme="glass"] .theme-option,
+  html[data-theme="glass"] .nav-link,
+  html[data-theme="glass"] .dropdown-item { transition: none; }
+}
