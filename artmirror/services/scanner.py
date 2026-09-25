@@ -106,11 +106,11 @@ def _under_prefix(path, prefixes: list[str]) -> bool:
     return any(p == pre or p.startswith(pre + "/") for pre in prefixes)
 
 
-def scan_all(session: Session, roots: list[Path]) -> ScanStats:
+def scan_all(session: Session, roots: list[Path], *, reparse_missing: bool = True) -> ScanStats:
     """依次扫描多个根目录，汇总统计。"""
     total = ScanStats()
     for root in roots:
-        total.merge(scan(session, root))
+        total.merge(scan(session, root, reparse_missing=reparse_missing))
     return total
 
 
@@ -176,7 +176,7 @@ def _ensure_folders(session: Session, root: Path) -> dict[str, int]:
     return mapping
 
 
-def scan(session: Session, root: Path) -> ScanStats:
+def scan(session: Session, root: Path, *, reparse_missing: bool = True) -> ScanStats:
     """执行一次全量/增量扫描，返回统计。"""
     stats = ScanStats()
     root = Path(root).resolve()
@@ -213,7 +213,7 @@ def scan(session: Session, root: Path) -> ScanStats:
 
             # 已入库且文件未变时默认跳过；但若该图已有 workflowmeta 却缺提示词
             # （旧解析器入库的遗留），仍重新解析一次补齐
-            needs_reparse = existing is not None and _meta_missing_prompt(session, existing.id)
+            needs_reparse = reparse_missing and existing is not None and _meta_missing_prompt(session, existing.id)
             if existing and existing.file_size == size and abs(existing.file_mtime - mtime) < 1e-6 and not needs_reparse:
                 stats.skipped += 1
                 continue

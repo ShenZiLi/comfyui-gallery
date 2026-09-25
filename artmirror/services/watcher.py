@@ -55,7 +55,8 @@ def _loop() -> None:
                 with Session(get_engine()) as session:
                     roots = scanner.get_scan_roots(session)
                     if roots:
-                        stats = scanner.scan_all(session, roots)
+                        # 旧图可能合法地没有提示词；定时扫描不重复重解析未变化的文件。
+                        stats = scanner.scan_all(session, roots, reparse_missing=False)
                         if stats.new:
                             _bump()
                         elif stats.updated or stats.removed:

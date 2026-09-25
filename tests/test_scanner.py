@@ -125,6 +125,10 @@ def test_rescan_fills_missing_prompt_legacy():
             # 模拟旧解析器遗留：workflowmeta 存在但提示词为空
             meta.prompt = ""
             session.commit()
+            # 定时扫描跳过无文件变化的旧图，避免每 20 秒误报更新。
+            passive = scanner.scan(session, root, reparse_missing=False)
+            assert passive.skipped == 1
+            assert passive.updated == 0
             # 文件 mtime/size 未变，重扫应重新解析补齐而非跳过
             stats = scanner.scan(session, root)
             assert stats.skipped == 0
