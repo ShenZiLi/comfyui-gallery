@@ -48,8 +48,15 @@ if (-not (Test-Path $venvPy)) {
 }
 
 # 4) 安装依赖（幂等，已装则秒过；首次展示进度）；-e . 以 src layout 安装 artmirror 真源
+#    国内网络直连 pypi.org 常被重置（SSL UNEXPECTED_EOF），统一走清华镜像。
+$Mirror = "https://mirrors.aliyun.com/pypi/simple/"
+$Trusted = "mirrors.aliyun.com"
 Write-Step "检查依赖（首次需联网下载，请稍候）…"
-& $venvPy -m pip install --disable-pip-version-check -r (Join-Path $Root "requirements.txt") -e $Root
+# 4a) 先装构建后端 hatchling + editables（来自镜像），避免 PEP517 build-isolation 直连 pypi.org 失败
+& $venvPy -m pip install --disable-pip-version-check -i $Mirror --trusted-host $Trusted hatchling editables
+if ($LASTEXITCODE -ne 0) { Exit-Fail "安装构建后端 hatchling 失败，请将上方错误信息截图反馈。" }
+# 4b) 关闭 build-isolation，复用已装 hatchling，从镜像安装运行时依赖 + 可编辑安装 artmirror
+& $venvPy -m pip install --disable-pip-version-check -i $Mirror --trusted-host $Trusted --no-build-isolation -r (Join-Path $Root "requirements.txt") -e $Root
 if ($LASTEXITCODE -ne 0) { Exit-Fail "依赖安装失败，请将上方错误信息截图反馈。" }
 
 # 5) 后台启动服务，日志落盘
