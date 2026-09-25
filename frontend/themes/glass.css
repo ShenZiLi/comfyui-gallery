@@ -139,18 +139,30 @@ html[data-theme="glass"] .zoom-tools .icon-btn:disabled {
   opacity: .8;
 }
 
-html[data-theme="glass"] .img-card .chip.model { --glass-chip-rgb: 182, 196, 255; }
-html[data-theme="glass"] .img-card .chip.lora { --glass-chip-rgb: 220, 185, 255; }
-html[data-theme="glass"] .img-card .chip.vae { --glass-chip-rgb: 151, 222, 255; }
-html[data-theme="glass"] .img-card .chip.style { --glass-chip-rgb: 255, 207, 137; }
-html[data-theme="glass"] .img-card .chip.special { --glass-chip-rgb: 147, 232, 186; }
-html[data-theme="glass"] .img-card .chip.attr { --glass-chip-rgb: 255, 207, 125; }
 html[data-theme="glass"] .img-card .chip.model,
+html[data-theme="glass"] .detail-layout .chip.model { --glass-chip-rgb: 182, 196, 255; }
 html[data-theme="glass"] .img-card .chip.lora,
+html[data-theme="glass"] .detail-layout .chip.lora { --glass-chip-rgb: 220, 185, 255; }
 html[data-theme="glass"] .img-card .chip.vae,
+html[data-theme="glass"] .detail-layout .chip.vae { --glass-chip-rgb: 151, 222, 255; }
 html[data-theme="glass"] .img-card .chip.style,
+html[data-theme="glass"] .detail-layout .chip.style { --glass-chip-rgb: 255, 207, 137; }
 html[data-theme="glass"] .img-card .chip.special,
-html[data-theme="glass"] .img-card .chip.attr {
+html[data-theme="glass"] .detail-layout .chip.special { --glass-chip-rgb: 147, 232, 186; }
+html[data-theme="glass"] .img-card .chip.attr,
+html[data-theme="glass"] .detail-layout .chip.attr { --glass-chip-rgb: 255, 207, 125; }
+html[data-theme="glass"] .img-card .chip.model,
+html[data-theme="glass"] .detail-layout .chip.model,
+html[data-theme="glass"] .img-card .chip.lora,
+html[data-theme="glass"] .detail-layout .chip.lora,
+html[data-theme="glass"] .img-card .chip.vae,
+html[data-theme="glass"] .detail-layout .chip.vae,
+html[data-theme="glass"] .img-card .chip.style,
+html[data-theme="glass"] .detail-layout .chip.style,
+html[data-theme="glass"] .img-card .chip.special,
+html[data-theme="glass"] .detail-layout .chip.special,
+html[data-theme="glass"] .img-card .chip.attr,
+html[data-theme="glass"] .detail-layout .chip.attr {
   color: rgb(var(--glass-chip-rgb));
   background: linear-gradient(135deg, rgba(var(--glass-chip-rgb), .15), rgba(255, 255, 255, .045));
   border-color: rgba(var(--glass-chip-rgb), .34);
