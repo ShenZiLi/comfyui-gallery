@@ -47,7 +47,7 @@ def _compress_quality(session: Session) -> int:
 
 
 # 支持的主题值；非法值归一化为 light
-THEMES = ("light", "dark", "claude", "spacex", "micro")
+THEMES = ("light", "dark", "claude", "spacex", "micro", "glass")
 
 
 def _normalize_theme(value) -> str:
