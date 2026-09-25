@@ -15,6 +15,7 @@
 - 新建 `frontend/themes/glass.css`：定义 `glass` token、氛围背景、共享界面层的磨砂表面、控件状态及无模糊支持时的回退。每条规则以 `html[data-theme="glass"]` 开头。
 - 修改 `frontend/themes.css`：追加 import，保留已有主题 import。
 - 修改 `frontend/settings.html`：`Settings.themes` 追加 `glass` 主题描述和 `.tsw-glass` 色块；`pickTheme()` 不变。
+- 修改 `artmirror/routers/settings.py`：在已支持主题元组中追加 `glass`，让现有 settings API 接受并持久化新主题。
 - 修改 `docs/功能清单.md`：更新主题数量、增加玻璃主题功能点和更新记录。
 
 ## Task 1：注册设置页主题
@@ -73,13 +74,24 @@ git commit -m "style: add aurora glass theme"
 ## Task 3：更新功能清单并交付验证
 
 **Files:**
+- Modify: `artmirror/routers/settings.py`
 - Modify: `docs/功能清单.md`
 
-- [ ] **Step 1：更新主题清单和记录**
+- [ ] **Step 1：允许后端保存 glass 主题值**
+
+在 `artmirror/routers/settings.py` 的 `THEMES` 元组末尾追加 `"glass"`：
+
+```python
+THEMES = ("light", "dark", "claude", "spacex", "micro", "glass")
+```
+
+保持 `_normalize_theme()` 和 settings API 现有逻辑不变。
+
+- [x] **Step 2：更新主题清单和记录**
 
 将主题总数更新为六种，新增一条勾选的磨砂玻璃主题说明，指出独立 CSS 作用域及玻璃材质；在更新记录最前加入日期 `2026-09-25` 的 Glassmorphism 条目。
 
-- [ ] **Step 2：重启本地服务并确认健康状态**
+- [ ] **Step 3：重启本地服务并确认健康状态**
 
 在 PowerShell 终止当前监听 8000 端口的服务，等待 1 秒，再运行：
 
@@ -89,13 +101,13 @@ uv run uvicorn launchers.web.main:app --host 127.0.0.1 --port 8000
 
 用另一个 PowerShell 命令执行 `Invoke-RestMethod http://127.0.0.1:8000/api/health`，确认返回健康信息。按项目 `AGENTS.md`，不使用自动化浏览器验证前端；提示用户强刷后检查设置页主题卡片与玻璃外观。
 
-- [ ] **Step 3：提交功能清单**
+- [ ] **Step 4：提交后端白名单和功能清单**
 
 ```powershell
-git add -- docs/功能清单.md
-git commit -m "docs: document glass theme"
+git add -- artmirror/routers/settings.py
+git commit -m "feat: persist glass theme preference"
 ```
 
 ## 完成条件
 
-三个主题功能提交均只包含列出的文件；服务重启后 `/api/health` 返回成功；最终 `git status --short` 中不存在本任务产生的未提交文件。无需运行 pytest，因为改动只有前端主题及功能文档，没有后端逻辑变化。
+三个主题功能提交均只包含列出的文件；加入后端白名单后再次重启服务并确认 `/api/health` 返回成功；最终 `git status --short` 中不存在本任务产生的未提交文件。当前开发工作流要求不运行用户未要求的测试。
