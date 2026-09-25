@@ -1,0 +1,162 @@
+/* Micro-interactions: bright mint canvas, teal controls, and compact tactile feedback.
+   Every rule is scoped so the existing four themes keep their current appearance. */
+html[data-theme="micro"] {
+  --bg: #f0fdfa;
+  --panel: #ffffff;
+  --border: #cce9e4;
+  --border-strong: #8fd3c8;
+  --text: #173b38;
+  --text-2: #496b67;
+  --text-3: #58716f;
+  --brand: #0d9488;
+  --brand-weak: #dff5f0;
+  --brand-glow: rgba(13, 148, 136, .18);
+  --nav-bg: rgba(248, 255, 253, .94);
+  --shadow: 0 1px 2px rgba(19, 78, 74, .05), 0 5px 16px -8px rgba(19, 78, 74, .16);
+  --shadow-hover: 0 3px 8px rgba(19, 78, 74, .08), 0 12px 26px -12px rgba(13, 148, 136, .24);
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --dur-fast: 100ms;
+  --dur-med: 180ms;
+}
+
+html[data-theme="micro"] body {
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(204, 245, 235, .48), transparent 48%);
+  background-attachment: fixed;
+}
+
+html[data-theme="micro"] .card,
+html[data-theme="micro"] .modal,
+html[data-theme="micro"] .dropdown-menu {
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+html[data-theme="micro"] input[type=text],
+html[data-theme="micro"] input[type=password],
+html[data-theme="micro"] input[type=number],
+html[data-theme="micro"] select,
+html[data-theme="micro"] textarea,
+html[data-theme="micro"] .dropdown-btn {
+  background: #fbfffe;
+  border-color: var(--border);
+  color: var(--text);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+html[data-theme="micro"] input::placeholder,
+html[data-theme="micro"] textarea::placeholder { color: #58716f; }
+html[data-theme="micro"] input:focus,
+html[data-theme="micro"] select:focus,
+html[data-theme="micro"] textarea:focus,
+html[data-theme="micro"] .dropdown-btn.open {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+  background: #fff;
+}
+
+html[data-theme="micro"] .btn {
+  border-color: var(--border);
+  background: #fff;
+  color: var(--text);
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+html[data-theme="micro"] .btn:hover {
+  border-color: #70c4b8;
+  background: var(--brand-weak);
+  color: #08786f;
+  box-shadow: 0 2px 6px rgba(13, 148, 136, .1);
+}
+html[data-theme="micro"] .btn:active:not([disabled]),
+html[data-theme="micro"] .btn.primary:active:not([disabled]) { transform: scale(.97); }
+html[data-theme="micro"] .btn.primary {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 2px 5px rgba(13, 148, 136, .2);
+}
+html[data-theme="micro"] .btn.primary:hover {
+  border-color: #08786f;
+  background: #087f75;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(13, 148, 136, .24);
+}
+html[data-theme="micro"] .btn.primary:disabled { background: #b6d8d2; border-color: #b6d8d2; color: #f5fffd; }
+
+html[data-theme="micro"] .icon-btn,
+html[data-theme="micro"] .theme-toggle {
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+html[data-theme="micro"] .icon-btn:hover,
+html[data-theme="micro"] .icon-btn.active,
+html[data-theme="micro"] .theme-toggle:hover {
+  color: #08786f;
+  background: var(--brand-weak);
+  border-color: #a9ddd4;
+}
+html[data-theme="micro"] .icon-btn:active,
+html[data-theme="micro"] .theme-toggle:active { transform: scale(.92); }
+
+html[data-theme="micro"] .seg {
+  background: #e3f3ef;
+  box-shadow: inset 0 1px 2px rgba(19, 78, 74, .07);
+}
+html[data-theme="micro"] .seg button { transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+html[data-theme="micro"] .seg button:hover { color: #08786f; }
+html[data-theme="micro"] .seg button.active {
+  background: #fff;
+  color: #08786f;
+  box-shadow: 0 1px 3px rgba(19, 78, 74, .12);
+}
+
+html[data-theme="micro"] .nav-link,
+html[data-theme="micro"] .chip,
+html[data-theme="micro"] .dropdown-item,
+html[data-theme="micro"] .theme-option {
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+html[data-theme="micro"] .nav-link.active { color: #08786f; background: #e5f7f3; }
+html[data-theme="micro"] .dropdown-item:hover,
+html[data-theme="micro"] .dropdown-item.active { background: var(--brand-weak); color: #08786f; }
+html[data-theme="micro"] .chip:hover { border-color: #70c4b8; background: var(--brand-weak); color: #08786f; }
+html[data-theme="micro"] .theme-option:hover { border-color: #70c4b8; box-shadow: 0 4px 12px rgba(13, 148, 136, .12); }
+html[data-theme="micro"] .theme-option.active { border-color: var(--brand); background: #e8f8f4; box-shadow: 0 0 0 2px rgba(13, 148, 136, .14); }
+
+/* Lift the card surface without changing its layout or covering image content. */
+html[data-theme="micro"] .img-card {
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+html[data-theme="micro"] .img-card:hover {
+  border-color: #a6dcd3;
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+html[data-theme="micro"] .img-card.selected {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+html[data-theme="micro"] .progress { background: #dcefeb; }
+html[data-theme="micro"] .progress > i { background: linear-gradient(90deg, #0d9488, #36b9a8); }
+html[data-theme="micro"] .code { background: #eaf6f3; }
+html[data-theme="micro"] .stars .off { color: #c6d9d5; }
+html[data-theme="micro"] .modal-x:hover { color: #08786f; background: var(--brand-weak); }
+
+html[data-theme="micro"] :where(.btn, .icon-btn, .nav-link, .chip, .dropdown-btn, .dropdown-item, .seg button, .theme-toggle, .theme-option, a):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--brand-glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="micro"] *,
+  html[data-theme="micro"] *::before,
+  html[data-theme="micro"] *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  html[data-theme="micro"] .img-card:hover,
+  html[data-theme="micro"] .theme-option:hover,
+  html[data-theme="micro"] .btn:active,
+  html[data-theme="micro"] .icon-btn:active { transform: none !important; }
+}
