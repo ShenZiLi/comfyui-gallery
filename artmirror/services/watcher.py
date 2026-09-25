@@ -1,6 +1,6 @@
 """后台常驻线程：定期对注册根目录做增量扫描，有变动则递增同步版本号。
 
-前端轮询 ``/api/sync/version``，版本变化即重新拉取图库，实现本地图片增删的实时同步。
+前端轮询 ``/api/sync/version``：新增图片提示手动刷新，其余变化自动刷新。
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from . import scanner
 
 SYNC_INTERVAL = 20.0  # 秒：降低频率，避免常驻占用与阻塞用户操作
 _version = 0
+_auto_version = 0
 _ver_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
@@ -25,19 +26,29 @@ def get_version() -> int:
         return _version
 
 
+def get_sync_state() -> dict[str, int]:
+    """返回总版本与自动刷新版本，供图库区分后台新增图片。"""
+    with _ver_lock:
+        return {"version": _version, "auto_version": _auto_version}
+
+
 def bump() -> None:
-    """手动递增版本号（注册/移除根目录后立即触发前端刷新）。"""
-    _bump()
+    """主动操作或非新增扫描变更：递增版本并触发自动刷新。"""
+    global _version, _auto_version
+    with _ver_lock:
+        _version += 1
+        _auto_version += 1
 
 
 def _bump() -> None:
+    """定时扫描新增图片：只递增总版本，等待图库用户点击。"""
     global _version
     with _ver_lock:
         _version += 1
 
 
 def _loop() -> None:
-    """循环扫描；任何新增/更新/移除都会递增版本号。"""
+    """循环扫描；新增图片提示，只有更新/移除则自动刷新。"""
     while not _stop_event.is_set():
         if _scanning.acquire(blocking=False):  # 上一次扫描未结束则跳过本轮
             try:
@@ -45,8 +56,10 @@ def _loop() -> None:
                     roots = scanner.get_scan_roots(session)
                     if roots:
                         stats = scanner.scan_all(session, roots)
-                        if stats.new or stats.updated or stats.removed:
+                        if stats.new:
                             _bump()
+                        elif stats.updated or stats.removed:
+                            bump()
             except Exception:  # noqa: BLE001
                 pass
             finally:

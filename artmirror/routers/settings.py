@@ -227,6 +227,8 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
         if not roots:
             raise HTTPException(400, "请先配置有效的图片目录")
         stats = scanner.scan_all(session, roots)
+        if stats.new or stats.updated or stats.removed:
+            watcher.bump()
         result["scan"] = {
             "new": stats.new,
             "updated": stats.updated,

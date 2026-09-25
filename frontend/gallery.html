@@ -25,6 +25,11 @@
   <!-- 顶部整体固定（满宽紧贴顶） -->
   <div class="sticky-head">
     <div id="topnav"></div>
+    <!-- 定时扫描发现新图时悬浮提示，留在顶栏避免遮住图片和改变滚动位置 -->
+    <button class="refresh-float" type="button" aria-label="发现新图片，点击刷新图库"
+            data-tip="发现新图片，点击刷新" x-show="hasUpdate" x-cloak @click="manualRefresh()">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
     <div class="sticky-inner">
       <div class="toolbar">
       <div class="dropdown" @click.outside="importOpen=false">
@@ -90,11 +95,6 @@
         </button>
         <span class="hd-badge" x-show="hiRes" data-tip="当前原图预览">HD</span>
       </div>
-
-      <!-- 后台有更新时显示：点击主动刷新 -->
-      <button class="icon-btn refresh-btn" data-tip="后台有更新，点击刷新" x-show="hasUpdate" x-cloak @click="manualRefresh()">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-      </button>
 
       <span class="nav-spacer"></span>
 
@@ -365,7 +365,7 @@
     folderOpen: false, sortOpen: false,
     importOpen: false,
     selectedTag: null, sort: "time", loading: true, summary: "", showWorkflow: false, wfText: "",
-    delTarget: null, _ver: -1, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _waveIn: false,
+    delTarget: null, _ver: -1, _autoVer: -1, _importPending: false, _restoreScroll: 0, _resumePages: 0, _reqSeq: 0, _io: null, _gio: null, _waveIn: false,
     selIds: [], batchDelCount: 0,
     limit: 60, total: 0, hasMore: false, loadingMore: false,
     groupTotal: 0, groupHasMore: false, groupLoading: false, _gSeq: 0,
@@ -459,6 +459,7 @@
       this._initObservers();
       this._updateHiRes();
       this._bindSelect();
+      this.pollSync();
       setInterval(function () { self.pollSync(); }, 3000);
     },
     _initObservers() {
@@ -536,22 +537,30 @@
     },
     pollSync() {
       var self = this;
-      Api.getSyncVersion().then(function (v) {
+      Api.getSyncState().then(function (state) {
+        var v = state.version;
+        var auto = state.auto_version;
         if (v === self._ver) return;
         var first = self._ver === -1;
+        var autoChange = auto !== self._autoVer;
         self._ver = v;
-        if (first) return; // 首次仅建立基线，不打扰
-        // 后台检测到变化：自动刷新当前视图（无需手动点按钮）
-        self.hasUpdate = false;
-        if (self.mode === "aggregate") self.reloadGroups();
-        else self.loadImages();
-        Api.listFolders().then(function (f) { self.folders = f; });
-        Api.listTags().then(function (t) { self.tags = t; });
-      });
+        self._autoVer = auto;
+        if (first) {
+          if (self._importPending) self.manualRefresh();
+          return; // 首次仅建立基线，不打扰后台扫描
+        }
+        // 只有定时扫描发现的变化等待用户点击；导入及设置等主动操作仍自动刷新。
+        if (autoChange || self._importPending) {
+          self.manualRefresh();
+        } else {
+          self.hasUpdate = true;
+        }
+      }).catch(function () {});
     },
     manualRefresh() {
       var self = this;
       this.hasUpdate = false;
+      this._importPending = false;
       if (this.mode === "aggregate") this.reloadGroups();
       else this.loadImages();
       Api.listFolders().then(function (f) { self.folders = f; });
@@ -1240,6 +1249,7 @@
       files = files.filter(function (f) { return f && (!f.type || f.type.indexOf("image/") === 0); });
       if (!files.length) { App.toast("未检测到图片文件"); return; }
       var self = this;
+      this._importPending = true;
       App.toast("正在导入 " + files.length + " 张图片…");
       // 上传给后端，保存到设置的「导入保存目录」并实时入库展示
       Api.uploadImages(files).then(function (r) {
@@ -1249,6 +1259,7 @@
           setTimeout(function () { self._refreshFolders(); }, 3000);
         }
       }).catch(function (e) {
+        self._importPending = false;
         // 无写入权限：弹出授权引导，供用户授权后重试
         if (e && e.status === 403) {
           self.permFiles = files;

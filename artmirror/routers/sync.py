@@ -1,6 +1,6 @@
 """同步版本号路由。
 
-前端轮询该版本号，变化即重新拉取图库，实现本地图片增删的实时同步。
+前端轮询版本号，并根据刷新版本区分后台新增图片与自动刷新操作。
 """
 from fastapi import APIRouter
 
@@ -11,5 +11,5 @@ router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 @router.get("/version")
 def sync_version() -> dict:
-    """返回当前同步版本号。"""
-    return {"version": watcher.get_version()}
+    """返回同步版本号及自动刷新版本号。"""
+    return watcher.get_sync_state()

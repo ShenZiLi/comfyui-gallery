@@ -382,23 +382,29 @@ body.am-selecting { user-select: none; }
   box-shadow: 0 0 0 3px rgba(79,110,247,.22);
 }
 
-/* 后台更新刷新按钮：品牌色底 + 悬停旋转 */
-.icon-btn.refresh-btn {
-  position: relative;
-  color: var(--brand);
-  background: var(--brand-weak);
-  animation: refresh-in .25s ease-out;
+/* 扫描新图提示：浮在顶栏中央，不占布局也不遮挡图片 */
+.refresh-float {
+  position: absolute; top: 7px; left: 50%; z-index: 22;
+  width: 38px; height: 38px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--brand); border-radius: 50%;
+  color: #fff; background: var(--brand); cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  animation: refresh-float-in .25s ease-out, refresh-float-pulse 2s ease-in-out .25s infinite;
 }
-.icon-btn.refresh-btn svg { transition: transform .3s ease; }
-.icon-btn.refresh-btn:hover { background: var(--brand); color: #fff; }
-.icon-btn.refresh-btn:hover svg { transform: rotate(180deg); }
-@keyframes refresh-in {
-  from { opacity: 0; transform: scale(.5); }
-  to { opacity: 1; transform: scale(1); }
+.refresh-float svg { transition: transform .35s ease; }
+.refresh-float:hover svg { transform: rotate(180deg); }
+.refresh-float:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+@keyframes refresh-float-in {
+  from { opacity: 0; transform: translateX(-50%) scale(.65); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+@keyframes refresh-float-pulse {
+  50% { box-shadow: 0 4px 18px rgba(0,0,0,.18), 0 0 0 7px var(--brand-weak); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .icon-btn.refresh-btn { animation: none; }
-  .icon-btn.refresh-btn svg { transition: none; }
+  .refresh-float { animation: none; }
+  .refresh-float svg { transition: none; }
 }
 
 /* ===== 目录树 ===== */
@@ -928,8 +934,6 @@ body.am-pv-open { overflow: hidden; }
 
 /* 无限滚动哨兵 */
 .loading-more { padding: 16px; text-align: center; }
-
-/* 同步提示条已移除：后台检测到变化自动刷新，不再需要横幅 */
 
 /* ===== 深层动效增强：图片加载淡入 + 关键交互反馈（统一沿用 --ease-*/--dur-* 令牌） ===== */
 

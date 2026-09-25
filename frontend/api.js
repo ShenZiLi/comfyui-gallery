@@ -263,6 +263,9 @@
     getSyncVersion: function () {
       return req("api/sync/version").then(function (d) { return d.version; }).catch(function () { return 0; });
     },
+    getSyncState: function () {
+      return req("api/sync/version");
+    },
     getHealth: function () {
       return req("api/health").catch(function () {
         Api._fallback = true;
