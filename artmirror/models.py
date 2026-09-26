@@ -40,14 +40,13 @@ class Folder(BaseModel, table=True):
 class ImageAsset(BaseModel, table=True):
     """图片资产。"""
 
-    __table_args__ = (UniqueConstraint("file_path", name="uq_image_path"),)
-
     folder_id: Optional[int] = Field(
         default=None, sa_column=Column(Integer, ForeignKey("folder.id"), nullable=True)
     )
     file_name: str = Field(max_length=512)
     file_path: str = Field(max_length=2048, index=True)  # 相对根目录
     abs_path: str = Field(default="", max_length=4096)   # 物理文件绝对路径
+    path_key: str = Field(default="", max_length=4096, index=True)  # 规范化物理路径，用于资产身份
     sha256: str = Field(default="", max_length=64, index=True)
     width: int = Field(default=0)
     height: int = Field(default=0)
@@ -69,6 +68,7 @@ class WorkflowMeta(BaseModel, table=True):
     """由 PNK meta 解析出的工作流信息（约定的名称字段见设计文档）。"""
 
     image_id: int = Field(foreign_key="imageasset.id", index=True, unique=True)
+    parser_revision: int = Field(default=0)
     prompt: str = Field(default="", sa_column=Column(Text))
     negative_prompt: str = Field(default="", sa_column=Column(Text))
     prompt_graph_json: str = Field(default="", sa_column=Column(Text))
