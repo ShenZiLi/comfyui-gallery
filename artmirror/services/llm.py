@@ -147,6 +147,82 @@ def _extract_json(content: str) -> dict:
     return obj if isinstance(obj, dict) else {}
 
 
+_SCORE_DIMENSIONS = (
+    "构图", "光影", "主体与主题", "细节与完成度", "色彩与影调", "美感与艺术性", "技术质量",
+)
+
+
+def _extract_score_json(content: str) -> dict:
+    """提取评分 JSON；兼容模型漏掉维度对象右括号造成的尾部嵌套。"""
+    try:
+        obj = _extract_json(content)
+    except LLMError as original_error:
+        text = (content or "").strip()
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            raise original_error
+        fragment = text[start : end + 1]
+
+        # 模型经常漏写末尾的闭合括号。先在字符串之外统计未闭合容器，
+        # 追加对应括号后再解析；只有评分 JSON 走这条有界恢复路径。
+        stack: list[str] = []
+        in_string = escaped = False
+        for char in fragment:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char in "{[":
+                stack.append("}" if char == "{" else "]")
+            elif char in "}]":
+                if not stack or stack[-1] != char:
+                    raise original_error
+                stack.pop()
+        if in_string or not stack:
+            raise original_error
+        try:
+            obj = json.loads(fragment + "".join(reversed(stack)))
+        except json.JSONDecodeError:
+            raise original_error
+        if not isinstance(obj, dict):
+            raise original_error
+
+    # 自动补齐末尾括号时，漏掉维度的 } 会令后续维度被嵌套到前一项。
+    # 将已知维度键向上提到 dimensions，恢复预期的并列结构。
+    dimensions = obj.get("dimensions")
+    if isinstance(dimensions, dict):
+        flattened: dict[str, Any] = {}
+
+        def collect(items: dict) -> None:
+            for name, value in items.items():
+                if name in _SCORE_DIMENSIONS:
+                    if name not in flattened:
+                        flattened[name] = value
+                    if isinstance(value, dict):
+                        nested = {key: val for key, val in value.items() if key in _SCORE_DIMENSIONS}
+                        if nested:
+                            collect(nested)
+                elif isinstance(value, dict):
+                    collect(value)
+
+        collect(dimensions)
+        if flattened:
+            for name, value in flattened.items():
+                if isinstance(value, dict):
+                    flattened[name] = {
+                        key: val for key, val in value.items()
+                        if key not in _SCORE_DIMENSIONS
+                    }
+            dimensions.clear()
+            dimensions.update(flattened)
+    return obj
+
+
 def analyze_workflow(workflow_text: str, session: Session) -> dict:
     """让文本大模型完整解析工作流，返回结构化对象。
 
@@ -309,7 +385,13 @@ PROMPT_SCORE = """你是一位专业的 AI 绘画（图像生成）图片评审�
 - 总分 score = 各维度加权平均（构图/光影/主体/细节各占 15% 高权重示例可自行权衡，取值 0-100）；
 - 若某方面存在明显缺陷（如手指扭曲、过曝、噪点严重）要据实扣分并在该维度意见中说明。
 
-【输出】只输出 JSON，不要任何解释文字，格式如下：
+【输出格式（必须严格遵守）】
+- 只输出一个合法 JSON 对象；不要 Markdown 代码围栏、前言、结尾或注释。
+- JSON 必须能被标准解析器直接解析：所有字符串使用英文双引号，键值间使用逗号，所有对象/数组括号必须成对闭合，最后一项后不得有逗号。
+- dimensions 下的七个维度必须是同一层级的并列键；每个维度对象仅包含 score 和 comment，不得把后续维度写进前一个维度对象。
+- 输出前自行检查括号、逗号和引号是否匹配；如无法确定格式，只返回合法的最简 JSON，仍须包含 score、reason、dimensions。
+
+格式如下：
 {
   "score": 82,
   "reason": "一句话总结本图整体质量与最大亮点/短板。",
@@ -336,7 +418,7 @@ def score_image(image_path, session: Session) -> dict:
         _prompt_override(session, "prompt_score", PROMPT_SCORE),
         session,
     )
-    obj = _extract_json(text)
+    obj = _extract_score_json(text)
     try:
         score = int(float(obj.get("score")))
     except (TypeError, ValueError):
