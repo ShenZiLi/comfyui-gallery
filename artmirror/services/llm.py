@@ -73,10 +73,25 @@ def _prompt_override(session, key: str, default: str) -> str:
 
 
 PROMPT_TRANSLATE = (
-    "你是专业的 AI 绘画提示词翻译助手，请把下面这段提示词翻译成{target}。"
+    "你是专业的 AI 绘画提示词翻译助手，请把下面这段提示词完整翻译成{target}。"
+    "译文中的自然语言必须使用{target}，不要照抄原文语言；模型名、文件名和参数保持原样。"
     "原文中的 <<<SEG>>> 是段落分隔标记：必须原样保留、维持标记间的段数，只翻译标记之间的文本内容，"
     "不要删除、合并、翻译或新增分隔标记。只输出译文本身，不要前言、不要解释、不要引号。\n\n原提示词：\n{text}"
 )
+
+
+def translation_matches_target(text: str, target_lang: str, source: str = "") -> bool:
+    """拒绝未翻译、空白或仍以原语言为主的模型输出与历史缓存。"""
+    result = (text or "").strip()
+    if not result or result == source.strip():
+        return False
+    chinese = len(re.findall(r"[\u4e00-\u9fff]", result))
+    english = len(re.findall(r"[A-Za-z]", result))
+    if target_lang == "zh":
+        return chinese > 0 and chinese * 12 >= english
+    if target_lang == "en":
+        return english > 0 and english >= chinese * 12
+    return False
 
 
 def translate_prompt(text: str, target_lang: str, session: Optional[Session] = None) -> str:
@@ -87,7 +102,20 @@ def translate_prompt(text: str, target_lang: str, session: Optional[Session] = N
     target_name = "中文" if target_lang == "zh" else "英文"
     template = _prompt_override(session, "prompt_translate", PROMPT_TRANSLATE)
     prompt = template.replace("{target}", target_name).replace("{text}", text)
-    return (chat_text(prompt, session) or "").strip()
+    prompt += f"\n\n最终要求：译文的自然语言必须是{target_name}，只输出译文。"
+    translated = (chat_text(prompt, session) or "").strip()
+    if translation_matches_target(translated, target_lang, text):
+        return translated
+
+    retry = (
+        f"上一条回答没有正确译成{target_name}。请把以下 AI 绘画提示词完整翻译成{target_name}，"
+        f"自然语言只使用{target_name}；模型名、文件名、参数和 <<<SEG>>> 分隔标记保持原样。"
+        f"只输出译文。\n\n原提示词：\n{text}"
+    )
+    translated = (chat_text(retry, session) or "").strip()
+    if not translation_matches_target(translated, target_lang, text):
+        raise LLMError(f"文本模型未生成有效{target_name}译文，请检查翻译提示词或模型配置")
+    return translated
 
 
 def _chat(session: Session, prompt: str) -> str:
