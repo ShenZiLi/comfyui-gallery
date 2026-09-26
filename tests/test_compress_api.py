@@ -102,6 +102,8 @@ def test_single_compress_overwrite():
             im = s.get(ImageAsset, image_id)
         assert im.abs_path == data["new_file"]
         assert im.file_name == Path(data["new_file"]).name
+        assert im.path_key == compress.scanner.normalize_path_key(data["new_file"])
+        assert Path(im.file_path).name == Path(data["new_file"]).name
 
 
 def test_batch_compress_raw_array_body():

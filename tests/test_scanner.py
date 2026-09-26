@@ -124,6 +124,7 @@ def test_rescan_fills_missing_prompt_legacy():
             assert meta.prompt == "snowy fox macro"
             # 模拟旧解析器遗留：workflowmeta 存在但提示词为空
             meta.prompt = ""
+            meta.parser_revision = 0
             session.commit()
             # 定时扫描跳过无文件变化的旧图，避免每 20 秒误报更新。
             passive = scanner.scan(session, root, reparse_missing=False)
@@ -134,4 +135,102 @@ def test_rescan_fills_missing_prompt_legacy():
             assert stats.skipped == 0
             meta2 = session.exec(select(WorkflowMeta)).one()
             assert meta2.prompt == "snowy fox macro"
+            meta2.prompt = ""
+            session.commit()
+            once = scanner.scan(session, root)
+            assert once.skipped == 1
     settings.data_dir = "/Users/shen/Studio/Code/ArtMirror/data"
+
+
+def test_same_relative_path_in_different_roots_is_a_separate_asset(monkeypatch):
+    """同名且同内容的文件按物理路径分别入库，未变化重扫不重新处理字节。"""
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        roots = [td / "one", td / "two"]
+        for root in roots:
+            (root / "nested").mkdir(parents=True)
+            _png(root / "nested" / "same.png")
+        # 确保两文件字节相同，而非仅文件名相同。
+        (roots[1] / "nested" / "same.png").write_bytes(
+            (roots[0] / "nested" / "same.png").read_bytes()
+        )
+        engine = _engine(td / "data")
+        calls = {"hash": 0, "thumb": 0}
+        hash_bytes = scanner._hash_bytes
+        make_thumb = scanner._make_thumb
+
+        def counted_hash(data):
+            calls["hash"] += 1
+            return hash_bytes(data)
+
+        def counted_thumb(data):
+            calls["thumb"] += 1
+            return make_thumb(data)
+
+        monkeypatch.setattr(scanner, "_hash_bytes", counted_hash)
+        monkeypatch.setattr(scanner, "_make_thumb", counted_thumb)
+        with Session(engine) as session:
+            for root in roots:
+                scanner.save_scan_roots(session, [str(r) for r in roots])
+                scanner.scan(session, root)
+            images = session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all()
+            assert len(images) == 2
+            assert {Path(im.abs_path).parent.parent for im in images} == {r.resolve() for r in roots}
+            assert images[0].sha256 == images[1].sha256
+            # 内容寻址缩略图共享，第二张相同图片复用首张的缓存。
+            assert calls == {"hash": 2, "thumb": 1}
+
+            scanner.scan_all(session, roots)
+            assert calls == {"hash": 2, "thumb": 1}
+            assert session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all().__len__() == 2
+
+
+def test_scan_reactivates_same_path_after_soft_delete():
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        root = td / "outputs"
+        root.mkdir()
+        file = root / "same.png"
+        _png(file)
+        engine = _engine(td / "data")
+        with Session(engine) as session:
+            scanner.scan(session, root)
+            image = session.exec(select(ImageAsset)).one()
+            image_id = image.id
+            image.is_deleted = 1
+            session.commit()
+            scanner.scan(session, root)
+            active = session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).one()
+            assert active.id == image_id
+
+
+def test_empty_workflow_prompt_is_only_reparsed_once():
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        root = td / "outputs"
+        root.mkdir()
+        file = root / "plain.png"
+        Image.new("RGB", (32, 32), (20, 30, 40)).save(file)
+        engine = _engine(td / "data")
+        stat = file.stat()
+        with Session(engine) as session:
+            image = ImageAsset(
+                file_name=file.name,
+                file_path=file.name,
+                abs_path=str(file),
+                path_key=scanner.normalize_path_key(str(file)),
+                file_size=stat.st_size,
+                file_mtime=stat.st_mtime,
+            )
+            session.add(image)
+            session.commit()
+            session.refresh(image)
+            session.add(WorkflowMeta(image_id=image.id, prompt="", parser_revision=0))
+            session.commit()
+
+            first = scanner.scan(session, root)
+            meta = session.exec(select(WorkflowMeta)).one()
+            assert meta.parser_revision == 1
+            second = scanner.scan(session, root)
+            assert second.skipped == 1
+            assert first.updated == 1

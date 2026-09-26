@@ -236,6 +236,15 @@
         throw (e && e.message) ? e : new Error("后端未连接");
       });
     },
+    startScan: function () {
+      return req("api/settings/scans", { method: "POST", body: {} });
+    },
+    scanStatus: function (taskId) {
+      return req("api/settings/scans/" + encodeURIComponent(taskId));
+    },
+    activeScan: function () {
+      return req("api/settings/scans/active");
+    },
 
     // ---- 图片目录管理与目录浏览器 ----
     listFsRoots: function () {

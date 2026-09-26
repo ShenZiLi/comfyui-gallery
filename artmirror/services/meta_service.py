@@ -8,6 +8,8 @@ from ..models import ImageAsset, ImageTag, Tag, WorkflowMeta
 from ..parsers.comfyui_parser import ParseResult
 from sqlmodel import Session, select
 
+PARSER_REVISION = 1
+
 
 def tag_category(asset_kind: str) -> str:
     """统一标签类别命名。"""
@@ -82,6 +84,7 @@ def ingest(session: Session, image: ImageAsset, result: ParseResult) -> None:
         meta = WorkflowMeta(image_id=image.id)
         session.add(meta)
     meta.prompt = result.prompt
+    meta.parser_revision = PARSER_REVISION
     meta.negative_prompt = result.negative_prompt
     meta.origin_prompts_json = _dumps_list(result.positive_prompts)
     meta.negative_prompts_json = _dumps_list(result.negative_prompts)

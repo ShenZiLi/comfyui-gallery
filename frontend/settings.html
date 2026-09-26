@@ -37,7 +37,7 @@
         <button class="btn" @click="scan()" :disabled="scanning">立即重新扫描</button>
       </div>
       <div class="progress" x-show="scanning"><i :style="'width:'+progress+'%'"></i></div>
-      <div class="muted mt" x-show="scanning" x-text="'进度：' + progress + '%'"></div>
+      <div class="muted mt" x-show="scanning" x-text="scanProgressText()"></div>
       <div class="muted mt" x-show="doneMsg" style="color:var(--special)" x-text="doneMsg"></div>
 
       <!-- 已注册路径列表（可删除） -->
@@ -349,6 +349,9 @@
     batchStopping: false,
     _batchTimer: null,
     _lastVer: -1,
+    scanTaskId: null,
+    _scanTimer: null,
+    _scanStatus: null,
     version: "",
     importDirHint() {
       if (this.cfg.importDir) return "已设置：导入 / 拖拽的图片将保存到「" + this.cfg.importDir + "」并自动入库。";
@@ -403,6 +406,12 @@
         });
       });
       Api.listFolders().then(function (f) { self.scanned = f; });
+      Api.activeScan().then(function (task) {
+        if (task && task.task_id) { self.attachScan(task); return; }
+        var savedId = null;
+        try { savedId = localStorage.getItem("am-scan-task-id"); } catch (e) {}
+        if (savedId) Api.scanStatus(savedId).then(function (last) { self.applyScanStatus(last); }).catch(function () {});
+      }).catch(function () {});
       // 版本号水印（右下角）：版本单一来源为后端 /api/health（app.version），离线回退本地常量
       Api.getHealth().then(function (h) { self.version = (h && h.version) || "1.0.0"; });
       // 点击任意下拉框外部时关闭厂商下拉（共享 vendorOpen 状态，不能逐项用 @click.outside）
@@ -429,6 +438,7 @@
         self.cfg.scanRoots = r.roots || self.cfg.scanRoots;
         self.newRoot = "";
         self.doneMsg = "已添加，正在后台扫描，图库稍后自动刷新。";
+        if (r.scan && r.scan.task_id) self.attachScan(r.scan);
         Api.listFolders().then(function (f) { self.scanned = f; });
       }).catch(function (e) {
         self.doneMsg = "添加失败：" + (e && e.message ? e.message : e);
@@ -510,19 +520,62 @@
       var self = this;
       if (!this.cfg.scanRoots.length) { this.doneMsg = "请先添加图片目录"; return; }
       this.scanning = true; this.progress = 0; this.doneMsg = "";
-      var body = this._body(); body.scan = true;
-      Api.updateSettings(body).then(function (r) {
-        self.scanning = false; self.progress = 100;
-        var s = r.scan || {};
-        self.doneMsg = "扫描完成：新增 " + s.new + "，更新 " + s.updated + "，跳过 " + s.skipped +
-          "，移除 " + s.removed + "（解析 " + s.parsed + "）。" +
-          (s.invalid && s.invalid.length ? " 无效目录:" + s.invalid.join(";") : "") +
-          (s.errors && s.errors.length ? " 错误:" + s.errors.join(";") : "");
-        Api.listFolders().then(function (f) { self.scanned = f; });
+      this.scanTaskId = null; this._scanStatus = null;
+      Api.updateSettings({ scanRoots: this.cfg.scanRoots }).then(function () {
+        return Api.startScan();
+      }).then(function (task) {
+        self.attachScan(task);
       }).catch(function (e) {
         self.scanning = false;
         self.doneMsg = "扫描失败：" + (e && e.message ? e.message : e);
       });
+    },
+    attachScan(task) {
+      if (!task || !task.task_id) return;
+      this.scanTaskId = task.task_id;
+      try { localStorage.setItem("am-scan-task-id", String(task.task_id)); } catch (e) {}
+      this.applyScanStatus(task);
+      if (task.status === "completed" || task.status === "failed") return;
+      if (this._scanTimer) clearInterval(this._scanTimer);
+      var self = this;
+      this._scanTimer = setInterval(function () { self.pollScan(); }, 700);
+      this.pollScan();
+    },
+    applyScanStatus(task) {
+      this._scanStatus = task;
+      this.scanTaskId = task.task_id;
+      var total = (task.files_total || 0) | 0;
+      var done = (task.files_done || 0) | 0;
+      var terminal = task.status === "completed" || task.status === "failed";
+      this.scanning = !terminal;
+      this.progress = terminal ? (task.status === "completed" ? 100 : this.progress) :
+        (total ? Math.min(99, Math.floor(done / total * 100)) : 0);
+      if (!terminal) return;
+      if (this._scanTimer) { clearInterval(this._scanTimer); this._scanTimer = null; }
+      var s = task.stats || {};
+      var msg = task.status === "failed" ? "扫描失败。" :
+        "扫描完成：新增 " + s.new + "，更新 " + s.updated + "，跳过 " + s.skipped +
+        "，移除 " + s.removed + "（解析 " + s.parsed + "）。";
+      if (task.errors && task.errors.length) msg += " 错误 " + task.errors.length + " 条：" + task.errors.slice(0, 3).join("；");
+      this.doneMsg = msg;
+      var self = this;
+      Api.listFolders().then(function (f) { self.scanned = f; });
+    },
+    pollScan() {
+      var self = this;
+      if (!this.scanTaskId) return;
+      Api.scanStatus(this.scanTaskId).then(function (task) { self.applyScanStatus(task); }).catch(function (e) {
+        if (self._scanTimer) { clearInterval(self._scanTimer); self._scanTimer = null; }
+        self.scanning = false;
+        self.doneMsg = "无法读取扫描进度：" + ((e && e.message) || e) + "。如服务刚重启，请重新发起扫描。";
+      });
+    },
+    scanProgressText() {
+      var task = this._scanStatus;
+      if (!task || task.phase === "counting") return "正在统计图片…";
+      return "已处理 " + (task.files_done || 0) + " / " + (task.files_total || 0) +
+        " 张 · 目录 " + (task.roots_done || 0) + " / " + (task.roots_total || 0) +
+        (task.current_file ? " · " + task.current_file.split(/[\\/]/).pop() : "");
     },
     testLLM() {
       var self = this;

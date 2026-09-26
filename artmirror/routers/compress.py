@@ -6,16 +6,15 @@ compress_mode=overwrite 时在原路径覆盖为 .jpg；=new（默认）时写�
 from __future__ import annotations
 
 import os
-import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..config import settings
-from ..database import get_engine, get_session
+from ..database import get_session
 from ..models import ImageAsset, Setting
-from ..services import compress as compress_svc, scanner, watcher
+from ..services import compress as compress_svc, scanner, watcher, scan_tasks
 from .images import _move_to_trash
 
 router = APIRouter(prefix="/api/images", tags=["compress"])
@@ -38,19 +37,7 @@ def _import_dir(session: Session) -> Path:
 
 def _background_scan(root: Path) -> None:
     """后台扫描目录，有变动则递增同步版本号（独立线程，异常不抛出）。"""
-
-    def _run():
-        try:
-            from sqlmodel import Session as _S
-
-            with _S(get_engine()) as session:
-                stats = scanner.scan(session, root)
-                if stats.new or stats.updated or stats.removed:
-                    watcher.bump()
-        except Exception:  # noqa: BLE001
-            pass
-
-    threading.Thread(target=_run, daemon=True).start()
+    scan_tasks.request_scan([root], source="compress")
 
 
 def _unique_path(root: Path, stem: str) -> Path:
@@ -102,6 +89,8 @@ def _compress_one(session: Session, im: ImageAsset) -> dict:
         # 覆盖后立刻更新 DB 记录：名称/路径/大小，前端可即时展示
         im.file_name = target.name
         im.abs_path = str(target)
+        im.file_path = (Path(im.file_path).with_name(target.name)).as_posix()
+        im.path_key = scanner.normalize_path_key(str(target))
         if target.is_file():
             im.file_size = target.stat().st_size
         session.add(im)

@@ -1,6 +1,6 @@
 """图片扫描与入库服务。
 
-递归扫描多个配置根目录，sha256 去重、mtime+size 增量更新、生成缩略图，
+递归扫描多个配置根目录，按规范化物理路径识别资产，mtime+size 增量更新并缓存缩略图，
 并把 ComfyUI meta 解析后落库；对已消失文件做软删除。
 """
 from __future__ import annotations
@@ -11,27 +11,24 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from PIL import Image
 from sqlmodel import Session, select
-from sqlalchemy.exc import IntegrityError
 
 from ..config import settings
 from ..models import Folder, ImageAsset, Setting, WorkflowMeta
 from ..parsers.comfyui_parser import parse_bytes
+from ..database import normalize_path_key as normalize_path_key_db
 from . import meta_service
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 THUMB_SIZE = (480, 600)
 
 
-def _meta_missing_prompt(session: Session, image_id: int) -> bool:
-    """该图已有 workflowmeta 但提示词为空：说明入库时用旧解析器未提取出提示词，
-    文件未变也应重新解析一次补齐（增强解析后 prompt 非空即不再触发）。"""
-    meta = session.exec(
-        select(WorkflowMeta).where(WorkflowMeta.image_id == image_id)
-    ).first()
-    return bool(meta and not (meta.prompt or "").strip())
+def normalize_path_key(path: str) -> str:
+    """规范化物理路径；Windows 路径按大小写不敏感处理。"""
+    return normalize_path_key_db(path)
 
 
 @dataclass
@@ -43,6 +40,9 @@ class ScanStats:
     skipped: int = 0
     removed: int = 0
     parsed: int = 0
+    files_total: int = 0
+    files_done: int = 0
+    current_file: str = ""
     errors: list[str] = field(default_factory=list)
 
     def merge(self, other: "ScanStats") -> "ScanStats":
@@ -51,6 +51,8 @@ class ScanStats:
         self.skipped += other.skipped
         self.removed += other.removed
         self.parsed += other.parsed
+        self.files_total += other.files_total
+        self.files_done += other.files_done
         self.errors.extend(other.errors)
         return self
 
@@ -106,14 +108,6 @@ def _under_prefix(path, prefixes: list[str]) -> bool:
     return any(p == pre or p.startswith(pre + "/") for pre in prefixes)
 
 
-def scan_all(session: Session, roots: list[Path], *, reparse_missing: bool = True) -> ScanStats:
-    """依次扫描多个根目录，汇总统计。"""
-    total = ScanStats()
-    for root in roots:
-        total.merge(scan(session, root, reparse_missing=reparse_missing))
-    return total
-
-
 def add_root(session: Session, root: Path) -> ScanStats:
     """注册并扫描单个根目录（已去重）。"""
     return scan(session, root)
@@ -156,166 +150,188 @@ def _make_thumb(data: bytes) -> bytes:
         return out.getvalue()
 
 
-def _ensure_folders(session: Session, root: Path) -> dict[str, int]:
-    """扫描目录并建立 Folder 树，返回 {绝对目录路径: folder_id}。"""
-    root = Path(root).resolve()
-    mapping: dict[str, int] = {}
-    for f in session.exec(select(Folder)).all():
-        mapping[f.path] = f.id
-    for dirpath, dirnames, _ in os.walk(root):
-        abs_dir = str(Path(dirpath).resolve())
-        if abs_dir in mapping:
-            continue
-        parent_dir = str(Path(dirpath).parent.resolve())
-        parent_id = mapping.get(parent_dir)
-        f = Folder(name=Path(dirpath).name or root.name, path=abs_dir, parent_id=parent_id)
-        session.add(f)
-        session.flush()
-        mapping[abs_dir] = f.id
-    session.commit()
-    return mapping
-
-
-def scan(session: Session, root: Path, *, reparse_missing: bool = True) -> ScanStats:
-    """执行一次全量/增量扫描，返回统计。"""
+def scan(
+    session: Session,
+    root: Path,
+    *,
+    reparse_missing: bool = True,
+    progress: Callable[[ScanStats], None] | None = None,
+) -> ScanStats:
+    """执行一次扫描；先枚举并 stat 一次，再处理图片并按批次提交。"""
     stats = ScanStats()
     root = Path(root).resolve()
     if not root.is_dir():
         stats.errors.append(f"目录不存在: {root}")
         return stats
     settings.ensure_dirs()
-
-    # 注册在 root 之下的嵌套根目录：其子树由嵌套根自己扫描，父根跳过
     nested = _nested_root_prefixes(session, root)
-    folder_ids = _ensure_folders(session, root)
-    seen_paths: set[str] = set()
+    folder_rows = session.exec(select(Folder)).all()
+    folder_ids = {f.path: f.id for f in folder_rows}
+    manifest: list[tuple[Path, str, str, int, float]] = []
+    seen_keys: set[str] = set()
 
+    # One top-down walk builds the folder tree and captures one stat per image.
     for dirpath, dirnames, files in os.walk(root):
-        # 跳过隐藏目录
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames
+            if not d.startswith(".") and not (nested and _under_prefix(Path(dirpath) / d, nested))
+        ]
+        abs_dir = str(Path(dirpath).resolve())
+        if abs_dir not in folder_ids:
+            parent_dir = str(Path(dirpath).parent.resolve())
+            folder = Folder(
+                name=Path(dirpath).name or root.name,
+                path=abs_dir,
+                parent_id=folder_ids.get(parent_dir),
+            )
+            session.add(folder)
+            session.flush()
+            folder_ids[abs_dir] = folder.id
         for name in files:
             if Path(name).suffix.lower() not in IMAGE_EXTS:
                 continue
             full = Path(dirpath) / name
             if nested and _under_prefix(full, nested):
-                continue  # 属于嵌套根目录，由嵌套根扫描
-            rel_norm = os.path.relpath(full, root).replace(os.sep, "/")
-            seen_paths.add(rel_norm)
-
-            existing = session.exec(
-                select(ImageAsset).where(
-                    ImageAsset.file_path == rel_norm, ImageAsset.is_deleted == 0
-                )
-            ).first()
-
-            mtime = full.stat().st_mtime
-            size = full.stat().st_size
-
-            # 已入库且文件未变时默认跳过；但若该图已有 workflowmeta 却缺提示词
-            # （旧解析器入库的遗留），仍重新解析一次补齐
-            needs_reparse = reparse_missing and existing is not None and _meta_missing_prompt(session, existing.id)
-            if existing and existing.file_size == size and abs(existing.file_mtime - mtime) < 1e-6 and not needs_reparse:
-                stats.skipped += 1
                 continue
+            rel_path = os.path.relpath(full, root).replace(os.sep, "/")
+            key = normalize_path_key(str(full))
+            seen_keys.add(key)
+            stats.files_total += 1
+            try:
+                st = full.stat()
+            except OSError as exc:
+                stats.errors.append(f"{full}: {exc}")
+                continue
+            manifest.append((full, rel_path, key, st.st_size, st.st_mtime))
+    stats.files_done = stats.files_total - len(manifest)
+    session.commit()
+    if progress:
+        progress(stats)
 
+    # Preload image rows and small metadata fields once, avoiding per-file selects.
+    all_images = session.exec(select(ImageAsset)).all()
+    images_by_key = {
+        im.path_key: im for im in all_images if im.path_key and not im.is_deleted
+    }
+    deleted_by_key: dict[str, ImageAsset] = {}
+    for image in all_images:
+        if image.path_key and image.is_deleted:
+            prev = deleted_by_key.get(image.path_key)
+            if prev is None or (image.update_time, image.id) > (prev.update_time, prev.id):
+                deleted_by_key[image.path_key] = image
+    metas = {
+        row.image_id: row
+        for row in session.exec(select(WorkflowMeta)).all()
+    }
+    pending = 0
+
+    for full, rel_path, key, size, mtime in manifest:
+        image = images_by_key.get(key)
+        if image is None:
+            image = deleted_by_key.get(key)
+        meta = metas.get(image.id) if image else None
+        needs_reparse = bool(
+            reparse_missing
+            and meta
+            and not (meta.prompt or "").strip()
+            and (meta.parser_revision or 0) < meta_service.PARSER_REVISION
+        )
+        unchanged = bool(
+            image
+            and image.file_size == size
+            and abs((image.file_mtime or 0) - mtime) < 1e-6
+        )
+        if unchanged and image.is_deleted == 0 and not needs_reparse:
+            stats.skipped += 1
+        else:
             try:
                 data = full.read_bytes()
                 sha = _hash_bytes(data)
-            except OSError as exc:
-                stats.errors.append(str(exc))
-                continue
+                result = parse_bytes(data)
+                thumb_path = settings.thumbs_dir / f"{sha}.webp"
+                if thumb_path.is_file():
+                    thumb_ok = 1
+                else:
+                    try:
+                        thumb_path.write_bytes(_make_thumb(data))
+                        thumb_ok = 1
+                    except Exception:  # noqa: BLE001
+                        thumb_ok = 0
 
-            # sha 去重：同内容不再入库
-            dup = session.exec(
-                select(ImageAsset).where(
-                    ImageAsset.sha256 == sha,
-                    ImageAsset.file_path != rel_norm,
-                    ImageAsset.is_deleted == 0,
-                )
-            ).first()
-
-            result = parse_bytes(data)
-            thumb_path = settings.thumbs_dir / f"{sha}.webp"
-            try:
-                thumb_bytes = _make_thumb(data)
-                thumb_path.write_bytes(thumb_bytes)
-                thumb_ok = 1
-            except Exception:  # noqa: BLE001
-                thumb_ok = 0
-
-            try:
-                if existing is None and dup is None:
-                    image = ImageAsset(
-                        folder_id=folder_ids.get(str(Path(full).parent)),
-                        file_name=full.name,
-                        file_path=rel_norm,
-                        abs_path=str(full),
-                        sha256=sha,
-                        width=result.width,
-                        height=result.height,
-                        file_size=size,
-                        file_mtime=mtime,
-                        thumb_ok=thumb_ok,
-                    )
-                    session.add(image)
+                is_new = image is None
+                with session.begin_nested():
+                    if is_new:
+                        image = ImageAsset(
+                            folder_id=folder_ids.get(str(full.parent.resolve())),
+                            file_name=full.name,
+                            file_path=rel_path,
+                            abs_path=str(full),
+                            path_key=key,
+                        )
+                        session.add(image)
+                    else:
+                        image.folder_id = folder_ids.get(str(full.parent.resolve()))
+                        image.file_name = full.name
+                        image.file_path = rel_path
+                        image.abs_path = str(full)
+                        image.path_key = key
+                        image.is_deleted = 0
+                    image.sha256 = sha
+                    image.width = result.width
+                    image.height = result.height
+                    image.file_size = size
+                    image.file_mtime = mtime
+                    image.thumb_ok = thumb_ok
                     session.flush()
                     if result.prompt_graph or result.workflow:
                         meta_service.ingest(session, image, result)
                         stats.parsed += 1
+                    elif meta and needs_reparse:
+                        meta.parser_revision = meta_service.PARSER_REVISION
+                    session.flush()
+                pending += 1
+                if is_new:
+                    images_by_key[key] = image
                     stats.new += 1
                 else:
-                    if existing is None:
-                        existing = dup
-                    existing.file_name = full.name
-                    existing.abs_path = str(full)
-                    existing.width = result.width
-                    existing.height = result.height
-                    existing.file_size = size
-                    existing.file_mtime = mtime
-                    existing.thumb_ok = thumb_ok
-                    existing.sha256 = sha
-                    existing.is_deleted = 0
-                    if result.prompt_graph or result.workflow:
-                        meta_service.ingest(session, existing, result)
-                        stats.parsed += 1
                     stats.updated += 1
-                session.commit()
-            except IntegrityError:
-                # 并发扫描（watcher / 后台扫描同时进行）导致另一事务刚插入了同 file_path：
-                # 回滚本次写入，改按“更新”重查并更新该行，避免 UNIQUE 冲突中断整个扫描。
-                session.rollback()
-                row = session.exec(
-                    select(ImageAsset).where(ImageAsset.file_path == rel_norm)
-                ).first()
-                if row is not None:
-                    row.file_name = full.name
-                    row.abs_path = str(full)
-                    row.width = result.width
-                    row.height = result.height
-                    row.file_size = size
-                    row.file_mtime = mtime
-                    row.thumb_ok = thumb_ok
-                    row.sha256 = sha
-                    row.is_deleted = 0
-                    if result.prompt_graph or result.workflow:
-                        meta_service.ingest(session, row, result)
-                        stats.parsed += 1
-                    session.commit()
-                    stats.updated += 1
-                else:
-                    stats.errors.append(f"并发冲突: {rel_norm}")
+            except Exception as exc:  # noqa: BLE001 — 单图失败不阻断整轮扫描
+                stats.errors.append(f"{full}: {exc}")
 
-    # 软删：库中在根内但本次未扫描到的
-    root_prefix = str(root.resolve()).rstrip("/")
-    for im in session.exec(
-        select(ImageAsset).where(
-            ImageAsset.is_deleted == 0, ImageAsset.abs_path.like(f"{root_prefix}%")
-        )
-    ).all():
-        if im.file_path not in seen_paths:
-            if nested and _under_prefix(im.abs_path, nested):
-                continue  # 属于嵌套根目录，不由父根软删
-            im.is_deleted = 1
+        stats.files_done += 1
+        stats.current_file = str(full)
+        if progress:
+            progress(stats)
+        if pending >= 50:
+            session.commit()
+            pending = 0
+
+    if pending:
+        session.commit()
+
+    root_key = normalize_path_key(str(root)).rstrip("\\/")
+    prefix = root_key + ("\\" if "\\" in root_key else "/")
+    for image in session.exec(select(ImageAsset).where(ImageAsset.is_deleted == 0)).all():
+        image_key = image.path_key or normalize_path_key(image.abs_path)
+        if image_key.startswith(prefix) and image_key not in seen_keys:
+            if nested and _under_prefix(image.abs_path, nested):
+                continue
+            image.is_deleted = 1
             stats.removed += 1
     session.commit()
     return stats
+
+
+def scan_all(
+    session: Session,
+    roots: list[Path],
+    *,
+    reparse_missing: bool = True,
+    progress: Callable[[Path, ScanStats], None] | None = None,
+) -> ScanStats:
+    """依次扫描多个根目录，汇总统计。"""
+    total = ScanStats()
+    for root in roots:
+        callback = (lambda stats, root=root: progress(root, stats)) if progress else None
+        total.merge(scan(session, root, reparse_missing=reparse_missing, progress=callback))
+    return total

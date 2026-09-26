@@ -6,9 +6,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from sqlmodel import Session, select
 
 from ..config import settings as env_settings
-from ..database import get_engine, get_session
+from ..database import get_session
 from ..models import Setting
-from ..services import scanner, watcher
+from ..services import scanner, watcher, scan_tasks
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -90,21 +90,14 @@ def _role_vendor_config(session: Session, role: str, vendor: str) -> dict:
 
 
 def _background_scan(root: str) -> None:
-    """后台扫描单个根目录（独立会话），有变动则递增同步版本号。"""
-    try:
-        with Session(get_engine()) as session:
-            stats = scanner.scan(session, Path(root))
-            if stats.new or stats.updated or stats.removed:
-                watcher.bump()
-    except Exception:  # noqa: BLE001
-        pass
+    """把导入等后台触发的扫描交给统一协调器。"""
+    scan_tasks.request_scan([Path(root)], source="background")
 
 
 @router.post("/roots")
 def add_scan_root(
     body: dict,
     session: Session = Depends(get_session),
-    bg: BackgroundTasks = BackgroundTasks(),
 ):
     """注册一个图片目录（仅登记引用路径），随后后台扫描入库，接口立即返回。"""
     path = (body.get("path") or "").strip()
@@ -120,13 +113,37 @@ def add_scan_root(
         roots.append(root)
         scanner.save_scan_roots(session, [str(r) for r in roots])
 
-    bg.add_task(_background_scan, str(root))
+    task = scan_tasks.request_scan([root], source="add-root")
     watcher.bump()
     return {
         "saved": True,
         "roots": [str(r) for r in scanner.get_scan_roots(session)],
-        "scan": {"pending": True},
+        "scan": task,
     }
+
+
+@router.post("/scans")
+def start_scan(session: Session = Depends(get_session)):
+    """异步启动全部已注册图片目录的扫描。"""
+    roots = scanner.get_scan_roots(session)
+    if not roots:
+        raise HTTPException(400, "请先配置有效的图片目录")
+    return scan_tasks.request_scan(roots, source="manual")
+
+
+@router.get("/scans/active")
+def active_scan():
+    """读取当前扫描任务，供页面刷新后恢复进度。"""
+    return scan_tasks.coordinator.active()
+
+
+@router.get("/scans/{task_id}")
+def scan_status(task_id: str):
+    """读取扫描任务状态。"""
+    status = scan_tasks.coordinator.status(task_id)
+    if status is None:
+        raise HTTPException(404, "扫描任务不存在或已过期")
+    return status
 
 
 @router.delete("/roots")
@@ -223,21 +240,9 @@ def update_settings(body: dict, session: Session = Depends(get_session)):
     result = {"saved": True}
     if body.get("scan"):
         roots = scanner.get_scan_roots(session)
-        invalid = [str(r) for r in roots if not Path(r).is_dir()]
         if not roots:
             raise HTTPException(400, "请先配置有效的图片目录")
-        stats = scanner.scan_all(session, roots)
-        if stats.new or stats.updated or stats.removed:
-            watcher.bump()
-        result["scan"] = {
-            "new": stats.new,
-            "updated": stats.updated,
-            "skipped": stats.skipped,
-            "removed": stats.removed,
-            "parsed": stats.parsed,
-            "invalid": invalid,
-            "errors": stats.errors,
-        }
+        result["scan"] = scan_tasks.request_scan(roots, source="settings")
     if body.get("test"):
         # 分别测试三个角色的连通性，逐个调用简单请求返回结果
         results = {}

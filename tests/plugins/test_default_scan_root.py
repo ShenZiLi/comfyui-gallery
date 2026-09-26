@@ -49,6 +49,8 @@ def test_default_scan_root_added():
             roots = list(scanner.get_scan_roots(session))
             assert len(roots) == 1
             assert Path(roots[0]).resolve() == out.resolve()
+        db.reset_engine()
+        db.reset_engine()
 
 
 def test_default_scan_root_keeps_existing():
@@ -67,6 +69,8 @@ def test_default_scan_root_keeps_existing():
             roots = list(scanner.get_scan_roots(session))
             assert len(roots) == 1
             assert Path(roots[0]).resolve() == existing.resolve()
+        db.reset_engine()
+        db.reset_engine()
 
 
 def test_default_scan_root_skips_missing_output():
@@ -91,3 +95,5 @@ def test_default_scan_root_skips_missing_output():
         from artmirror.services import scanner
         with next(db.get_session()) as session:
             assert list(scanner.get_scan_roots(session)) == []
+        db.reset_engine()
+        db.reset_engine()

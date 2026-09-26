@@ -9,7 +9,7 @@ import threading
 from sqlmodel import Session
 
 from ..database import get_engine
-from . import scanner
+from . import scanner, scan_tasks
 
 SYNC_INTERVAL = 20.0  # 秒：降低频率，避免常驻占用与阻塞用户操作
 _version = 0
@@ -17,7 +17,6 @@ _auto_version = 0
 _ver_lock = threading.Lock()
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None
-_scanning = threading.Lock()  # 跳过重叠扫描，避免无限堆积
 
 
 def get_version() -> int:
@@ -50,21 +49,14 @@ def _bump() -> None:
 def _loop() -> None:
     """循环扫描；新增图片提示，只有更新/移除则自动刷新。"""
     while not _stop_event.is_set():
-        if _scanning.acquire(blocking=False):  # 上一次扫描未结束则跳过本轮
-            try:
-                with Session(get_engine()) as session:
-                    roots = scanner.get_scan_roots(session)
-                    if roots:
-                        # 旧图可能合法地没有提示词；定时扫描不重复重解析未变化的文件。
-                        stats = scanner.scan_all(session, roots, reparse_missing=False)
-                        if stats.new:
-                            _bump()
-                        elif stats.updated or stats.removed:
-                            bump()
-            except Exception:  # noqa: BLE001
-                pass
-            finally:
-                _scanning.release()
+        try:
+            with Session(get_engine()) as session:
+                roots = scanner.get_scan_roots(session)
+            if roots:
+                # 协调器忙碌时 watcher 请求被丢弃，本轮不会与其他扫描重叠。
+                scan_tasks.request_scan(roots, source="watcher", reparse_missing=False)
+        except Exception:  # noqa: BLE001
+            pass
         _stop_event.wait(SYNC_INTERVAL)
 
 
