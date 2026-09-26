@@ -7,6 +7,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Column,
+    DateTime,
     ForeignKey,
     Integer,
     Text,
@@ -21,8 +22,8 @@ class BaseModel(SQLModel):
     """公共字段基类。"""
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    create_time: datetime = Field(default_factory=now)
-    update_time: datetime = Field(default_factory=now)
+    create_time: datetime = Field(default_factory=now, sa_type=DateTime(timezone=False))
+    update_time: datetime = Field(default_factory=now, sa_type=DateTime(timezone=False))
     is_deleted: int = Field(default=0)
 
 
@@ -53,7 +54,7 @@ class ImageAsset(BaseModel, table=True):
     file_size: int = Field(default=0)
     file_mtime: float = Field(default=0.0)
     thumb_ok: int = Field(default=0)
-    scan_time: datetime = Field(default_factory=now)
+    scan_time: datetime = Field(default_factory=now, sa_type=DateTime(timezone=False))
     prompt_type: str = Field(default="none")  # none / origin / reverse
     rating: Optional[float] = Field(default=None)      # 人工评分 1-5
     ai_rating: Optional[float] = Field(default=None)   # AI 评分 0-100
