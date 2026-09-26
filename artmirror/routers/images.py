@@ -238,8 +238,21 @@ def _split_translation(text: str) -> list[str]:
 
 
 def _detect_target_lang(text: str) -> str:
-    """含中文则互译为英文，否则译为中文。"""
-    return "en" if re.search(r"[\u4e00-\u9fff]", text) else "zh"
+    """按主要语言确定互译方向；少量另一语言术语不改变方向。"""
+    chinese = len(re.findall(r"[\u4e00-\u9fff]", text))
+    english_words = len(re.findall(r"[A-Za-z]+", text.replace("<<<SEG>>>", "")))
+    return "en" if chinese > 0 and chinese >= english_words * 2 else "zh"
+
+
+def _clear_translations(session: Session, image_id: int, kind: str) -> None:
+    """源提示词改变后清除对应的旧译文。"""
+    for row in session.exec(
+        select(PromptTranslation).where(
+            PromptTranslation.image_id == image_id,
+            PromptTranslation.prompt_kind == kind,
+        )
+    ).all():
+        session.delete(row)
 
 
 @router.post("/{image_id}/translate")
@@ -264,7 +277,7 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
             PromptTranslation.lang == target,
         )
     ).first()
-    if exists is not None:
+    if exists is not None and llm.translation_matches_target(exists.text, target, src):
         return {"texts": _split_translation(exists.text), "lang": target, "cached": True}
 
     try:
@@ -272,7 +285,8 @@ def translate_prompt_image(image_id: int, body: dict, session: Session = Depends
     except llm.LLMError as exc:
         raise HTTPException(502, str(exc))
     texts = _split_translation(translated)
-    row = PromptTranslation(image_id=im.id, prompt_kind=kind, lang=target, text=_SEG.join(texts))
+    row = exists or PromptTranslation(image_id=im.id, prompt_kind=kind, lang=target)
+    row.text = _SEG.join(texts)
     session.add(row)
     session.commit()
     return {"texts": texts, "lang": target, "cached": False}
@@ -557,6 +571,7 @@ def reparse_models(image_id: int, session: Session = Depends(get_session)):
     meta.ai_prompt = _join_lines(prompts.get("positive"))
     meta.ai_negative_prompt = _join_lines(prompts.get("negative"))
     meta.ai_prompts_json = _dumps_list(prompts.get("positive"))
+    _clear_translations(session, im.id, "ai")
 
     meta_service.replace_asset_tags(session, im.id, assets)
     session.commit()
@@ -623,6 +638,7 @@ def _batch_ai_one(session: Session, im: ImageAsset, kind: str) -> None:
         rev.engine = "vision"
         rev.model_name = _vision_model_name(session)
         im.prompt_type = "reverse"
+        _clear_translations(session, im.id, "reverse")
     elif kind == "score":
         res = llm.score_image(im.abs_path, session)
         im.ai_rating = res["score"]
@@ -804,6 +820,7 @@ def reverse_prompt(image_id: int, session: Session = Depends(get_session)):
     reverse.engine = "vision"
     reverse.model_name = _vision_model_name(session)
     im.prompt_type = "reverse"
+    _clear_translations(session, im.id, "reverse")
     session.commit()
     return {"text": text, "reversePrompt": text}
 
@@ -947,6 +964,8 @@ def update_image_prompt(image_id: int, body: dict, session: Session = Depends(ge
             session.add(row)
         row.text = _SEG.join(texts)
 
+    if target != "translation":
+        _clear_translations(session, im.id, target)
     session.commit()
     watcher.bump()  # 提示词变化须让图库页轮询刷新（返回 gallery 立即生效）
     return to_detail(session, im)

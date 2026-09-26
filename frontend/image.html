@@ -610,20 +610,12 @@
       var im = this.im;
       if (!im || this.trIng) return;
       var kind = im._src;
-      // 翻译前捕获原序原文，翻译后按原文展示顺序对齐译文
-      var srcRaw = self._srcRawList(im, kind);
-      // 已有持久化译文：直接切换显示，不再请求 AI
-      var stored = (im.translations && im.translations[kind]) || {};
-      var langs = Object.keys(stored);
-      var lang = null;
-      if (langs.length) {
-        lang = langs[0];
-        self.trTexts = self._alignSegs(srcRaw, self._splitSegs(stored[lang]));
-        self.trSrc = kind;
-        self.trLang = lang;
-        self.trOn = !(self.trOn && self.trSrc === kind);
+      if (this.trOn && this.trSrc === kind) {
+        this.trOn = false;
         return;
       }
+      // 翻译前捕获原序原文，翻译后按原文展示顺序对齐译文
+      var srcRaw = self._srcRawList(im, kind);
       this.trIng = true; this.pErr = "";
       Api.translatePrompt(im.id, kind).then(function (d) {
         im.translations = im.translations || {};
