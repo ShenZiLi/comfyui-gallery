@@ -145,6 +145,8 @@ TEXT_SOURCE_NODES = {
     "PrimitiveNode", "StringPrimitive", "easy getNode", "easy setNode",
     "CR Text", "ShowText", "ShowText|pysssss",
     "JjkText",  # krea2-muse 等用其承载正向提示词（文本存于 inputs.text 或 string）
+    "PrimitiveStringMultiline",  # rgthree/comfy 原生字符串原语（文本存于 inputs.value）
+    "TE_text_display",  # TE-Speed 模板文本展示节点（inputs.text，可被 input_text 连线覆盖）
 }
 
 # 可穿越的传递/开关节点：沿其输入连线继续回溯文本源。
@@ -153,12 +155,61 @@ TEXT_SOURCE_NODES = {
 # 装饰节点不参与，避免把说明文字当提示词。
 PASSTHROUGH_NODES = {
     "Any Switch", "Any Switch (rgthree)",
+    "ComfySwitchNode",  # rgthree MATHS/node 新版开关（on_false/on_true 择一透传）
     "easy getNode", "easy setNode", "easy anythingEverywhere",
     "Fast Bypasser (rgthree)", "Bypasser (rgthree)", "Fast Groups Bypasser (rgthree)",
 }
 
 # 文本联结节点：把多个文本输入拼成一条提示词（只拼在用的文本）
-TEXT_MERGE_NODES = {"CR Text Concatenate"}
+TEXT_MERGE_NODES = {"CR Text Concatenate", "StringConcatenate"}
+
+# conditioning 编码节点：正向文本存于首个文本输入引脚，负向存于专用键。
+# 与 TEXT_SOURCE_NODES 分开处理——不能走通用 text 键路径（其正向键名是 prompt）。
+COND_ENCODER_PROMPT_NODES = {
+    "TextEncodeQwenImage21": ("prompt", "negative_prompt"),
+}
+
+
+def _merge_texts(node: dict, graph: dict, depth: int) -> str:
+    """按联结节点的输入键约定拼接文本。"""
+    inputs = node.get("inputs", {})
+    if not isinstance(inputs, dict):
+        return ""
+    cls = node.get("class_type", "")
+
+    def resolve(v):
+        return _resolve_text(v, graph, depth + 1) if isinstance(v, list) else (
+            str(v).strip() if isinstance(v, str) else ""
+        )
+
+    if cls == "StringConcatenate":
+        parts = [t for t in (resolve(inputs.get("string_a")), resolve(inputs.get("string_b"))) if t]
+    else:  # CR Text Concatenate：text1..text10
+        parts = [t for t in (resolve(inputs.get(f"text{i}")) for i in range(1, 11)) if t]
+    if not parts:
+        return ""
+    sep = inputs.get("delimiter") or inputs.get("separator")
+    sep = sep if isinstance(sep, str) and sep else ", "
+    return sep.join(parts)
+
+
+def _resolve_negative_key(val, neg_key: str, graph: dict, depth: int = 0) -> str:
+    """采样器 negative 引脚指向 conditioning 编码节点输出时，取该节点的负向文本键。"""
+    if not (isinstance(val, list) and val and isinstance(val[0], str)):
+        return ""
+    node = graph.get(val[0])
+    if not isinstance(node, dict):
+        return ""
+    spec = COND_ENCODER_PROMPT_NODES.get(node.get("class_type", ""))
+    if not spec or spec[1] != neg_key:
+        return ""
+    inputs = node.get("inputs", {})
+    if not isinstance(inputs, dict):
+        return ""
+    v = inputs.get(neg_key)
+    if isinstance(v, str):
+        return v.strip()
+    return _resolve_text(v, graph, depth + 1)
 
 
 def _merge_source_texts(graph: dict) -> set[str]:
@@ -171,8 +222,11 @@ def _merge_source_texts(graph: dict) -> set[str]:
         inputs = n.get("inputs", {})
         if not isinstance(inputs, dict):
             continue
-        for i in range(1, 11):
-            v = inputs.get(f"text{i}")
+        keys = ("string_a", "string_b") if n["class_type"] == "StringConcatenate" else tuple(
+            f"text{i}" for i in range(1, 11)
+        )
+        for key in keys:
+            v = inputs.get(key)
             t = _resolve_text(v, graph, 0) if isinstance(v, list) else (
                 str(v).strip() if isinstance(v, str) else ""
             )
@@ -220,12 +274,10 @@ def extract_prompt_lists(graph: dict) -> dict:
     cond_nodes.sort(key=lambda x: x[0])
     for _rank, nid, n in cond_nodes:
         inputs = n.get("inputs", {})
-        if n.get("class_type", "") in SAMPLER_POS_NEG:
+        if n.get("class_type", "") in SAMPLER_POS_NEG or n.get("class_type", "") in GUIDER_NODES:
             add_pos(_resolve_text(inputs.get("positive"), graph))
-            add_neg(_resolve_text(inputs.get("negative"), graph))
-        elif n.get("class_type", "") in GUIDER_NODES:
-            add_pos(_resolve_text(inputs.get("positive"), graph))
-            add_neg(_resolve_text(inputs.get("negative"), graph))
+            neg_v = inputs.get("negative")
+            add_neg(_resolve_negative_key(neg_v, "negative_prompt", graph) or _resolve_text(neg_v, graph))
 
     # 2) 补充未被命中的文本节点（启发式正负）
     #    文本联结（CR Text Concatenate）的输入源，其文本已并入拼接结果，
@@ -238,7 +290,7 @@ def extract_prompt_lists(graph: dict) -> dict:
         if cls not in TEXT_SOURCE_NODES:
             continue
         inputs = n.get("inputs", {})
-        t = _resolve_text(inputs.get("text"), graph) if isinstance(inputs, dict) else ""
+        t = _node_text(n, graph, 0) if isinstance(inputs, dict) else ""
         t = (t or "").strip()
         if not t:
             continue
@@ -273,19 +325,17 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
         return ""
     cls = node.get("class_type", "")
 
-    # 文本联结节点：把 text1..text10 按 separator 拼成一条（只拼在用的）
+    # 文本联结节点：按各节点输入键约定拼成一条（只拼在用的）
     if cls in TEXT_MERGE_NODES:
-        parts: list[str] = []
-        for i in range(1, 11):
-            v = inputs.get(f"text{i}")
-            r = _resolve_text(v, graph, depth + 1) if isinstance(v, list) else (str(v).strip() if isinstance(v, str) else "")
-            if r:
-                parts.append(r)
-        if not parts:
-            return ""
-        sep = inputs.get("separator")
-        sep = sep if isinstance(sep, str) and sep else ", "
-        return sep.join(parts)
+        return _merge_texts(node, graph, depth)
+
+    # conditioning 编码节点（如 TextEncodeQwenImage21）：正向沿 prompt 引脚回溯
+    if cls in COND_ENCODER_PROMPT_NODES:
+        pos_key, _neg_key = COND_ENCODER_PROMPT_NODES[cls]
+        v = inputs.get(pos_key)
+        if isinstance(v, str):
+            return v.strip()
+        return _resolve_text(v, graph, depth + 1)
 
     if cls in TEXT_SOURCE_NODES:
         v = inputs.get("text")
@@ -296,7 +346,7 @@ def _node_text(node: dict, graph: dict, depth: int) -> str:
             if r:
                 return r
         # 某些源节点用其它键存文本
-        for key in ("string", "string_value", "text_value", "Constant"):
+        for key in ("string", "string_value", "text_value", "Constant", "value"):
             k = inputs.get(key)
             if isinstance(k, str) and k.strip():
                 return k.strip()
@@ -320,7 +370,11 @@ UI_TEXT_NODES = {
     "CR Text",
     "JjkText",
     "easy showAnything", "ShowText|pysssss",
+    "PrimitiveStringMultiline", "TE_text_display",
 }
+
+# UI 图 conditioning 编码节点：正向取首个 name==prompt 的输入，负向取专用键
+UI_COND_ENCODER_PROMPT_NODES = {"TextEncodeQwenImage21"}
 
 
 def _num_suffix(name: str) -> int:
@@ -386,7 +440,10 @@ def _extract_prompt_lists_ui(graph: dict) -> dict:
         if ntype not in SAMPLER_POS_NEG and ntype not in GUIDER_NODES:
             continue
         add_pos(_ui_trace_text(n, "positive", by_id, link_from))
-        add_neg(_ui_trace_text(n, "negative", by_id, link_from))
+        neg_t = _ui_trace_text(n, "negative", by_id, link_from)
+        if not neg_t:
+            neg_t = _ui_encoder_negative_text(n, by_id, link_from)
+        add_neg(neg_t)
 
     # 文本联结节点（UI）：其 text* 输入源作为「已并入拼接结果」，兜底不再单独收集。
     merge_child_ids: set[str] = set()
@@ -435,6 +492,27 @@ def _ui_trace_text(node: dict, input_name: str, by_id: dict, link_from: dict, de
     return ""
 
 
+def _ui_encoder_negative_text(node: dict, by_id: dict, link_from: dict) -> str:
+    """采样器 negative 连线指向 conditioning 编码节点时，取其负向专用键的连线/widget。"""
+    for inp in node.get("inputs") or []:
+        if not isinstance(inp, dict) or inp.get("name") != "negative":
+            continue
+        if inp.get("link") is not None:
+            src = by_id.get(str(link_from.get(int(inp["link"]))))
+            if isinstance(src, dict) and src.get("type", "") in UI_COND_ENCODER_PROMPT_NODES:
+                for ninp in src.get("inputs") or []:
+                    if isinstance(ninp, dict) and ninp.get("name") == "negative_prompt" and ninp.get("link") is not None:
+                        r = _ui_node_text(by_id.get(str(link_from.get(int(ninp["link"])))), by_id, link_from)
+                        if r:
+                            return r
+                wv = src.get("widgets_values")
+                # TextEncodeQwenImage21 widgets: [prompt(被连线清空), negative_prompt, resolution]
+                if isinstance(wv, list) and len(wv) > 1 and isinstance(wv[1], str):
+                    return wv[1].strip()
+        return ""
+    return ""
+
+
 def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
     """UI 图节点文本：文本源优先 text 输入连线，其次 widget 值；传递节点沿首个可解析输入回溯。"""
     if not node or depth > 14:
@@ -448,6 +526,28 @@ def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
         if node.get("mode") == 4:
             return ""
         parts: list[str] = []
+        # StringConcatenate：string_a/string_b + delimiter(widgets_values[0])
+        if ntype == "StringConcatenate":
+            ab = {}
+            for inp in inputs:
+                if not isinstance(inp, dict) or inp.get("link") is None:
+                    continue
+                name = str(inp.get("name") or "")
+                if name not in ("string_a", "string_b"):
+                    continue
+                src_id = link_from.get(int(inp["link"]))
+                src = by_id.get(str(src_id))
+                if isinstance(src, dict) and src.get("mode") == 4:
+                    continue
+                r = _ui_node_text(src, by_id, link_from, depth + 1)
+                if r:
+                    ab[name] = r
+            parts = [ab["string_a"], ab["string_b"]] if "string_a" in ab and "string_b" in ab else list(ab.values())
+            wv = node.get("widgets_values")
+            sep = ", "
+            if isinstance(wv, list) and len(wv) > 1 and isinstance(wv[1], str) and wv[1]:
+                sep = wv[1]
+            return sep.join(parts) if parts else ""
         # 按输入名排序保证顺序：text1, text2, ...（含可能缺失的中间号）
         merged = {}
         for inp in inputs:
@@ -481,7 +581,7 @@ def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
         for inp in inputs:
             if not isinstance(inp, dict):
                 continue
-            if inp.get("name") in ("text", "string", "text_value") and inp.get("link") is not None:
+            if inp.get("name") in ("text", "string", "text_value", "value") and inp.get("link") is not None:
                 src_id = link_from.get(int(inp["link"]))
                 if src_id is not None:
                     r = _ui_node_text(by_id.get(str(src_id)), by_id, link_from, depth + 1)
@@ -490,6 +590,15 @@ def _ui_node_text(node, by_id: dict, link_from: dict, depth: int = 0) -> str:
         for t in _ui_widget_texts(node):
             if t:
                 return t
+        return ""
+
+    # conditioning 编码节点（如 TextEncodeQwenImage21）：正向沿 prompt 输入连线回溯
+    if ntype in UI_COND_ENCODER_PROMPT_NODES:
+        for inp in inputs:
+            if not isinstance(inp, dict) or inp.get("name") != "prompt" or inp.get("link") is None:
+                continue
+            src_id = link_from.get(int(inp["link"]))
+            return _ui_node_text(by_id.get(str(src_id)), by_id, link_from, depth + 1)
         return ""
 
     # 传递 / 开关节点（Any Switch、easy getNode 等）沿输入回溯；其余节点（如

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     llm_text_model: str = ""    # 翻译 / AI 评分
     llm_embed_model: str = ""   # 相似提示词聚类（可选）
 
+    # 屏幕预览：限尺寸原图的最长边与 WebP 质量（详情大图/预览/放大镜共用）
+    view_max_dim: int = 2560
+    view_quality: int = 90
+
     frontend_dir: str = Field(default_factory=_resolve_default_frontend_dir)
 
     @property
@@ -42,10 +46,16 @@ class Settings(BaseSettings):
     def thumbs_dir(self) -> Path:
         return Path(self.data_dir) / "thumbs"
 
+    @property
+    def views_dir(self) -> Path:
+        """屏幕预览缓存（限尺寸原图），与缩略图分开放，便于单独清理。"""
+        return Path(self.data_dir) / "views"
+
     def ensure_dirs(self) -> None:
         """创建运行所需目录。"""
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
         self.thumbs_dir.mkdir(parents=True, exist_ok=True)
+        self.views_dir.mkdir(parents=True, exist_ok=True)
 
     def configure(self, **overrides) -> None:
         """运行时覆盖配置（双启动器注入：data_dir / frontend_dir 等，None 值跳过）。"""

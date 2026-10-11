@@ -297,3 +297,52 @@ def test_thumb_cache_control():
         r = client.get(f"/api/images/{image_id}/thumb")
         assert r.status_code == 200
         assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_view_serves_downscaled_copy():
+    """详情大图走 /view：原图被限尺寸转成 WebP 缓存，不把整张原图丢给渲染进程。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        src = Path(td) / "big.png"
+        from PIL import Image
+        Image.new("RGB", (4000, 3000), (10, 20, 30)).save(str(src), "PNG")
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            ims[0].abs_path = str(src)
+            ims[0].file_mtime = src.stat().st_mtime
+            ims[0].width, ims[0].height = 4000, 3000
+            s.add(ims[0])
+            s.commit()
+            image_id, sha = ims[0].id, ims[0].sha256
+
+        r = client.get(f"/api/images/{image_id}/view")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+        cached = list(settings.views_dir.glob(f"{sha}-*.webp"))
+        assert len(cached) == 1
+        with Image.open(cached[0]) as out:
+            assert max(out.size) == settings.view_max_dim
+        # 再请求一次：命中缓存，不再重写
+        mtime = cached[0].stat().st_mtime
+        assert client.get(f"/api/images/{image_id}/view").status_code == 200
+        assert cached[0].stat().st_mtime == mtime
+
+
+def test_view_falls_back_to_original_when_undecodable():
+    """解码失败（损坏/不支持的格式）时回退原图，不因预览失败让详情页空白。"""
+    with tempfile.TemporaryDirectory() as td:
+        client, engine = _setup(Path(td))
+        src = Path(td) / "broken.png"
+        src.write_bytes(b"not an image")
+        with Session(engine) as s:
+            ims = _seed(s, 1)
+            ims[0].abs_path = str(src)
+            ims[0].file_mtime = src.stat().st_mtime
+            s.add(ims[0])
+            s.commit()
+            image_id = ims[0].id
+
+        r = client.get(f"/api/images/{image_id}/view")
+        assert r.status_code == 200
+        assert r.content == b"not an image"
+        assert not list(settings.views_dir.glob("*.webp"))

@@ -3,6 +3,16 @@ import { app } from "../../scripts/app.js";
 // 记录所有 ArtMirror iframe，供拖拽期间的穿透处理使用
 const artmirrorFrames = [];
 
+function unmountArtMirror(el) {
+  // 卸载 tab 时把 iframe 从 DOM 摘掉：留在文档里的 iframe 会继续持有整个图库页面
+  // （图片缓存、定时轮询），tab 反复挂载就叠加多份。
+  for (const f of Array.from(el.querySelectorAll("iframe"))) {
+    const i = artmirrorFrames.indexOf(f);
+    if (i >= 0) artmirrorFrames.splice(i, 1);
+    f.remove();
+  }
+}
+
 function mountArtMirror(el) {
   // ComfyUI 0.33+ sidebar tab 内容区为 flex 子项，未必会传 height: 100% 给孙子。
   // 强制让父容器占满可填空间，iframe 自身用 absolute 撑满父容器，避免被外层尺寸压缩成一小条。
@@ -81,6 +91,7 @@ app.registerExtension({
         tooltip: "ArtMirror 图库",
         type: "custom",
         render: mountArtMirror,
+        destroy: unmountArtMirror,
       });
     } else if (app.extensionManager?.registerBottomPanelTab) {
       app.extensionManager.registerBottomPanelTab({
@@ -90,6 +101,7 @@ app.registerExtension({
         tooltip: "ArtMirror 图库",
         type: "custom",
         render: mountArtMirror,
+        destroy: unmountArtMirror,
       });
     }
   },

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import FileResponse
+from PIL import Image
 from sqlalchemy import case, exists, func
 from sqlmodel import Session, select
 
@@ -453,6 +454,37 @@ def thumb(image_id: int, session: Session = Depends(get_session)):
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
     raise HTTPException(404, "thumbnail not ready")
+
+
+@router.get("/{image_id}/view")
+def view(image_id: int, session: Session = Depends(get_session)):
+    """返回适合屏幕预览的原图（最长边不超过 VIEW_MAX_DIM）。
+
+    详情大图、预览弹窗、放大镜共用这一个端点：直接把几千万像素的原图丢给渲染
+    进程解码，单张就能占用上百 MB，顺手把 ComfyUI 的渲染进程顶崩。
+    下载/复制仍走 /file 拿原始文件。
+    """
+    im = session.get(ImageAsset, image_id)
+    if im is None or im.is_deleted:
+        raise HTTPException(404)
+    path = Path(im.abs_path)
+    if not path.is_file():
+        raise HTTPException(404)
+    key = f"{im.sha256}-{int(im.file_mtime)}"
+    cached = settings.views_dir / f"{key}.webp"
+    if not cached.is_file():
+        try:
+            settings.views_dir.mkdir(parents=True, exist_ok=True)
+            with Image.open(path) as img:
+                img.thumbnail((settings.view_max_dim, settings.view_max_dim))
+                img.convert("RGB").save(cached, format="WEBP", quality=settings.view_quality)
+        except Exception:  # noqa: BLE001  # 解码失败（格式不支持等）时回退原图
+            return FileResponse(path, filename=im.file_name)
+    # 按 sha256+mtime 内容寻址：原图未变则同一份预览永远有效
+    return FileResponse(
+        cached,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/{image_id}/file")

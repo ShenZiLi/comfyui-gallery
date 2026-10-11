@@ -8,7 +8,7 @@ from ..models import ImageAsset, ImageTag, Tag, WorkflowMeta
 from ..parsers.comfyui_parser import ParseResult
 from sqlmodel import Session, select
 
-PARSER_REVISION = 1
+PARSER_REVISION = 2
 
 
 def tag_category(asset_kind: str) -> str:

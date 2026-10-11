@@ -132,7 +132,7 @@
           <div class="thumb-wrap" @click="open(im.id)">
             <img :src="im.thumb" :alt="im.name" loading="lazy" draggable="true"
                  @dragstart="dragOut($event, im)"
-                 :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
+                 :data-orig="'api/images/'+im.id+'/view'" :data-thumb="im.thumb"
                  :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" />
           </div>
           <div class="info">
@@ -232,7 +232,7 @@
       <template x-for="im in images" :key="im.id">
         <div class="card img-card immersive-cell" :class="{'selected': isSel(im)}" :data-id="im.id" @click="open(im.id)" data-tip="点击查看详情">
           <div class="thumb-wrap"><img :src="im.thumb" :alt="im.name" loading="lazy"
-               :data-orig="'api/images/'+im.id+'/file'" :data-thumb="im.thumb"
+               :data-orig="'api/images/'+im.id+'/view'" :data-thumb="im.thumb"
                :style="'aspect-ratio:'+(im.width||1)+' / '+(im.height||1)" /></div>
         </div>
       </template>
@@ -379,7 +379,7 @@
     _groupsFolder: null,
     _imagesFolder: null,
     _searchFade: false,
-    hiRes: false, _hiIO: null,
+    hiRes: false, _hiIO: null, _origQueue: [], _origActive: false, _syncTimer: null,
     permModal: false, permMsg: "", permFiles: null,
     init() {
       App.initNav("gallery");
@@ -460,7 +460,13 @@
       this._updateHiRes();
       this._bindSelect();
       this.pollSync();
-      setInterval(function () { self.pollSync(); }, 3000);
+      // 页面被挂起/卸载时停掉轮询：iframe 被复用或随 tab 卸载后，残留的定时器会
+      // 继续对着已销毁的文档发请求。
+      if (this._syncTimer) clearInterval(this._syncTimer);
+      this._syncTimer = setInterval(function () { self.pollSync(); }, 3000);
+      window.addEventListener("pagehide", function () {
+        if (self._syncTimer) { clearInterval(self._syncTimer); self._syncTimer = null; }
+      }, { once: true });
     },
     _initObservers() {
       var self = this;
@@ -500,12 +506,12 @@
       var imgs = document.querySelectorAll(".img-card img[data-orig]");
       if (!("IntersectionObserver" in window)) {
         // 降级：仅对接近视口的图片直接替换
-        imgs.forEach(function (img) { if (self._isNearViewport(img)) self._loadOrigImg(img); });
+        imgs.forEach(function (img) { if (self._isNearViewport(img)) self._wantOrig(img, true); });
         return;
       }
       if (this._hiIO) this._hiIO.disconnect();
       this._hiIO = new IntersectionObserver(function (ents) {
-        ents.forEach(function (en) { if (en.isIntersecting) self._loadOrigImg(en.target); });
+        ents.forEach(function (en) { self._wantOrig(en.target, en.isIntersecting); });
       }, { rootMargin: "400px 0px" });
       imgs.forEach(function (img) { self._hiIO.observe(img); });
     },
@@ -513,26 +519,59 @@
       var r = el.getBoundingClientRect();
       return r.top < window.innerHeight + 400 && r.bottom > -400;
     },
-    _loadOrigImg(img) {
+    // 原图按需替换：串行拉取 + 离开视口即换回缩略图。
+    // 渲染进程里一张 4640×7744 的 PNG 解码后约 137MB，一屏 60 张同时挂着原图会直接把
+    // ComfyUI 的渲染进程顶爆，所以这里把「同时挂着的原图」压到视口内那几张。
+    _wantOrig(img, want) {
+      img._origWant = want;
+      if (!want) { this._dropOrig(img); return; }
       if (img._origLoaded || img._origLoading) return;
-      var url = img.getAttribute("data-orig");
-      if (!url) return;
+      if (!img.getAttribute("data-orig")) return;
       img._origLoading = true;
+      this._origQueue.push(img);
+      this._pumpOrig();
+    },
+    _dropOrig(img) {
+      var q = this._origQueue.indexOf(img);
+      if (q >= 0) this._origQueue.splice(q, 1);
+      if (!img._origLoaded) return;
+      img._origLoaded = false;
+      var t = img.getAttribute("data-thumb");
+      if (t && img.getAttribute("src") !== t) img.setAttribute("src", t);
+    },
+    _pumpOrig() {
+      if (this._origActive) return;
+      var img = this._origQueue.shift();
+      if (!img) return;
+      if (!img.isConnected || !img._origWant) { img._origLoading = false; this._pumpOrig(); return; }
+      var url = img.getAttribute("data-orig");
+      var self = this;
+      this._origActive = true;
       var i = new Image();
-      i.onload = function () {
+      var done = function () {
         img._origLoading = false;
-        img._origLoaded = true;
-        if (img.getAttribute("src") !== url) img.setAttribute("src", url);
+        self._origActive = false;
+        self._pumpOrig();
       };
-      i.onerror = function () { img._origLoading = false; };
+      i.onload = function () {
+        if (img.isConnected && img._origWant && img.getAttribute("data-orig") === url) {
+          img._origLoaded = true;
+          if (img.getAttribute("src") !== url) img.setAttribute("src", url);
+        }
+        done();
+      };
+      i.onerror = done;
       i.src = url;
     },
     _restoreThumbs() {
       if (this._hiIO) { this._hiIO.disconnect(); this._hiIO = null; }
+      this._origQueue.length = 0;
       document.querySelectorAll(".img-card img[data-orig]").forEach(function (img) {
         var t = img.getAttribute("data-thumb");
         if (t && img.getAttribute("src") !== t) img.setAttribute("src", t);
         img._origLoaded = false;
+        img._origLoading = false;
+        img._origWant = false;
       });
     },
     pollSync() {
