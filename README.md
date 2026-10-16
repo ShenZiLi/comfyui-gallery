@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/assets/icons/icon-256.png" width="120" alt="ArtMirror" />
+  <img src="frontend/assets/icons/icon-1024.png" width="120" alt="ArtMirror" />
   <h1>ArtMirror</h1>
   <hr />
   <p>

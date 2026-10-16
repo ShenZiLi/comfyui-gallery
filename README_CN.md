@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/assets/icons/icon-256.png" width="120" alt="画镜 ArtMirror" />
+  <img src="frontend/assets/icons/icon-1024.png" width="120" alt="画镜 ArtMirror" />
   <h1>画镜 ArtMirror</h1>
   <hr />
   <p>
